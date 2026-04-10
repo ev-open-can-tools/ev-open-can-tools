@@ -1,0 +1,242 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLATFORMIO_VERSION: "6.1.19"
+
+jobs:
+  release-metadata:
+    if: ${{ ('scripts/check_release_metadata.py') != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python scripts/check_release_metadata.py
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-format git
+      - run: clang-format --version
+      - run: git ls-files '*.cpp' '*.h' '*.hpp' | xargs -r clang-format --dry-run --Werror --style=file
+
+  python-tests:
+    if: ${{ ('test/test_can_analyzer.py') != '' && ('scripts/ev_can_analyzer.py') != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python test/test_can_analyzer.py
+
+  native-tests:
+    if: ${{ ('platformio.ini') != '' && ('scripts/platformio_native_env.py') != '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env:
+          - native
+          - native_bypass_tlssc_requirement
+          - native_log_buffer
+          - native_nag
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential git
+      - run: pip install "platformio==${PLATFORMIO_VERSION}"
+      - run: pio test -e ${{ matrix.env }}
+
+  platformio-build:
+    if: ${{ ('platformio.ini') != '' && ('scripts/platformio_set_profile.py') != '' && ('scripts/platformio_sync_profile.py') != '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: feather_rp2040_can
+            profile: --driver DRIVER_MCP2515 --vehicle HW3 --enable EMERGENCY_VEHICLE_DETECTION
+            artifact_name: firmware-rp2040
+            artifact_path: .pio/build/feather_rp2040_can/firmware.uf2
+            extra_python_packages: ""
+          - env: feather_m4_can
+            profile: --driver DRIVER_SAME51 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            artifact_name: firmware-m4
+            artifact_path: .pio/build/feather_m4_can/firmware.bin
+            extra_python_packages: ""
+          - env: esp32_twai
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            artifact_name: firmware-esp32
+            artifact_path: .pio/build/esp32_twai/firmware.bin
+            extra_python_packages: littlefs-python fatfs-ng pyyaml
+          - env: m5stack-atomic-can-base
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            artifact_name: firmware-m5stack
+            artifact_path: .pio/build/m5stack-atomic-can-base/firmware.bin
+            extra_python_packages: littlefs-python fatfs-ng pyyaml
+          - env: esp32_feather_v2_mcp2515
+            profile: --driver DRIVER_MCP2515 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+            artifact_name: firmware-esp32-featherwing
+            artifact_path: .pio/build/esp32_feather_v2_mcp2515/firmware.bin
+            extra_python_packages: littlefs-python fatfs-ng pyyaml
+          - env: esp32_ext_mcp2515
+            profile: --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            artifact_name: firmware-esp32-ext-mcp2515
+            artifact_path: .pio/build/esp32_ext_mcp2515/firmware.bin
+            extra_python_packages: littlefs-python fatfs-ng pyyaml
+          - env: m5stack-atoms3-mini-can-base
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            artifact_name: ""
+            artifact_path: ""
+            extra_python_packages: littlefs-python fatfs-ng pyyaml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential git
+      - run: pip install "platformio==${PLATFORMIO_VERSION}"
+      - if: matrix.extra_python_packages != ''
+        run: pip install ${{ matrix.extra_python_packages }}
+      - run: python scripts/platformio_set_profile.py ${{ matrix.profile }}
+      - run: pio run -e ${{ matrix.env }}
+      - if: matrix.artifact_path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+
+  pages:
+    if: ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && ('docs-site/package.json') != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pages: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/configure-pages@v5
+      - run: npm ci
+        working-directory: docs-site
+      - run: npm run build
+        working-directory: docs-site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/build
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - platformio-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          body_path: CHANGELOG.md
+          files: |
+            release-assets/firmware-rp2040/firmware.uf2
+            release-assets/firmware-m4/firmware.bin
+            release-assets/firmware-esp32/firmware.bin
+            release-assets/firmware-m5stack/firmware.bin
+            release-assets/firmware-esp32-featherwing/firmware.bin
+            release-assets/firmware-esp32-ext-mcp2515/firmware.bin
+
+  notify-discord-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: test -n "${DISCORD_WEBHOOK_URL:-}" || { echo "DISCORD_WEBHOOK_URL is missing in this workflow"; exit 1; }
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      - env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.request
+          from pathlib import Path
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          version = tag[1:] if tag.startswith("v") else tag
+          release_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/releases/tag/{tag}"
+
+          changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
+
+          pattern = re.compile(
+              rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|\Z)",
+              re.MULTILINE | re.DOTALL,
+          )
+          match = pattern.search(changelog)
+
+          if match:
+              description = match.group(1).strip()
+          else:
+              description = "A new release has been published."
+
+          if len(description) > 4096:
+              description = description[:4093] + "..."
+
+          payload = {
+              "username": "GitHub Releases",
+              "embeds": [
+                  {
+                      "title": f"Release {tag}",
+                      "url": release_url,
+                      "description": description,
+                  }
+              ],
+          }
+
+          request = urllib.request.Request(
+              os.environ["DISCORD_WEBHOOK_URL"],
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+          )
+
+          with urllib.request.urlopen(request) as response:
+              print(f"Discord webhook status: {response.status}")
+          PY
