@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Migrate esp32_feather_v2_mcp2515 to new mcp2515 driver and web ui
+- NagHandler: DAS-aware echo suppression via 0x399 DAS_status gating
 
 ## [2.0.0] - 2026-04-14
 

@@ -290,43 +290,87 @@ struct HW3Handler : public CarManagerBase
 };
 
 /**
- * NagHandler — Autosteer nag suppression (counter+1 echo method)
+ * NagHandler — DAS-aware autosteer nag suppression (counter+1 echo method)
  *
- * Replicates the Chinese TSL6P module behavior:
- * - Listens for CAN 880 (0x370) = EPAS3P_sysStatus
- * - When handsOnLevel = 0 (nag would trigger):
- *   1. Copies the real frame
+ * Listens for two CAN frames:
+ *   - 880  (0x370) EPAS3P_sysStatus  — steering torque / handsOnLevel source
+ *   - 921  (0x399) DAS_status        — DAS hands-on demand state
+ *
+ * When DAS is actively requesting hands-on (dasHandsOnState != LC_HANDS_ON_NOT_REQD):
+ *   1. Copies the real EPAS frame
  *   2. Sets byte 3 = 0xB6 (fixed torsionBarTorque = 1.80 Nm)
  *   3. Sets byte 4 |= 0x40 (handsOnLevel = 1)
  *   4. Increments counter (byte 6 lower nibble + 1)
- *   5. Recalculates checksum (byte 7)
- * - The real EPAS frame with the same counter arrives AFTER -> rejected as duplicate
+ *   5. Recalculates checksum (byte 7 = sum(b0..b6) + 0x73)
  *
- * Tested: Model Y Performance 2022 HW3, Basic Autopilot
- * Bus: X179 pin 2/3 (CAN bus 4)
+ * Improvement over the naive approach (echo whenever EPAS handsOnLevel=0):
+ *   EPAS naturally reports handsOnLevel=0 during normal AP driving with no nag
+ *   pending — that is the resting state. Echoing unconditionally injects ~25
+ *   unsolicited frames/s onto the bus during normal driving. By gating on
+ *   DAS_autopilotHandsOnState from 0x399, we only inject when DAS is actually
+ *   demanding a response, producing zero spurious traffic during satisfied driving.
+ *
+ * DAS_autopilotHandsOnState (42|4@1+ LE in 0x399): (d[5] >> 2) & 0x0F
+ *   0 = LC_HANDS_ON_NOT_REQD  — DAS satisfied, no nag: echo suppressed
+ *   1 = LC_HANDS_ON_REQD_DETECTED
+ *   2 = LC_HANDS_ON_REQD_NOT_DETECTED — orange nag: echo fires
+ *   3 = LC_HANDS_ON_REQD_VISUAL
+ *   4 = LC_HANDS_ON_REQD_CHIME_1
+ *   5 = LC_HANDS_ON_REQD_CHIME_2
+ *   6 = LC_HANDS_ON_REQD_SLOWING
+ *   7 = LC_HANDS_ON_REQD_STRUCK_OUT
+ *   8 = LC_HANDS_ON_SUSPENDED     — AP paused, not struck: echo suppressed
+ *   9 = LC_HANDS_ON_REQD_ESCALATED_CHIME_1
+ *  10 = LC_HANDS_ON_REQD_ESCALATED_CHIME_2
+ *  15 = LC_HANDS_ON_SNA
+ *
+ * Tested: Model X HW3, Legacy platform, FW 2026.8.3
+ * Bus: X179 pin 18/19 (Chassis CAN)
  *
  * Enable with build flag: -D NAG_KILLER
  */
 struct NagHandler : public CarManagerBase
 {
-    Shared<bool> nagKillerActive{true};
+    Shared<bool>     nagKillerActive{true};
     Shared<uint32_t> nagEchoCount{0};
+    // Last decoded DAS_autopilotHandsOnState from 0x399.
+    // Initialised to 0xFF (unseen) so the handler echoes conservatively
+    // until the first DAS_status frame arrives — identical to the pre-DAS
+    // behaviour for the brief startup window.
+    Shared<uint8_t>  dasHandsOnState{0xFF};
 
     const uint32_t *filterIds() const override
     {
-        static constexpr uint32_t ids[] = {880};
+        // 880 = 0x370 EPAS3P_sysStatus, 921 = 0x399 DAS_status
+        static constexpr uint32_t ids[] = {880, 921};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 1; }
+    uint8_t filterIdCount() const override { return 2; }
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
+        // ── 0x399 DAS_status: track DAS hands-on demand level ────────────────
+        if (frame.id == 921)
+        {
+            if (frame.dlc >= 6)
+                dasHandsOnState = (frame.data[5] >> 2) & 0x0F;
+            return;
+        }
+
+        // ── 0x370 EPAS3P_sysStatus: conditional echo ─────────────────────────
         if (frame.id != 880 || frame.dlc < 8)
             return;
 
         uint8_t handsOn = (frame.data[4] >> 6) & 0x03;
 
         if (!nagKillerActive || !nagKillerRuntime || handsOn != 0)
+            return;
+
+        // Gate: only inject when DAS is actually requesting hands-on.
+        // State 0 (NOT_REQD) and state 8 (SUSPENDED) mean DAS is satisfied —
+        // no echo needed. 0xFF = no DAS frame seen yet, echo as fallback.
+        uint8_t dasState = dasHandsOnState;
+        if (dasState == 0 || dasState == 8)
             return;
 
         CanFrame echo;
@@ -360,8 +404,8 @@ struct NagHandler : public CarManagerBase
         if (enablePrint && (nagEchoCount % 500 == 1))
         {
             char buf[LogRingBuffer::kMaxMsgLen];
-            snprintf(buf, sizeof(buf), "NagHandler: echo=%u",
-                     (unsigned int)(uint32_t)nagEchoCount);
+            snprintf(buf, sizeof(buf), "NagHandler: echo=%u das=%u",
+                     (unsigned int)(uint32_t)nagEchoCount, (unsigned int)dasState);
             logRing.push(buf,
 #ifndef NATIVE_BUILD
                          millis()

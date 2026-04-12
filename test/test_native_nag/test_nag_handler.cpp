@@ -51,19 +51,38 @@ void setUp()
 
 void tearDown() {}
 
+// Helper: build a DAS_status 0x399 frame with the given DAS_autopilotHandsOnState
+// Signal: 42|4@1+ LE → (d[5] >> 2) & 0x0F
+static CanFrame makeDasFrame(uint8_t handsOnState)
+{
+    CanFrame f = {.id = 921, .dlc = 8};
+    f.data[5] = static_cast<uint8_t>((handsOnState & 0x0F) << 2);
+    return f;
+}
+
+// Helper: send a DAS frame to update handler state, then reset mock
+static void setDasState(uint8_t state)
+{
+    CanFrame das = makeDasFrame(state);
+    handler.handleMessage(das, mock);
+    mock.reset();
+}
+
 // ============================================================
 // Filter IDs
 // ============================================================
 
 void test_nag_filter_ids_count()
 {
-    TEST_ASSERT_EQUAL_UINT8(1, handler.filterIdCount());
+    // Now listens to both 880 (EPAS) and 921 (DAS_status)
+    TEST_ASSERT_EQUAL_UINT8(2, handler.filterIdCount());
 }
 
 void test_nag_filter_ids_value()
 {
     const uint32_t *ids = handler.filterIds();
     TEST_ASSERT_EQUAL_UINT32(880, ids[0]);
+    TEST_ASSERT_EQUAL_UINT32(921, ids[1]);
 }
 
 // ============================================================
@@ -72,6 +91,7 @@ void test_nag_filter_ids_value()
 
 void test_nag_echoes_when_handson_0()
 {
+    // DAS state 0xFF (unseen) → echo fires as conservative fallback
     CanFrame f = makeEpasFrame(0, 0.33, 0x0C);
     handler.handleMessage(f, mock);
     TEST_ASSERT_EQUAL(1, mock.sent.size());
@@ -328,6 +348,112 @@ void test_nag_echoes_only_handson_0_in_mixed_sequence()
 }
 
 // ============================================================
+// DAS-aware gating (dasHandsOnState from 0x399)
+// ============================================================
+
+// State 0 = LC_HANDS_ON_NOT_REQD — DAS satisfied, no echo needed
+void test_nag_suppressed_when_das_state_0()
+{
+    setDasState(0); // NOT_REQD
+    CanFrame f = makeEpasFrame(0, 0.33, 0x0C);
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
+// State 2 = LC_HANDS_ON_REQD_NOT_DETECTED — orange nag, echo must fire
+void test_nag_fires_when_das_state_2()
+{
+    setDasState(2); // NOT_DETECTED
+    CanFrame f = makeEpasFrame(0, 0.33, 0x0C);
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+}
+
+// State 4 = LC_HANDS_ON_REQD_CHIME_1 — chime escalation, echo must fire
+void test_nag_fires_when_das_state_4()
+{
+    setDasState(4); // CHIME_1
+    CanFrame f = makeEpasFrame(0, 0.33, 0x0C);
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+}
+
+// State 6 = LC_HANDS_ON_REQD_SLOWING — DAS braking, echo must fire
+void test_nag_fires_when_das_state_6()
+{
+    setDasState(6); // SLOWING
+    CanFrame f = makeEpasFrame(0, 0.33, 0x0C);
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+}
+
+// State 8 = LC_HANDS_ON_SUSPENDED — AP paused (construction zone etc.), not a nag
+void test_nag_suppressed_when_das_state_8()
+{
+    setDasState(8); // SUSPENDED
+    CanFrame f = makeEpasFrame(0, 0.33, 0x0C);
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
+// State 0xFF (default, no DAS frame seen) → conservative fallback: echo fires
+void test_nag_fires_on_unseen_das_state()
+{
+    // Fresh handler — dasHandsOnState defaults to 0xFF
+    // Do NOT call setDasState here
+    NagHandler fresh;
+    fresh.enablePrint = false;
+    CanFrame f = makeEpasFrame(0, 0.33, 0x0C);
+    fresh.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+}
+
+// DAS frame itself must never be re-transmitted
+void test_nag_das_frame_not_echoed()
+{
+    CanFrame das = makeDasFrame(2);
+    handler.handleMessage(das, mock);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
+// DAS frame with short DLC must not crash or update state incorrectly
+void test_nag_das_short_dlc_ignored()
+{
+    // Pre-set known state
+    setDasState(2);
+    // Now send a short DAS frame
+    CanFrame bad = makeDasFrame(0);
+    bad.dlc = 5; // too short to decode d[5]
+    handler.handleMessage(bad, mock);
+    // State should be unchanged (still 2) — EPAS echo should fire
+    CanFrame epas = makeEpasFrame(0, 0.33, 0x0C);
+    handler.handleMessage(epas, mock);
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+}
+
+// DAS state transitions: NOT_REQD → NOT_DETECTED → NOT_REQD
+void test_nag_das_state_transitions()
+{
+    // Phase 1: DAS satisfied — no echo
+    setDasState(0);
+    CanFrame f = makeEpasFrame(0, 0.33, 0x00);
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL_MESSAGE(0, mock.sent.size(), "phase 1: should suppress");
+    mock.reset();
+
+    // Phase 2: DAS escalates — echo fires
+    setDasState(2);
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL_MESSAGE(1, mock.sent.size(), "phase 2: should echo");
+    mock.reset();
+
+    // Phase 3: DAS satisfied again — suppress resumes
+    setDasState(0);
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL_MESSAGE(0, mock.sent.size(), "phase 3: should suppress again");
+}
+
+// ============================================================
 // Output ID is always 880
 // ============================================================
 
@@ -394,6 +520,17 @@ int main()
     // Output frame
     RUN_TEST(test_nag_output_id_is_880);
     RUN_TEST(test_nag_output_dlc_is_8);
+
+    // DAS-aware gating (dasHandsOnState from 0x399)
+    RUN_TEST(test_nag_suppressed_when_das_state_0);
+    RUN_TEST(test_nag_fires_when_das_state_2);
+    RUN_TEST(test_nag_fires_when_das_state_4);
+    RUN_TEST(test_nag_fires_when_das_state_6);
+    RUN_TEST(test_nag_suppressed_when_das_state_8);
+    RUN_TEST(test_nag_fires_on_unseen_das_state);
+    RUN_TEST(test_nag_das_frame_not_echoed);
+    RUN_TEST(test_nag_das_short_dlc_ignored);
+    RUN_TEST(test_nag_das_state_transitions);
 
     return UNITY_END();
 }
