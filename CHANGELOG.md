@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Migrate esp32_feather_v2_mcp2515 to new mcp2515 driver and web ui
 - NagHandler: DAS-aware echo suppression via 0x399 DAS_status gating
+- NagHandler: organic torque variation (xorshift32 random walk + grip excursions) replaces fixed 1.80 Nm
 
 ## [2.0.0] - 2026-04-14
 

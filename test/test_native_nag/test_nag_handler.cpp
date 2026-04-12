@@ -1,4 +1,6 @@
 #include <unity.h>
+#include <algorithm>
+#include <vector>
 #include "can_frame_types.h"
 #include "drivers/can_driver.h"
 #include "can_helpers.h"
@@ -195,29 +197,41 @@ void test_nag_preserves_byte4_lower_bits()
     TEST_ASSERT_EQUAL_HEX8(0x1F, outLower); // lower 6 bits preserved
 }
 
-void test_nag_sets_fixed_torque_0xB6()
+void test_nag_torque_in_organic_range()
 {
-    CanFrame f = makeEpasFrame(0, 0.10, 0x0C); // low torque
-    handler.handleMessage(f, mock);
-    TEST_ASSERT_EQUAL_HEX8(0xB6, mock.sent[0].data[3]);
-}
-
-void test_nag_torque_value_is_1_80_nm()
-{
+    // Torque must stay in the walk range [2150–2290] or excursion range [2330–2370]
+    // i.e. raw [2150, 2370] → Nm [1.00, 3.30]
     CanFrame f = makeEpasFrame(0, 0.33, 0x0C);
     handler.handleMessage(f, mock);
-    // Decode torque from echoed frame
-    uint16_t tRaw = ((mock.sent[0].data[2] & 0x0F) << 8) | mock.sent[0].data[3];
-    float torque = tRaw * 0.01f - 20.5f;
-    TEST_ASSERT_FLOAT_WITHIN(0.1, 1.80, torque);
+    uint16_t tRaw = (static_cast<uint16_t>(mock.sent[0].data[2] & 0x0F) << 8) | mock.sent[0].data[3];
+    TEST_ASSERT_TRUE_MESSAGE(tRaw >= 2150 && tRaw <= 2370, "Torque raw out of organic range");
 }
 
-void test_nag_copies_bytes_0_1_2_5_unchanged()
+void test_nag_torque_varies_across_frames()
+{
+    // Run 50 echoes and verify not all torque bytes are identical — torque must drift
+    std::vector<uint8_t> d3values;
+    for (int i = 0; i < 50; i++)
+    {
+        mock.reset();
+        CanFrame f = makeEpasFrame(0, 0.33, i & 0x0F);
+        handler.handleMessage(f, mock);
+        TEST_ASSERT_EQUAL(1, mock.sent.size());
+        d3values.push_back(mock.sent[0].data[3]);
+    }
+    // At least 3 distinct d[3] values across 50 frames
+    std::sort(d3values.begin(), d3values.end());
+    auto last = std::unique(d3values.begin(), d3values.end());
+    int distinct = static_cast<int>(std::distance(d3values.begin(), last));
+    TEST_ASSERT_TRUE_MESSAGE(distinct >= 3, "Torque must vary — too few distinct values");
+}
+
+void test_nag_copies_bytes_0_1_5_unchanged()
 {
     CanFrame f = makeEpasFrame(0, 0.33, 0x0C);
     f.data[0] = 0xAB;
     f.data[1] = 0xCD;
-    f.data[2] = 0x8E; // upper nibble has flags
+    f.data[2] = 0x8E; // upper nibble = flags that must be preserved
     f.data[5] = 0x42;
     // Recompute checksum after manual changes
     uint16_t sum = 0;
@@ -228,7 +242,8 @@ void test_nag_copies_bytes_0_1_2_5_unchanged()
     handler.handleMessage(f, mock);
     TEST_ASSERT_EQUAL_HEX8(0xAB, mock.sent[0].data[0]);
     TEST_ASSERT_EQUAL_HEX8(0xCD, mock.sent[0].data[1]);
-    TEST_ASSERT_EQUAL_HEX8(0x88, mock.sent[0].data[2]); // upper nibble preserved, lower nibble = 0x08 (fixed torque 0x08B6)
+    // d[2] upper nibble (flags) preserved; lower nibble is torque MSB — may vary
+    TEST_ASSERT_EQUAL_HEX8(0x80, mock.sent[0].data[2] & 0xF0); // upper nibble 0x8 preserved
     TEST_ASSERT_EQUAL_HEX8(0x42, mock.sent[0].data[5]);
 }
 
@@ -267,33 +282,37 @@ void test_nag_checksum_correct_with_various_inputs()
 // Canary: output torque must stay in safe range
 // ============================================================
 
-void test_nag_output_torque_never_exceeds_safe_range()
+void test_nag_output_torque_always_in_safe_range()
 {
-    // The fixed torque is 1.80 Nm. Verify it's always in [-5, 5] Nm range.
+    // Organic walk range [2150–2290] and excursion [2330–2370] must always
+    // produce physiologically plausible torque: [1.00–3.30 Nm].
     for (uint8_t cnt = 0; cnt < 16; cnt++)
     {
         mock.reset();
-        CanFrame f = makeEpasFrame(0, -20.0 + cnt * 2.5, cnt);
+        CanFrame f = makeEpasFrame(0, 0.33, cnt);
         handler.handleMessage(f, mock);
         TEST_ASSERT_EQUAL(1, mock.sent.size());
 
-        uint16_t tRaw = ((mock.sent[0].data[2] & 0x0F) << 8) | mock.sent[0].data[3];
+        uint16_t tRaw = (static_cast<uint16_t>(mock.sent[0].data[2] & 0x0F) << 8) | mock.sent[0].data[3];
         float torque = tRaw * 0.01f - 20.5f;
 
-        // Must be exactly 1.80 Nm (from fixed byte 3 = 0xB6)
-        TEST_ASSERT_FLOAT_WITHIN(0.1, 1.80, torque);
-        // Must never exceed safe range
-        TEST_ASSERT_TRUE(torque >= -5.0f);
-        TEST_ASSERT_TRUE(torque <= 5.0f);
+        // Must stay in the organic range [1.00–3.30 Nm]
+        TEST_ASSERT_TRUE_MESSAGE(torque >= 1.00f, "Torque below organic floor 1.00 Nm");
+        TEST_ASSERT_TRUE_MESSAGE(torque <= 3.30f, "Torque above organic ceiling 3.30 Nm");
     }
 }
 
-void test_nag_output_handson_never_exceeds_1()
+void test_nag_output_handson_always_1()
 {
-    CanFrame f = makeEpasFrame(0, 0.33, 0x0C);
-    handler.handleMessage(f, mock);
-    uint8_t ho = (mock.sent[0].data[4] >> 6) & 0x03;
-    TEST_ASSERT_EQUAL_UINT8(1, ho); // exactly 1, never 2 or 3
+    // handsOnLevel is always 1 — torque walk stays in the level-1 range throughout
+    for (int i = 0; i < 10; i++)
+    {
+        mock.reset();
+        CanFrame f = makeEpasFrame(0, 0.33, i & 0x0F);
+        handler.handleMessage(f, mock);
+        uint8_t ho = (mock.sent[0].data[4] >> 6) & 0x03;
+        TEST_ASSERT_EQUAL_UINT8(1, ho);
+    }
 }
 
 // ============================================================
@@ -496,9 +515,9 @@ int main()
     // Modified fields
     RUN_TEST(test_nag_sets_handson_to_1);
     RUN_TEST(test_nag_preserves_byte4_lower_bits);
-    RUN_TEST(test_nag_sets_fixed_torque_0xB6);
-    RUN_TEST(test_nag_torque_value_is_1_80_nm);
-    RUN_TEST(test_nag_copies_bytes_0_1_2_5_unchanged);
+    RUN_TEST(test_nag_torque_in_organic_range);
+    RUN_TEST(test_nag_torque_varies_across_frames);
+    RUN_TEST(test_nag_copies_bytes_0_1_5_unchanged);
 
     // Checksum
     RUN_TEST(test_nag_checksum_correct);
@@ -506,8 +525,8 @@ int main()
     RUN_TEST(test_nag_checksum_correct_with_various_inputs);
 
     // Safety canary
-    RUN_TEST(test_nag_output_torque_never_exceeds_safe_range);
-    RUN_TEST(test_nag_output_handson_never_exceeds_1);
+    RUN_TEST(test_nag_output_torque_always_in_safe_range);
+    RUN_TEST(test_nag_output_handson_always_1);
 
     // Counters
     RUN_TEST(test_nag_increments_frames_sent);

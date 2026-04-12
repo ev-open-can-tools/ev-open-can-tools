@@ -339,6 +339,14 @@ struct NagHandler : public CarManagerBase
     // behaviour for the brief startup window.
     Shared<uint8_t>  dasHandsOnState{0xFF};
 
+    // ── Organic torque variation state ────────────────────────────────────
+    // Not atomic — only accessed from handleMessage() (serialised CAN context).
+    // xorshift32 PRNG avoids Arduino's random() (safe for NATIVE_BUILD).
+    uint32_t _prngState      = 0xDEADBEEF;
+    int16_t  _torqWalk       = 2230;   // raw starting point = 1.80 Nm
+    uint8_t  _excFrames      = 0;      // frames remaining in grip excursion
+    uint16_t _framesUntilExc = 175;    // frames until next excursion (~7 s @ 25 Hz)
+
     const uint32_t *filterIds() const override
     {
         // 880 = 0x370 EPAS3P_sysStatus, 921 = 0x399 DAS_status
@@ -373,19 +381,53 @@ struct NagHandler : public CarManagerBase
         if (dasState == 0 || dasState == 8)
             return;
 
+        // ── Organic torque variation ──────────────────────────────────────
+        // Constant torque is trivially detectable in Tesla telemetry — a flat
+        // torsionBarTorque signal for 30+ minutes is a statistical impossibility
+        // from a real hand. We simulate muscle tremor and slow grip drift using
+        // a smooth random walk with brief "tighten grip" excursions every 5–9 s.
+        //
+        // torsionBarTorque encoding (19|12@0+ Motorola, 0.01 Nm/LSB, -20.5 offset):
+        //   tRaw = (Nm + 20.5) / 0.01    e.g. 1.80 Nm → 0x08B6
+        //   d[2] lower nibble = tRaw >> 8,   d[3] = tRaw & 0xFF
+        //
+        // Normal walk: [2150–2290] ≈ [1.00–2.40 Nm] — light resting touch, handsOnLevel 1
+        // Excursion:   2350 ± 20  ≈  [3.10–3.30 Nm] — brief grip pulse every ~5–9 s
+        {
+            uint32_t r = _prngState;
+            r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+            _prngState = r;
+
+            if (_excFrames > 0) {
+                // Grip excursion — elevated torque for a few frames
+                _torqWalk = static_cast<int16_t>(2350 + static_cast<int16_t>(r % 41) - 20);
+                _excFrames--;
+            } else {
+                // Normal walk: step ±15 raw units per frame (±0.15 Nm per 40 ms)
+                _torqWalk += static_cast<int16_t>(r % 31) - 15;
+                if (_torqWalk < 2150) _torqWalk = 2150;
+                if (_torqWalk > 2290) _torqWalk = 2290;
+                if (_framesUntilExc == 0) {
+                    _excFrames      = 3 + static_cast<uint8_t>(r % 3);       // 3–5 frames ≈ 120–200 ms
+                    _framesUntilExc = 125 + static_cast<uint16_t>(r % 101);  // 125–225 frames ≈ 5–9 s @ 25 Hz
+                } else {
+                    _framesUntilExc--;
+                }
+            }
+        }
+        uint16_t torqRaw = static_cast<uint16_t>(_torqWalk);
+
         CanFrame echo;
         echo.id = 880;
         echo.dlc = 8;
 
         echo.data[0] = frame.data[0];
         echo.data[1] = frame.data[1];
-        echo.data[2] = (frame.data[2] & 0xF0) | 0x08;
+        echo.data[2] = (frame.data[2] & 0xF0) | static_cast<uint8_t>(torqRaw >> 8);
+        echo.data[3] = static_cast<uint8_t>(torqRaw & 0xFF);
         echo.data[5] = frame.data[5];
 
-        // Fixed torque = 1.80 Nm (tRaw = 0x08B6)
-        echo.data[3] = 0xB6;
-
-        // handsOnLevel = 1
+        // handsOnLevel = 1 — torque stays in level-1 range throughout walk
         echo.data[4] = frame.data[4] | 0x40;
 
         // Counter + 1
