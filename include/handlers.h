@@ -331,21 +331,21 @@ struct HW3Handler : public CarManagerBase
  */
 struct NagHandler : public CarManagerBase
 {
-    Shared<bool>     nagKillerActive{true};
+    Shared<bool> nagKillerActive{true};
     Shared<uint32_t> nagEchoCount{0};
     // Last decoded DAS_autopilotHandsOnState from 0x399.
     // Initialised to 0xFF (unseen) so the handler echoes conservatively
     // until the first DAS_status frame arrives — identical to the pre-DAS
     // behaviour for the brief startup window.
-    Shared<uint8_t>  dasHandsOnState{0xFF};
+    Shared<uint8_t> dasHandsOnState{0xFF};
 
     // ── Organic torque variation state ────────────────────────────────────
     // Not atomic — only accessed from handleMessage() (serialised CAN context).
     // xorshift32 PRNG avoids Arduino's random() (safe for NATIVE_BUILD).
-    uint32_t _prngState      = 0xDEADBEEF;
-    int16_t  _torqWalk       = 2230;   // raw starting point = 1.80 Nm
-    uint8_t  _excFrames      = 0;      // frames remaining in grip excursion
-    uint16_t _framesUntilExc = 175;    // frames until next excursion (~7 s @ 25 Hz)
+    uint32_t _prngState = 0xDEADBEEF;
+    int16_t _torqWalk = 2230;       // raw starting point = 1.80 Nm
+    uint8_t _excFrames = 0;         // frames remaining in grip excursion
+    uint16_t _framesUntilExc = 175; // frames until next excursion (~7 s @ 25 Hz)
 
     const uint32_t *filterIds() const override
     {
@@ -395,22 +395,32 @@ struct NagHandler : public CarManagerBase
         // Excursion:   2350 ± 20  ≈  [3.10–3.30 Nm] — brief grip pulse every ~5–9 s
         {
             uint32_t r = _prngState;
-            r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+            r ^= r << 13;
+            r ^= r >> 17;
+            r ^= r << 5;
             _prngState = r;
 
-            if (_excFrames > 0) {
+            if (_excFrames > 0)
+            {
                 // Grip excursion — elevated torque for a few frames
                 _torqWalk = static_cast<int16_t>(2350 + static_cast<int16_t>(r % 41) - 20);
                 _excFrames--;
-            } else {
+            }
+            else
+            {
                 // Normal walk: step ±15 raw units per frame (±0.15 Nm per 40 ms)
                 _torqWalk += static_cast<int16_t>(r % 31) - 15;
-                if (_torqWalk < 2150) _torqWalk = 2150;
-                if (_torqWalk > 2290) _torqWalk = 2290;
-                if (_framesUntilExc == 0) {
-                    _excFrames      = 3 + static_cast<uint8_t>(r % 3);       // 3–5 frames ≈ 120–200 ms
-                    _framesUntilExc = 125 + static_cast<uint16_t>(r % 101);  // 125–225 frames ≈ 5–9 s @ 25 Hz
-                } else {
+                if (_torqWalk < 2150)
+                    _torqWalk = 2150;
+                if (_torqWalk > 2290)
+                    _torqWalk = 2290;
+                if (_framesUntilExc == 0)
+                {
+                    _excFrames = 3 + static_cast<uint8_t>(r % 3);           // 3–5 frames ≈ 120–200 ms
+                    _framesUntilExc = 125 + static_cast<uint16_t>(r % 101); // 125–225 frames ≈ 5–9 s @ 25 Hz
+                }
+                else
+                {
                     _framesUntilExc--;
                 }
             }
