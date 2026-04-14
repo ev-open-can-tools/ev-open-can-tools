@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Migrate esp32_feather_v2_mcp2515 to new mcp2515 driver and web ui
 
-## [2.1.0-beta] - 2026-04-15
+## [2.1.0-beta.2] - 2026-04-15
+
+### Changed
+- Rebrand: renamed all UI references from "ADUnlock" to "ev-open-can-tools"
+- Footer now shows current firmware version and dynamically adapts to the device IP
+- Removed hardcoded hardware references from footer
 
 ### Added
 - WiFi network scanner: scan and display available networks in the dashboard, select by clicking

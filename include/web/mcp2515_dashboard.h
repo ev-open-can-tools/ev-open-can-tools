@@ -1509,7 +1509,7 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
 
     xTaskCreatePinnedToCore(webTask, "web", 8192, nullptr, 1, nullptr, 0);
 
-    ArduinoOTA.setHostname("ADunlock");
+    ArduinoOTA.setHostname("ev-open-can-tools");
     ArduinoOTA.setPassword(DASH_OTA_PASS);
     ArduinoOTA.onStart([]()
                        { dashLog("[OTA] Starting..."); });
@@ -1548,8 +1548,8 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     server.on("/update_beta", HTTP_POST, handleUpdateBeta);
 
     server.begin();
-    Serial.println("[WEB] Dashboard: http://192.168.4.1");
-    dashLog("[BOOT] ADUnlock ready");
+    Serial.println("[WEB] Dashboard: http://" + WiFi.softAPIP().toString());
+    dashLog("[BOOT] ev-open-can-tools ready");
 }
 
 static void mcpDashboardLoop()

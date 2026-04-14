@@ -7,7 +7,7 @@ static const char DASH_HTML[] PROGMEM = R"HTML(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>ADUnlock</title>
+<title>ev-open-can-tools</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 [data-theme="dark"]{
@@ -195,7 +195,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 <div class="hdr">
   <div class="hdr-top">
     <div class="hdr-left">
-      <div class="hdr-title">ADUnlock</div>
+      <div class="hdr-title">ev-open-can-tools</div>
       <span class="hw-badge" id="hw-badge">HW3</span>
     </div>
     <button class="theme-btn" onclick="toggleTheme()" id="theme-btn">&#9788; Light</button>
@@ -501,7 +501,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 </div>
 
 <div class="warn-bar">CAN bus writes affect vehicle behavior. Remove device immediately if unexpected behavior occurs. Not affiliated with any vehicle manufacturer.</div>
-<div class="foot">ADUnlock &bull; ESP32-S3 + MCP2515 &bull; 192.168.4.1</div>
+<div class="foot" id="dash-foot">ev-open-can-tools &bull; loading...</div>
 
 <script>
 const HW=['Legacy','HW3','HW4'];
@@ -1000,9 +1000,13 @@ async function installUpdate(){
 async function loadUpdateInfo(){
   try{const r=await fetch('/update_beta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'noop=1'});
     const d=await r.json();
-    if(d.version)$('fw-ver').textContent='v'+d.version;
+    if(d.version){$('fw-ver').textContent='v'+d.version;updateFoot(d.version);}
     $('beta-tgl').checked=!!d.beta;
   }catch(e){}
+}
+function updateFoot(ver){
+  var ip=location.hostname||'192.168.4.1';
+  $('dash-foot').textContent='ev-open-can-tools \u2022 v'+ver+' \u2022 '+ip;
 }
 
 setInterval(poll,2000);setInterval(pollLog,3000);setInterval(pollSniffer,1000);setInterval(pollPlugins,10000);setInterval(loadWifiStatus,10000);setInterval(loadApStatus,10000);
