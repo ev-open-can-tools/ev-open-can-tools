@@ -215,6 +215,53 @@ A plugin can contain multiple rules that target different CAN IDs or mux values.
 }
 ```
 
+### Example 5: EPAS hands-on-wheel nag (basic stateless approximation)
+
+> **Context:** This example was contributed as part of PR #5 (DAS-aware nag suppression). It illustrates the limits of the plugin system — the production implementation lives in the built-in `NagHandler`.
+
+Tesla's autosteer requires the driver to keep a hand on the wheel. `EPAS3P_sysStatus` (CAN 880, 0x370) carries a `handsOnLevel` field (byte 4 bits 7:6). When it reads 0 (hands off), DAS escalates through a warning sequence and eventually disables autosteer.
+
+The approach: echo the frame back with `handsOnLevel = 1` (light touch) and a plausible `torsionBarTorque` (bytes 2–3) before the real frame arrives. DAS sees the echo first and is satisfied.
+
+The following JSON does this unconditionally on every EPAS frame:
+
+```json
+{
+  "name": "EPAS Nag Suppress (basic)",
+  "version": "1.0",
+  "rules": [
+    {
+      "id": 880,
+      "ops": [
+        { "type": "and_byte", "byte": 4, "val": 63  },
+        { "type": "or_byte",  "byte": 4, "val": 64  },
+        { "type": "set_byte", "byte": 2, "val": 8,   "mask": 15 },
+        { "type": "set_byte", "byte": 3, "val": 182 },
+        { "type": "checksum" }
+      ]
+    }
+  ]
+}
+```
+
+**What each op does:**
+- `and_byte byte 4, val=63 (0x3F)` — clear handsOnLevel bits (7:6) from the original frame
+- `or_byte  byte 4, val=64 (0x40)` — set handsOnLevel = 1 (light touch)
+- `set_byte byte 2, val=8 (0x08), mask=15 (0x0F)` — write torsionBarTorque high nibble (0x08) without disturbing upper flags
+- `set_byte byte 3, val=182 (0xB6)` — torsionBarTorque low byte → 0x08B6 = 1.80 Nm
+- `checksum` — recalculate byte 7 = sum(bytes 0–6) + 0x73
+
+**Limitations of the plugin approach** — the built-in `NagHandler` solves all of these:
+
+| Limitation | Plugin (this JSON) | Built-in NagHandler |
+|---|---|---|
+| Fires unconditionally on every EPAS frame | Yes — always echoes, even when DAS is satisfied | No — gated on `DAS_autopilotHandsOnState` from 0x399; only echoes when DAS actually demands hands |
+| Fixed torque | Yes — always 1.80 Nm, identical pattern every ~40 ms | No — xorshift32 random walk [2.15–2.29 Nm] with brief grip excursion pulses |
+| No counter increment | Echo uses same counter as original; both arrive on bus | NagHandler increments counter by 1; echo looks newer, original rejected by DAS |
+| Cross-frame state | Not possible in plugin system | NagHandler reads 0x399 to track DAS escalation state |
+
+If you want the production-quality version, use the `NagHandler` build flag (`-D NAG_KILLER`) rather than this plugin.
+
 ## Installing plugins
 
 ### Via URL (requires WiFi internet)
