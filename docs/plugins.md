@@ -116,6 +116,8 @@ Always place this as the **last** operation if the frame uses checksums.
 
 ## Examples
 
+> **Note:** The following examples are for illustration purposes only and do not represent real, tested functionality. They demonstrate the plugin JSON syntax and available operations.
+
 ### Example 1: ISA speed chime suppression
 
 Suppresses the ISA speed warning chime on HW4 by setting bit 13 on CAN ID 921 (DAS_status).
