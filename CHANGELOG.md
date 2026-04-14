@@ -19,7 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Beta channel toggle: switch between stable and pre-release firmware versions
 - Firmware version auto-injected from VERSION file at build time
 - Dedicated WiFi status endpoint (/wifi_status) and scan endpoint (/wifi_scan)
+- WiFi hotspot configuration: change AP name and password via the dashboard
 - New update endpoints: /update_check, /update_install, /update_beta
+- New AP endpoints: /ap_config, /ap_status
 
 ## [2.0.0] - 2026-04-14
 
