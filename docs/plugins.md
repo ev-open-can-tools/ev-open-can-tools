@@ -262,6 +262,12 @@ The following JSON does this unconditionally on every EPAS frame:
 
 If you want the production-quality version, use the `NagHandler` build flag (`-D NAG_KILLER`) rather than this plugin.
 
+**Install this plugin directly from the dashboard:**
+```
+https://raw.githubusercontent.com/ev-open-can-tools/ev-open-can-tools/main/docs/plugins/epas-nag-suppress-basic.json
+```
+Or paste the JSON from [`docs/plugins/epas-nag-suppress-basic.json`](plugins/epas-nag-suppress-basic.json) into the **Paste JSON (offline)** field.
+
 ## Installing plugins
 
 ### Via URL (requires WiFi internet)

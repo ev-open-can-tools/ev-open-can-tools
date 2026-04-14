@@ -1,0 +1,17 @@
+{
+  "name": "EPAS Nag Suppress (basic)",
+  "version": "1.0",
+  "author": "ev-open-can-tools community",
+  "rules": [
+    {
+      "id": 880,
+      "ops": [
+        { "type": "and_byte", "byte": 4, "val": 63  },
+        { "type": "or_byte",  "byte": 4, "val": 64  },
+        { "type": "set_byte", "byte": 2, "val": 8,   "mask": 15 },
+        { "type": "set_byte", "byte": 3, "val": 182 },
+        { "type": "checksum" }
+      ]
+    }
+  ]
+}
