@@ -15,7 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WiFi network scanner: scan and display available networks in the dashboard, select by clicking
 - Signal strength indicators (RSSI) and channel info for each scanned network
 - Static IP configuration: optionally set IP, gateway, subnet mask and DNS server
+- OTA firmware update from GitHub releases: check for updates and install directly from the dashboard
+- Beta channel toggle: switch between stable and pre-release firmware versions
+- Firmware version auto-injected from VERSION file at build time
 - Dedicated WiFi status endpoint (/wifi_status) and scan endpoint (/wifi_scan)
+- New update endpoints: /update_check, /update_install, /update_beta
 
 ## [2.0.0] - 2026-04-14
 
