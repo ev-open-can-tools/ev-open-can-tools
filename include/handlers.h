@@ -24,6 +24,11 @@ struct CarManagerBase
     Shared<uint32_t> framesSent{0};
     Shared<int> speedOffset{0};
 
+    // Track the one-shot AP wiper override so we only force OFF after AP engages
+    // and immediately give control back once the driver requests wipers again.
+    bool apWiperSuppressionActive = false;
+    bool apWiperApActive = false;
+
     void (*onFrame)(const CanFrame &) = nullptr;
     void (*onSend)(uint8_t mux, bool ok) = nullptr;
     bool (*checkAD)() = nullptr;
@@ -114,7 +119,7 @@ struct HW3Handler : public CarManagerBase
 {
     const uint32_t *filterIds() const override
     {
-#if defined(ESP32_DASHBOARD)
+#if defined(ESP32_DASHBOARD) || defined(NAG_KILLER)
         static constexpr uint32_t ids[] = {787, 880, 1016, 1021, 2047};
         return ids;
     }
@@ -130,7 +135,7 @@ struct HW3Handler : public CarManagerBase
     {
         if (onFrame)
             onFrame(frame);
-#if defined(ESP32_DASHBOARD)
+#if defined(ESP32_DASHBOARD) || defined(NAG_KILLER)
         if (nagKillerRuntime && frame.id == 880 && frame.dlc >= 8)
         {
             if ((frame.data[4] >> 6 & 0x03) == 0)
@@ -380,7 +385,12 @@ struct HW4Handler : public CarManagerBase
 {
     const uint32_t *filterIds() const override
     {
-#if defined(ESP32_DASHBOARD)
+#if defined(ESP32_DASHBOARD) || defined(AUTO_WIPERS_OFF_ON_AP)
+        static constexpr uint32_t ids[] = {880, 921, 1001, 627, 585, 1016, 1021, 2047};
+        return ids;
+    }
+    uint8_t filterIdCount() const override { return 8; }
+#elif defined(NAG_KILLER)
         static constexpr uint32_t ids[] = {880, 921, 1016, 1021, 2047};
         return ids;
     }
@@ -401,7 +411,7 @@ struct HW4Handler : public CarManagerBase
     {
         if (onFrame)
             onFrame(frame);
-#if defined(ESP32_DASHBOARD)
+#if defined(ESP32_DASHBOARD) || defined(NAG_KILLER)
         if (nagKillerRuntime && frame.id == 880 && frame.dlc >= 8)
         {
             if ((frame.data[4] >> 6 & 0x03) == 0)
@@ -426,19 +436,67 @@ struct HW4Handler : public CarManagerBase
             return;
         }
 #endif
+#if defined(AUTO_WIPERS_OFF_ON_AP) || defined(ESP32_DASHBOARD)
+        if (autoWipersOffOnApRuntime)
+        {
+            // Arm suppression only on the inactive->active AP edge. This keeps auto
+            // wipers off when Autosteer first engages without fighting later manual input.
+            if (frame.id == 921 && frame.dlc >= 1)
+            {
+                const uint8_t apState = frame.data[0] & 0x0F;
+                const bool apNowActive = apState >= 3 && apState <= 6;
+                if (apNowActive && !apWiperApActive)
+                    apWiperSuppressionActive = true;
+                else if (!apNowActive)
+                    apWiperSuppressionActive = false;
+                apWiperApActive = apNowActive;
+            }
+            // Any explicit UI or stalk request hands wiper control back to the driver
+            // until AP disengages and re-engages.
+            else if (apWiperApActive && frame.id == 627 && frame.dlc >= 8)
+            {
+                const uint8_t req = frame.data[7] & 0x07;
+                if (req >= 2 && req <= 6)
+                    apWiperSuppressionActive = false;
+            }
+            else if (apWiperApActive && frame.id == 585 && frame.dlc >= 2)
+            {
+                const uint8_t wash = (frame.data[1] >> 6) & 0x03;
+                if (wash == 1 || wash == 2)
+                    apWiperSuppressionActive = false;
+            }
+            else if (apWiperApActive && apWiperSuppressionActive && frame.id == 1001 && frame.dlc >= 8)
+            {
+                frame.data[0] &= 0x0F;
+                setBit(frame, 29, true);
+                frame.data[7] = computeVehicleChecksum(frame);
+                framesSent++;
+                driver.send(frame);
+                if (onSend)
+                    onSend(0, true);
+                return;
+            }
+        }
+#endif
 #if defined(ISA_SPEED_CHIME_SUPPRESS) || defined(ESP32_DASHBOARD)
         if (isaSpeedChimeSuppressRuntime && frame.id == 921)
         {
-            if (frame.dlc < 8)
+            // Some cars/buses expose DAS_status (0x399) as the full 8-byte
+            // frame from the DBC, while others forward a shortened 3-byte
+            // variant. Both carry bit 13 in byte 1, so accept either.
+            if (frame.dlc < 2)
                 return;
             if (!isaSpeedChimeSuppressRuntime)
                 return;
             frame.data[1] |= 0x20;
-            uint8_t sum = 0;
-            for (int i = 0; i < 7; i++)
-                sum += frame.data[i];
-            sum += (921 & 0xFF) + (921 >> 8);
-            frame.data[7] = sum & 0xFF;
+            if (frame.dlc >= 8)
+            {
+                uint8_t sum = 0;
+                for (int i = 0; i < 7; i++)
+                    sum += frame.data[i];
+                sum += (921 & 0xFF) + (921 >> 8);
+                frame.data[7] = sum & 0xFF;
+            }
             framesSent++;
             driver.send(frame);
             if (onSend)

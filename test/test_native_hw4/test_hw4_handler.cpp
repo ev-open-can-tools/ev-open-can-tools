@@ -149,6 +149,30 @@ void test_hw4_nag_suppression_skips_mux1_changes_when_eap_runtime_disabled()
     TEST_ASSERT_EQUAL(0, mock.sent.size()); // frame are not sent when runtime disabled
 }
 
+#if defined(NAG_KILLER)
+void test_hw4_nag_killer_echoes_880_when_handson_0()
+{
+    CanFrame f = {.id = 880, .dlc = 8};
+    f.data[0] = 0x11;
+    f.data[1] = 0x22;
+    f.data[2] = 0xA5;
+    f.data[3] = 0x44;
+    f.data[4] = 0x00;
+    f.data[5] = 0x66;
+    f.data[6] = 0xB7;
+
+    handler.handleMessage(f, mock);
+
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+    TEST_ASSERT_EQUAL_UINT32(880, mock.sent[0].id);
+    TEST_ASSERT_EQUAL_UINT8(8, mock.sent[0].dlc);
+    TEST_ASSERT_EQUAL_HEX8(0xA8, mock.sent[0].data[2]);
+    TEST_ASSERT_EQUAL_HEX8(0xB6, mock.sent[0].data[3]);
+    TEST_ASSERT_EQUAL_HEX8(0x40, mock.sent[0].data[4] & 0xC0);
+    TEST_ASSERT_EQUAL_HEX8(0xB8, mock.sent[0].data[6]);
+}
+#endif
+
 // --- Speed profile injection (mux 2) ---
 void test_hw4_mux2_injects_speed_profile()
 {
@@ -224,6 +248,75 @@ void test_hw4_ignores_unrelated_can_id()
     TEST_ASSERT_EQUAL(0, mock.sent.size());
 }
 
+#if defined(AUTO_WIPERS_OFF_ON_AP)
+void test_hw4_autowipers_off_on_ap_engagement_forces_wipers_off()
+{
+    CanFrame ap = {.id = 921, .dlc = 8};
+    ap.data[0] = 0x03; // ACTIVE_NOMINAL
+    handler.handleMessage(ap, mock);
+    mock.reset();
+
+    CanFrame body = {.id = 1001, .dlc = 8};
+    body.data[0] = 0x50; // DAS_wiperSpeed = 5
+    handler.handleMessage(body, mock);
+
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+    TEST_ASSERT_EQUAL_HEX8(0x00, mock.sent[0].data[0] & 0xF0);
+    TEST_ASSERT_EQUAL_HEX8(0x20, mock.sent[0].data[3] & 0x20);
+    TEST_ASSERT_EQUAL_HEX8(computeVehicleChecksum(mock.sent[0]), mock.sent[0].data[7]);
+}
+
+void test_hw4_autowipers_available_state_does_not_force_off()
+{
+    CanFrame ap = {.id = 921, .dlc = 8};
+    ap.data[0] = 0x02; // AVAILABLE
+    handler.handleMessage(ap, mock);
+    mock.reset();
+
+    CanFrame body = {.id = 1001, .dlc = 8};
+    body.data[0] = 0x50;
+    handler.handleMessage(body, mock);
+
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
+void test_hw4_autowipers_manual_ui_request_disables_suppression()
+{
+    CanFrame ap = {.id = 921, .dlc = 8};
+    ap.data[0] = 0x03; // ACTIVE_NOMINAL
+    handler.handleMessage(ap, mock);
+
+    CanFrame ui = {.id = 627, .dlc = 8};
+    ui.data[7] = 0x06; // FAST_CONTINUOUS
+    handler.handleMessage(ui, mock);
+    mock.reset();
+
+    CanFrame body = {.id = 1001, .dlc = 8};
+    body.data[0] = 0x50;
+    handler.handleMessage(body, mock);
+
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
+void test_hw4_autowipers_wash_button_disables_suppression()
+{
+    CanFrame ap = {.id = 921, .dlc = 8};
+    ap.data[0] = 0x03; // ACTIVE_NOMINAL
+    handler.handleMessage(ap, mock);
+
+    CanFrame stalk = {.id = 585, .dlc = 2};
+    stalk.data[1] = 0x40; // washWipeButtonStatus = 1ST_DETENT
+    handler.handleMessage(stalk, mock);
+    mock.reset();
+
+    CanFrame body = {.id = 1001, .dlc = 8};
+    body.data[0] = 0x50;
+    handler.handleMessage(body, mock);
+
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+#endif
+
 // --- ISA speed chime suppression (CAN ID 921) ---
 
 void test_hw4_isa_suppress_sets_bit5_of_data1()
@@ -261,6 +354,26 @@ void test_hw4_isa_suppress_checksum_correct()
     TEST_ASSERT_EQUAL_HEX8(0xD1, mock.sent[0].data[7]);
 }
 
+void test_hw4_isa_suppress_supports_short_dlc_variant()
+{
+    CanFrame f = {.id = 921, .dlc = 3};
+    f.data[0] = 0x00;
+    f.data[1] = 0x00;
+    f.data[2] = 0x00;
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+    TEST_ASSERT_EQUAL_UINT8(3, mock.sent[0].dlc);
+    TEST_ASSERT_EQUAL_HEX8(0x20, mock.sent[0].data[1]);
+}
+
+void test_hw4_isa_suppress_ignores_too_short_frame()
+{
+    CanFrame f = {.id = 921, .dlc = 1};
+    f.data[0] = 0x00;
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
 void test_hw4_isa_suppress_returns_early_no_further_processing()
 {
     handler.ADEnabled = true;
@@ -291,16 +404,39 @@ void test_hw4_gw_autopilot_mux2_updates_state_without_send()
 
 void test_hw4_filter_ids_count()
 {
+#if defined(AUTO_WIPERS_OFF_ON_AP)
+    TEST_ASSERT_EQUAL_UINT8(8, handler.filterIdCount());
+#elif defined(NAG_KILLER)
+    TEST_ASSERT_EQUAL_UINT8(5, handler.filterIdCount());
+#else
     TEST_ASSERT_EQUAL_UINT8(4, handler.filterIdCount());
+#endif
 }
 
 void test_hw4_filter_ids_values()
 {
     const uint32_t *ids = handler.filterIds();
+#if defined(AUTO_WIPERS_OFF_ON_AP)
+    TEST_ASSERT_EQUAL_UINT32(880, ids[0]);
+    TEST_ASSERT_EQUAL_UINT32(921, ids[1]);
+    TEST_ASSERT_EQUAL_UINT32(1001, ids[2]);
+    TEST_ASSERT_EQUAL_UINT32(627, ids[3]);
+    TEST_ASSERT_EQUAL_UINT32(585, ids[4]);
+    TEST_ASSERT_EQUAL_UINT32(1016, ids[5]);
+    TEST_ASSERT_EQUAL_UINT32(1021, ids[6]);
+    TEST_ASSERT_EQUAL_UINT32(2047, ids[7]);
+#elif defined(NAG_KILLER)
+    TEST_ASSERT_EQUAL_UINT32(880, ids[0]);
+    TEST_ASSERT_EQUAL_UINT32(921, ids[1]);
+    TEST_ASSERT_EQUAL_UINT32(1016, ids[2]);
+    TEST_ASSERT_EQUAL_UINT32(1021, ids[3]);
+    TEST_ASSERT_EQUAL_UINT32(2047, ids[4]);
+#else
     TEST_ASSERT_EQUAL_UINT32(921, ids[0]);
     TEST_ASSERT_EQUAL_UINT32(1016, ids[1]);
     TEST_ASSERT_EQUAL_UINT32(1021, ids[2]);
     TEST_ASSERT_EQUAL_UINT32(2047, ids[3]);
+#endif
 }
 
 int main()
@@ -324,6 +460,9 @@ int main()
 
     RUN_TEST(test_hw4_nag_suppression_clears_bit19_sets_bit47);
     RUN_TEST(test_hw4_nag_suppression_skips_mux1_changes_when_eap_runtime_disabled);
+#if defined(NAG_KILLER)
+    RUN_TEST(test_hw4_nag_killer_echoes_880_when_handson_0);
+#endif
 
     RUN_TEST(test_hw4_mux2_injects_speed_profile);
     RUN_TEST(test_hw4_mux2_clears_old_profile_bits);
@@ -332,10 +471,18 @@ int main()
     RUN_TEST(test_hw4_mux1_sends_1);
     RUN_TEST(test_hw4_mux2_sends_1);
     RUN_TEST(test_hw4_ignores_unrelated_can_id);
+#if defined(AUTO_WIPERS_OFF_ON_AP)
+    RUN_TEST(test_hw4_autowipers_off_on_ap_engagement_forces_wipers_off);
+    RUN_TEST(test_hw4_autowipers_available_state_does_not_force_off);
+    RUN_TEST(test_hw4_autowipers_manual_ui_request_disables_suppression);
+    RUN_TEST(test_hw4_autowipers_wash_button_disables_suppression);
+#endif
 
     RUN_TEST(test_hw4_isa_suppress_sets_bit5_of_data1);
     RUN_TEST(test_hw4_isa_suppress_preserves_existing_data1_bits);
     RUN_TEST(test_hw4_isa_suppress_checksum_correct);
+    RUN_TEST(test_hw4_isa_suppress_supports_short_dlc_variant);
+    RUN_TEST(test_hw4_isa_suppress_ignores_too_short_frame);
     RUN_TEST(test_hw4_isa_suppress_returns_early_no_further_processing);
     RUN_TEST(test_hw4_isa_suppress_runtime_off_skips_send);
     RUN_TEST(test_hw4_gw_autopilot_mux2_updates_state_without_send);

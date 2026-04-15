@@ -53,6 +53,9 @@ struct Features
     // Separate runtime toggle for the CAN 880 counter+1 echo path.
     bool nagKiller = kNagKillerDefaultEnabled;
     bool isaSuppress = false;
+    // Force AP-driven auto wipers off on engage, but release immediately after a
+    // manual wiper request so the driver can opt back in without toggling AP.
+    bool autoWipersOffOnAp = kAutoWipersOffOnApDefaultEnabled;
     bool evDetection = false;
     uint8_t hw4Offset = 0;
 };
@@ -273,6 +276,7 @@ static void dashSavePrefs()
     prefs.putBool("f_sum", feat.summonUnlock);
     prefs.putBool("f_nk", feat.nagKiller);
     prefs.putBool("f_isa", feat.isaSuppress);
+    prefs.putBool("f_awoa", feat.autoWipersOffOnAp);
     prefs.putBool("f_evd", feat.evDetection);
     prefs.putUChar("f_h4o", feat.hw4Offset);
     prefs.putBool("sp_lock", (bool)speedProfileLocked);
@@ -291,6 +295,7 @@ static void dashLoadPrefs()
     feat.nagKiller = prefs.getBool("f_nk", kNagKillerDefaultEnabled);
     enhancedAutopilotRuntime = feat.nagSuppress || feat.summonUnlock;
     feat.isaSuppress = prefs.getBool("f_isa", false);
+    feat.autoWipersOffOnAp = prefs.getBool("f_awoa", kAutoWipersOffOnApDefaultEnabled);
     feat.evDetection = prefs.getBool("f_evd", false);
     feat.hw4Offset = prefs.getUChar("f_h4o", 0);
     speedProfileLocked = prefs.getBool("sp_lock", false);
@@ -306,6 +311,7 @@ static void dashLoadPrefs()
     emergencyVehicleDetectionRuntime = feat.evDetection;
     isaSpeedChimeSuppressRuntime = feat.isaSuppress;
     nagKillerRuntime = feat.nagKiller;
+    autoWipersOffOnApRuntime = feat.autoWipersOffOnAp;
     hw4OffsetRuntime = feat.hw4Offset;
     if (dashHandler)
     {
@@ -325,6 +331,7 @@ static void dashLoadPrefs()
             " summon=" + String(feat.summonUnlock ? "ON" : "OFF") +
             " nk=" + String(feat.nagKiller ? "ON" : "OFF") +
             " isa=" + String(feat.isaSuppress ? "ON" : "OFF") +
+            " awoa=" + String(feat.autoWipersOffOnAp ? "ON" : "OFF") +
             " evd=" + String(feat.evDetection ? "ON" : "OFF"));
 }
 
@@ -354,9 +361,9 @@ static void dashApplyFilters()
         dashMcp->setFilter(MCP2515::RXF1, false, 1021);
         dashMcp->setFilterMask(MCP2515::MASK1, false, 0x7FF);
         dashMcp->setFilter(MCP2515::RXF2, false, 1016);
-        dashMcp->setFilter(MCP2515::RXF3, false, 1021);
-        dashMcp->setFilter(MCP2515::RXF4, false, 1016);
-        dashMcp->setFilter(MCP2515::RXF5, false, 921);
+        dashMcp->setFilter(MCP2515::RXF3, false, 1001);
+        dashMcp->setFilter(MCP2515::RXF4, false, 627);
+        dashMcp->setFilter(MCP2515::RXF5, false, 585);
     }
     else
     {
@@ -472,6 +479,8 @@ static void handleStatus()
     j += feat.nagKiller ? "true" : "false";
     j += ",\"isa\":";
     j += feat.isaSuppress ? "true" : "false";
+    j += ",\"awoa\":";
+    j += feat.autoWipersOffOnAp ? "true" : "false";
     j += ",\"evd\":";
     j += feat.evDetection ? "true" : "false";
     j += ",\"h4o\":";
@@ -560,6 +569,12 @@ static void handleFeatures()
         feat.isaSuppress = server.arg("isa") == "1";
         isaSpeedChimeSuppressRuntime = feat.isaSuppress;
         dashLog("[FEAT] ISA suppress " + String(feat.isaSuppress ? "ON" : "OFF"));
+    }
+    if (server.hasArg("awoa"))
+    {
+        feat.autoWipersOffOnAp = server.arg("awoa") == "1";
+        autoWipersOffOnApRuntime = feat.autoWipersOffOnAp;
+        dashLog("[FEAT] Auto wipers off on AP " + String(feat.autoWipersOffOnAp ? "ON" : "OFF"));
     }
     if (server.hasArg("evd"))
     {
@@ -730,9 +745,13 @@ static void handleDisable()
     feat.summonUnlock = false;
     feat.nagKiller = false;
     feat.isaSuppress = false;
+    feat.autoWipersOffOnAp = false;
     feat.evDetection = false;
     canActive = false;
     nagKillerRuntime = false;
+    isaSpeedChimeSuppressRuntime = false;
+    autoWipersOffOnApRuntime = false;
+    emergencyVehicleDetectionRuntime = false;
     if (dashHandler)
         dashHandler->ADEnabled = false;
     dashSavePrefs();

@@ -45,11 +45,20 @@ inline constexpr bool kNagKillerDefaultEnabled = false;
 inline constexpr bool kNagKillerBuildEnabled = false;
 #endif
 
+#if defined(AUTO_WIPERS_OFF_ON_AP)
+inline constexpr bool kAutoWipersOffOnApDefaultEnabled = true;
+inline constexpr bool kAutoWipersOffOnApBuildEnabled = true;
+#else
+inline constexpr bool kAutoWipersOffOnApDefaultEnabled = false;
+inline constexpr bool kAutoWipersOffOnApBuildEnabled = false;
+#endif
+
 inline Shared<bool> bypassTlsscRequirementRuntime{kBypassTlsscRequirementDefaultEnabled};
 inline Shared<bool> isaSpeedChimeSuppressRuntime{kIsaSpeedChimeSuppressDefaultEnabled};
 inline Shared<bool> emergencyVehicleDetectionRuntime{kEmergencyVehicleDetectionDefaultEnabled};
 inline Shared<bool> enhancedAutopilotRuntime{kEnhancedAutopilotDefaultEnabled};
 inline Shared<bool> nagKillerRuntime{kNagKillerDefaultEnabled};
+inline Shared<bool> autoWipersOffOnApRuntime{kAutoWipersOffOnApDefaultEnabled};
 inline Shared<bool> speedProfileLocked{false};
 inline Shared<uint8_t> hw4OffsetRuntime{0};
 

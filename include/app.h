@@ -22,14 +22,14 @@ using SelectedHandler = HW4Handler;
 #else
 using SelectedHandler = HW3Handler;
 #endif
-#elif defined(NAG_KILLER)
-using SelectedHandler = NagHandler;
 #elif defined(HW4)
 using SelectedHandler = HW4Handler;
 #elif defined(HW3)
 using SelectedHandler = HW3Handler;
 #elif defined(LEGACY)
 using SelectedHandler = LegacyHandler;
+#elif defined(NAG_KILLER)
+using SelectedHandler = NagHandler;
 #else
 #error "Define HW4, HW3, LEGACY, or NAG_KILLER in build_flags"
 #endif

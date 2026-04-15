@@ -277,6 +277,15 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
       <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
   </div>
 
+  <div class="feat-row hw4-only" id="row-awoa">
+    <div class="feat-info">
+      <div class="feat-name">Auto Wipers Off On AP</div>
+      <div class="feat-desc">Turn AP wipers off on engagement until you manually request them again</div>
+    </div>
+    <label class="tgl"><input type="checkbox" id="tgl-awoa" onchange="pushFeat()">
+      <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
+  </div>
+
   <div class="feat-row hw4-only" id="row-evd">
     <div class="feat-info">
       <div class="feat-name">Emergency Vehicle Detection</div>
@@ -486,7 +495,7 @@ function buildPills(){
 
 function updateHW4(hw){
   document.querySelectorAll('.hw4-only').forEach(el=>el.classList.toggle('hidden',hw!==2));
-  ['tgl-isa','tgl-evd'].forEach(id=>{const e=$(id);if(e)e.disabled=hw!==2;});
+  ['tgl-isa','tgl-awoa','tgl-evd'].forEach(id=>{const e=$(id);if(e)e.disabled=hw!==2;});
 }
 
 function updSeg(el,v,cls){
@@ -507,6 +516,7 @@ async function pushFeat(){
     +'&nag='+($('tgl-nag').checked?'1':'0')
     +'&summon='+($('tgl-summon').checked?'1':'0')
     +'&isa='+($('tgl-isa').checked?'1':'0')
+    +'&awoa='+($('tgl-awoa').checked?'1':'0')
     +'&evd='+($('tgl-evd').checked?'1':'0')
     +'&nk='+($('tgl-nk').checked?'1':'0')
     +'&fAD='+($('tgl-fAD').checked?'1':'0')
@@ -670,7 +680,7 @@ async function poll(){
     state.hw=d.hw;state.sp=d.sp;state.can=d.ci;
     $('btn-resume').style.display=d.ci?'none':'';
     updSeg($('hw-seg'),d.hw,'hw-btn');buildPills();updateHW4(d.hw);
-    if(d.feat){$('tgl-AD').checked=d.feat.AD;$('tgl-nag').checked=d.feat.nag;$('tgl-summon').checked=d.feat.summon;$('tgl-isa').checked=d.feat.isa;$('tgl-evd').checked=d.feat.evd;$('tgl-nk').checked=d.feat.nk;if(typeof d.feat.h4o!=='undefined'){state.h4o=d.feat.h4o;buildPills();}if(typeof d.feat.spl!=='undefined'){state.spl=d.feat.spl;}}
+    if(d.feat){$('tgl-AD').checked=d.feat.AD;$('tgl-nag').checked=d.feat.nag;$('tgl-summon').checked=d.feat.summon;$('tgl-isa').checked=d.feat.isa;$('tgl-awoa').checked=!!d.feat.awoa;$('tgl-evd').checked=d.feat.evd;$('tgl-nk').checked=d.feat.nk;if(typeof d.feat.h4o!=='undefined'){state.h4o=d.feat.h4o;buildPills();}if(typeof d.feat.spl!=='undefined'){state.spl=d.feat.spl;}}
     if(typeof d.fAD!=='undefined')$('tgl-fAD').checked=d.fAD;
     if(typeof d.eprn!=='undefined')$('tgl-eprn').checked=d.eprn;
   }catch(e){}
