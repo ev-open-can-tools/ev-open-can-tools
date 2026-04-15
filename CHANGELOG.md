@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Migrate esp32_feather_v2_mcp2515 to new mcp2515 driver and web ui
 
+## [2.1.0-beta.3] - 2026-04-15
+
+### Added
+- Plugin info icon: click the (i) next to "Plugins" to see an inline explanation of what plugins are and how they work, with a link to the documentation and examples
+- Footer community links: GitHub repository and Discord invite are now linked in the dashboard footer
+
 ## [2.1.0-beta.2] - 2026-04-15
 
 ### Changed
