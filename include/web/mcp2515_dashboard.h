@@ -50,6 +50,8 @@ struct Features
     bool ADEnabled = true;
     bool nagSuppress = true;
     bool summonUnlock = true;
+    // Separate runtime toggle for the CAN 880 counter+1 echo path.
+    bool nagKiller = kNagKillerDefaultEnabled;
     bool isaSuppress = false;
     bool evDetection = false;
     uint8_t hw4Offset = 0;
@@ -269,6 +271,7 @@ static void dashSavePrefs()
     prefs.putBool("f_AD", feat.ADEnabled);
     prefs.putBool("f_nag", feat.nagSuppress);
     prefs.putBool("f_sum", feat.summonUnlock);
+    prefs.putBool("f_nk", feat.nagKiller);
     prefs.putBool("f_isa", feat.isaSuppress);
     prefs.putBool("f_evd", feat.evDetection);
     prefs.putUChar("f_h4o", feat.hw4Offset);
@@ -285,6 +288,7 @@ static void dashLoadPrefs()
     feat.ADEnabled = prefs.getBool("f_AD", true);
     feat.nagSuppress = prefs.getBool("f_nag", true);
     feat.summonUnlock = prefs.getBool("f_sum", true);
+    feat.nagKiller = prefs.getBool("f_nk", kNagKillerDefaultEnabled);
     enhancedAutopilotRuntime = feat.nagSuppress || feat.summonUnlock;
     feat.isaSuppress = prefs.getBool("f_isa", false);
     feat.evDetection = prefs.getBool("f_evd", false);
@@ -301,6 +305,7 @@ static void dashLoadPrefs()
     bypassTlsscRequirementRuntime = bypassTlssc;
     emergencyVehicleDetectionRuntime = feat.evDetection;
     isaSpeedChimeSuppressRuntime = feat.isaSuppress;
+    nagKillerRuntime = feat.nagKiller;
     hw4OffsetRuntime = feat.hw4Offset;
     if (dashHandler)
     {
@@ -318,6 +323,7 @@ static void dashLoadPrefs()
     dashLog("[BOOT] feat: AD=" + String(feat.ADEnabled ? "ON" : "OFF") +
             " nag=" + String(feat.nagSuppress ? "ON" : "OFF") +
             " summon=" + String(feat.summonUnlock ? "ON" : "OFF") +
+            " nk=" + String(feat.nagKiller ? "ON" : "OFF") +
             " isa=" + String(feat.isaSuppress ? "ON" : "OFF") +
             " evd=" + String(feat.evDetection ? "ON" : "OFF"));
 }
@@ -462,6 +468,8 @@ static void handleStatus()
     j += feat.nagSuppress ? "true" : "false";
     j += ",\"summon\":";
     j += feat.summonUnlock ? "true" : "false";
+    j += ",\"nk\":";
+    j += feat.nagKiller ? "true" : "false";
     j += ",\"isa\":";
     j += feat.isaSuppress ? "true" : "false";
     j += ",\"evd\":";
@@ -540,6 +548,12 @@ static void handleFeatures()
         feat.summonUnlock = server.arg("summon") == "1";
         enhancedAutopilotRuntime = feat.nagSuppress || feat.summonUnlock;
         dashLog("[FEAT] Summon unlock " + String(feat.summonUnlock ? "ON" : "OFF"));
+    }
+    if (server.hasArg("nk"))
+    {
+        feat.nagKiller = server.arg("nk") == "1";
+        nagKillerRuntime = feat.nagKiller;
+        dashLog("[FEAT] Nag killer " + String(feat.nagKiller ? "ON" : "OFF"));
     }
     if (server.hasArg("isa"))
     {
@@ -714,9 +728,11 @@ static void handleDisable()
     feat.ADEnabled = false;
     feat.nagSuppress = false;
     feat.summonUnlock = false;
+    feat.nagKiller = false;
     feat.isaSuppress = false;
     feat.evDetection = false;
     canActive = false;
+    nagKillerRuntime = false;
     if (dashHandler)
         dashHandler->ADEnabled = false;
     dashSavePrefs();
