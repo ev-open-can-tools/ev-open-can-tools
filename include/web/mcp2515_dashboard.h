@@ -1418,6 +1418,81 @@ static const char *getFirmwareArtifact()
 #endif
 }
 
+// Parse a semver-ish version string into (major, minor, patch, preRank, preNum).
+// Pre-release rank: 0 = stable (no suffix, sorts highest among same M.m.p),
+//                  1 = -alpha.N, 2 = -beta.N, 3 = -rc.N (higher rank = closer to stable).
+// Unknown suffix → treated as stable (rank 0).
+static void parseVersion(const String &v, int &maj, int &min, int &pat, int &preRank, int &preNum)
+{
+    maj = min = pat = 0;
+    preRank = 0;
+    preNum = 0;
+    int i = 0;
+    int len = v.length();
+    auto readInt = [&](int &out) {
+        int val = 0;
+        bool any = false;
+        while (i < len && v[i] >= '0' && v[i] <= '9')
+        {
+            val = val * 10 + (v[i] - '0');
+            i++;
+            any = true;
+        }
+        if (any)
+            out = val;
+    };
+    readInt(maj);
+    if (i < len && v[i] == '.')
+    {
+        i++;
+        readInt(min);
+    }
+    if (i < len && v[i] == '.')
+    {
+        i++;
+        readInt(pat);
+    }
+    if (i < len && v[i] == '-')
+    {
+        i++;
+        String tail = v.substring(i);
+        tail.toLowerCase();
+        if (tail.startsWith("alpha"))
+            preRank = 1;
+        else if (tail.startsWith("beta"))
+            preRank = 2;
+        else if (tail.startsWith("rc"))
+            preRank = 3;
+        else
+            preRank = 0; // unknown → treat as stable
+        int dot = tail.indexOf('.');
+        if (dot >= 0)
+            preNum = tail.substring(dot + 1).toInt();
+    }
+}
+
+// Returns true iff `candidate` is strictly newer than `current`.
+static bool isVersionNewer(const String &candidate, const String &current)
+{
+    int cM, cm, cp, cR, cN;
+    int uM, um, up, uR, uN;
+    parseVersion(candidate, cM, cm, cp, cR, cN);
+    parseVersion(current, uM, um, up, uR, uN);
+    if (cM != uM)
+        return cM > uM;
+    if (cm != um)
+        return cm > um;
+    if (cp != up)
+        return cp > up;
+    // Same M.m.p — stable (rank 0) beats any prerelease (rank 1-3)
+    // For two prereleases: higher rank beats lower (rc > beta > alpha)
+    int cEff = (cR == 0) ? 1000 : cR; // stable → very high
+    int uEff = (uR == 0) ? 1000 : uR;
+    if (cEff != uEff)
+        return cEff > uEff;
+    return cN > uN;
+}
+
 static void handleUpdateCheck()
 {
     if (!staConnected)
@@ -1508,7 +1583,8 @@ static void handleUpdateCheck()
     j += ",\"prerelease\":" + String(prerelease ? "true" : "false");
     j += ",\"artifact\":\"" + jsonEscape(artifact) + "\"";
     j += ",\"url\":\"" + jsonEscape(downloadUrl.c_str()) + "\"";
-    j += ",\"update\":" + String(version != FIRMWARE_VERSION && downloadUrl.length() > 0 ? "true" : "false");
+    bool isNewer = isVersionNewer(version, String(FIRMWARE_VERSION));
+    j += ",\"update\":" + String(isNewer && downloadUrl.length() > 0 ? "true" : "false");
     j += ",\"beta\":" + String(updateBetaChannel ? "true" : "false");
     j += "}";
     server.send(200, "application/json", j);
@@ -1650,9 +1726,9 @@ static void performAutoUpdate()
     String version = tagName;
     if (version.startsWith("v"))
         version = version.substring(1);
-    if (version == FIRMWARE_VERSION)
+    if (!isVersionNewer(version, String(FIRMWARE_VERSION)))
     {
-        dashLog("[AUTO-OTA] Already up to date (" + version + ")");
+        dashLog("[AUTO-OTA] No newer release (latest=" + version + ", current=" FIRMWARE_VERSION ")");
         return;
     }
 
