@@ -1160,6 +1160,59 @@ static void handleWifiStatus()
 
 // ── AP Config (hotspot name/password) ───────────────────────────
 
+static void handleCanPins()
+{
+    Preferences canPrefs;
+    int tx = -1, rx = -1;
+    if (canPrefs.begin("can", true))
+    {
+        tx = canPrefs.getChar("tx", -1);
+        rx = canPrefs.getChar("rx", -1);
+        canPrefs.end();
+    }
+    String j = "{\"tx\":" + String(tx);
+    j += ",\"rx\":" + String(rx);
+    j += ",\"customized\":" + String((tx >= 0 || rx >= 0) ? "true" : "false");
+    j += "}";
+    server.send(200, "application/json", j);
+}
+
+static void handleCanPinsSave()
+{
+    int tx = server.arg("tx").toInt();
+    int rx = server.arg("rx").toInt();
+
+    if (tx < 0 || tx > 39 || rx < 0 || rx > 39)
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Pin must be 0-39\"}");
+        return;
+    }
+    if (tx == rx)
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"TX and RX must differ\"}");
+        return;
+    }
+    // GPIO 6-11 are reserved for SPI flash on most ESP32 modules
+    if ((tx >= 6 && tx <= 11) || (rx >= 6 && rx <= 11))
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"GPIO 6-11 reserved for flash\"}");
+        return;
+    }
+
+    Preferences canPrefs;
+    if (!canPrefs.begin("can", false))
+    {
+        server.send(500, "application/json", "{\"ok\":false,\"error\":\"NVS open failed\"}");
+        return;
+    }
+    canPrefs.putChar("tx", (int8_t)tx);
+    canPrefs.putChar("rx", (int8_t)rx);
+    canPrefs.end();
+
+    dashLog("[CAN] Pins saved: TX=" + String(tx) + " RX=" + String(rx) + " (reboot required)");
+    server.send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
+}
+
 static void handleApConfig()
 {
     String newSsid = server.arg("ssid");
@@ -1540,6 +1593,8 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     server.on("/plugin_remove", HTTP_POST, handlePluginRemove);
     server.on("/ap_config", HTTP_POST, handleApConfig);
     server.on("/ap_status", HTTP_GET, handleApStatus);
+    server.on("/can_pins", HTTP_GET, handleCanPins);
+    server.on("/can_pins", HTTP_POST, handleCanPinsSave);
     server.on("/wifi_scan", HTTP_GET, handleWifiScan);
     server.on("/wifi_config", HTTP_POST, handleWifiConfig);
     server.on("/wifi_status", HTTP_GET, handleWifiStatus);

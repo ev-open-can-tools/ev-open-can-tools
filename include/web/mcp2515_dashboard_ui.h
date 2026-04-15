@@ -501,6 +501,22 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 </div>
 
 <div class="card">
+  <div class="card-hdr">
+    <div class="card-title">CAN Pins <span onclick="toggleInfo('can-pins-info')" style="color:var(--tx3);cursor:pointer;font-size:12px;margin-left:4px" title="About CAN pins">&#9432;</span></div>
+    <div class="card-meta" id="can-pins-status">default</div>
+  </div>
+  <div id="can-pins-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+    GPIO pins for the CAN transceiver (TWAI). Persisted in NVS so they survive OTA updates. Leave empty to use the firmware&#39;s compile-time defaults. <b>Wrong pins disable CAN</b> &mdash; recovery needs a USB re-flash. GPIO 6&ndash;11 are reserved for SPI flash.
+  </div>
+  <div style="display:flex;gap:6px;align-items:center">
+    <input class="sniff-input" id="can-tx" type="number" min="0" max="39" placeholder="TX GPIO" style="flex:1">
+    <input class="sniff-input" id="can-rx" type="number" min="0" max="39" placeholder="RX GPIO" style="flex:1">
+    <button class="sniff-btn" onclick="saveCanPins()">Save</button>
+  </div>
+  <div style="font-size:11px;color:var(--tx3);margin-top:6px" id="can-pins-hint">Reboot required after change</div>
+</div>
+
+<div class="card">
   <div class="card-hdr"><div class="card-title">Live Log</div></div>
   <div class="log-box" id="log">Waiting...</div>
 </div>
@@ -1023,8 +1039,31 @@ function updateFoot(ver){
   $('dash-foot').textContent='ev-open-can-tools \u2022 v'+ver+' \u2022 '+ip;
 }
 
+async function loadCanPins(){
+  try{const r=await fetch('/can_pins');const d=await r.json();
+    if(d.tx>=0)$('can-tx').value=d.tx;
+    if(d.rx>=0)$('can-rx').value=d.rx;
+    $('can-pins-status').textContent=d.customized?('custom TX='+d.tx+' RX='+d.rx):'firmware default';
+  }catch(e){}
+}
+async function saveCanPins(){
+  var tx=parseInt($('can-tx').value,10),rx=parseInt($('can-rx').value,10);
+  if(isNaN(tx)||isNaN(rx)){$('can-pins-hint').textContent='Enter both TX and RX';$('can-pins-hint').style.color='var(--err)';return;}
+  if(!confirm('Save CAN pins TX='+tx+' RX='+rx+' and reboot? Wrong pins disable CAN.'))return;
+  try{const r=await fetch('/can_pins',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'tx='+tx+'&rx='+rx});
+    const d=await r.json();
+    if(d.ok){
+      $('can-pins-hint').textContent='Saved. Rebooting...';$('can-pins-hint').style.color='var(--ok)';
+      await fetch('/reboot',{method:'POST'});
+      setTimeout(()=>location.reload(),8000);
+    }else{
+      $('can-pins-hint').textContent=d.error||'Save failed';$('can-pins-hint').style.color='var(--err)';
+    }
+  }catch(e){$('can-pins-hint').textContent='Connection error';$('can-pins-hint').style.color='var(--err)';}
+}
+
 setInterval(poll,2000);setInterval(pollLog,3000);setInterval(pollSniffer,1000);setInterval(pollPlugins,10000);setInterval(loadWifiStatus,10000);setInterval(loadApStatus,10000);
-updateHW4(1);buildPills();poll();pollLog();pollSniffer();pollRec();pollPlugins();loadWifiStatus();loadApStatus();loadUpdateInfo();
+updateHW4(1);buildPills();poll();pollLog();pollSniffer();pollRec();pollPlugins();loadWifiStatus();loadApStatus();loadUpdateInfo();loadCanPins();
 </script>
 </body>
 </html>

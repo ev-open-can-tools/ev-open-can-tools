@@ -17,6 +17,7 @@
 #include "drivers/same51_driver.h"
 #elif defined(DRIVER_TWAI)
 #include "drivers/twai_driver.h"
+#include <Preferences.h>
 #ifndef TWAI_TX_PIN
 #define TWAI_TX_PIN GPIO_NUM_5
 #endif
@@ -51,7 +52,20 @@ void setup()
 #elif defined(DRIVER_SAME51)
     appSetup<SAME51Driver>(std::make_unique<SAME51Driver>(), "SAME51 CAN ready @ 500k");
 #elif defined(DRIVER_TWAI)
-    appSetup<TWAIDriver>(std::make_unique<TWAIDriver>(TWAI_TX_PIN, TWAI_RX_PIN), "ESP32 TWAI ready @ 500k");
+    // Load TWAI pins from NVS (survives OTA); fall back to compile-time defaults
+    gpio_num_t twaiTx = TWAI_TX_PIN;
+    gpio_num_t twaiRx = TWAI_RX_PIN;
+    {
+        Preferences canPrefs;
+        if (canPrefs.begin("can", true)) {
+            int8_t tx = canPrefs.getChar("tx", -1);
+            int8_t rx = canPrefs.getChar("rx", -1);
+            canPrefs.end();
+            if (tx >= 0 && tx <= 39) twaiTx = (gpio_num_t)tx;
+            if (rx >= 0 && rx <= 39) twaiRx = (gpio_num_t)rx;
+        }
+    }
+    appSetup<TWAIDriver>(std::make_unique<TWAIDriver>(twaiTx, twaiRx), "ESP32 TWAI ready @ 500k");
 #ifdef ESP32_DASHBOARD
     delay(2000);
     mcpDashboardSetup(appHandler.get(), appDriver.get());

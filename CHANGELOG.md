@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Migrate esp32_feather_v2_mcp2515 to new mcp2515 driver and web ui
 
+## [2.1.0-beta.4] - 2026-04-15
+
+### Added
+- Runtime-configurable CAN TX/RX pins: configure GPIO pins for the TWAI transceiver directly from the dashboard
+- Pin configuration is persisted in NVS so it survives OTA firmware updates
+- New "CAN Pins" dashboard card with validation (GPIO 0-39, TX != RX, GPIO 6-11 blocked for SPI flash) and reboot flow
+- New endpoints: /can_pins (GET/POST)
+
+### Fixed
+- OTA updates no longer risk breaking CAN communication on boards with custom pin configurations — once pins are configured via the dashboard they persist across updates
+
 ## [2.1.0-beta.3] - 2026-04-15
 
 ### Added
