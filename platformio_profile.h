@@ -31,3 +31,4 @@
 // #define BYPASS_TLSSC_REQUIREMENT    // Always enable drivepilot without requiring "Traffic Light and Stop Sign Control" toggle
  #define NAG_KILLER                  // Suppress Autosteer "hands on wheel" nag (CAN 880 counter+1 echo, X179 pin 2/3)
 // #define ENHANCED_AUTOPILOT          // Enable UI_applyEceR79 override on HW3/HW4 and summon on HW4
+// #define BENCH_LOOPBACK_SELFTEST     // One-time MCP2515 bench sanity check (ESP32 + external MCP2515 only)
