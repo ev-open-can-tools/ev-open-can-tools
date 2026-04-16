@@ -57,7 +57,7 @@ void setup()
     gpio_num_t twaiRx = TWAI_RX_PIN;
     {
         Preferences canPrefs;
-        if (canPrefs.begin("can", true))
+        if (canPrefs.begin("can", false))
         {
             int8_t tx = canPrefs.getChar("tx", -1);
             int8_t rx = canPrefs.getChar("rx", -1);

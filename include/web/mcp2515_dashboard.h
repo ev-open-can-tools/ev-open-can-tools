@@ -37,6 +37,15 @@
 #define DASH_DEFAULT_HW 1
 #endif
 
+#if defined(DRIVER_TWAI)
+#ifndef TWAI_TX_PIN
+#define TWAI_TX_PIN GPIO_NUM_5
+#endif
+#ifndef TWAI_RX_PIN
+#define TWAI_RX_PIN GPIO_NUM_4
+#endif
+#endif
+
 #if DASH_DEFAULT_HW < 0 || DASH_DEFAULT_HW > 2
 #error "DASH_DEFAULT_HW must be 0 (LEGACY), 1 (HW3), or 2 (HW4)"
 #endif
@@ -1191,16 +1200,31 @@ static void handleWifiStatus()
 static void handleCanPins()
 {
     Preferences canPrefs;
+    bool customized = false;
     int tx = -1, rx = -1;
-    if (canPrefs.begin("can", true))
+#if defined(DRIVER_TWAI)
+    tx = (int)TWAI_TX_PIN;
+    rx = (int)TWAI_RX_PIN;
+#endif
+    if (canPrefs.begin("can", false))
     {
-        tx = canPrefs.getChar("tx", -1);
-        rx = canPrefs.getChar("rx", -1);
+        int storedTx = canPrefs.getChar("tx", -1);
+        int storedRx = canPrefs.getChar("rx", -1);
         canPrefs.end();
+        if (storedTx >= 0 && storedTx <= 39)
+        {
+            tx = storedTx;
+            customized = true;
+        }
+        if (storedRx >= 0 && storedRx <= 39)
+        {
+            rx = storedRx;
+            customized = true;
+        }
     }
     String j = "{\"tx\":" + String(tx);
     j += ",\"rx\":" + String(rx);
-    j += ",\"customized\":" + String((tx >= 0 || rx >= 0) ? "true" : "false");
+    j += ",\"customized\":" + String(customized ? "true" : "false");
     j += "}";
     server.send(200, "application/json", j);
 }
