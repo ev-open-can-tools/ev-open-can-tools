@@ -306,9 +306,6 @@ static void dashLoadPrefs()
     speedProfileLocked = prefs.getBool("sp_lock", false);
     uint8_t sp = prefs.getUChar("sp", 1);
     bool ep = prefs.getBool("eprn", true);
-    String wifiSsid = prefs.getString("wifi_ssid", "");
-    String wifiPass = prefs.getString("wifi_pass", "");
-    prefs.end();
 
     canActive = true;
     if (!canActiveLoaded)
@@ -324,8 +321,8 @@ static void dashLoadPrefs()
         dashHandler->enablePrint = ep;
     }
     // Load WiFi AP overrides (hotspot name/password)
-    String apSsidPref = prefs.getString("ap_ssid", "");
-    String apPassPref = prefs.getString("ap_pass", "");
+    String apSsidPref = prefs.isKey("ap_ssid") ? prefs.getString("ap_ssid", "") : "";
+    String apPassPref = prefs.isKey("ap_pass") ? prefs.getString("ap_pass", "") : "";
     if (apSsidPref.length() > 0)
         strlcpy(apSSID, apSsidPref.c_str(), sizeof(apSSID));
     else
@@ -337,21 +334,22 @@ static void dashLoadPrefs()
     apHidden = prefs.getBool("ap_hidden", false);
 
     // Load WiFi STA credentials
-    String wifiSsid = prefs.getString("wifi_ssid", "");
-    String wifiPass = prefs.getString("wifi_pass", "");
+    String wifiSsid = prefs.isKey("wifi_ssid") ? prefs.getString("wifi_ssid", "") : "";
+    String wifiPass = prefs.isKey("wifi_pass") ? prefs.getString("wifi_pass", "") : "";
     strlcpy(staSSID, wifiSsid.c_str(), sizeof(staSSID));
     strlcpy(staPass, wifiPass.c_str(), sizeof(staPass));
     staStaticIP = prefs.getBool("wifi_static", false);
     if (staStaticIP)
     {
-        staIP.fromString(prefs.getString("wifi_ip", "0.0.0.0"));
-        staGW.fromString(prefs.getString("wifi_gw", "0.0.0.0"));
-        staMask.fromString(prefs.getString("wifi_mask", "255.255.255.0"));
-        staDNS.fromString(prefs.getString("wifi_dns", "0.0.0.0"));
+        staIP.fromString(prefs.isKey("wifi_ip") ? prefs.getString("wifi_ip", "0.0.0.0") : "0.0.0.0");
+        staGW.fromString(prefs.isKey("wifi_gw") ? prefs.getString("wifi_gw", "0.0.0.0") : "0.0.0.0");
+        staMask.fromString(prefs.isKey("wifi_mask") ? prefs.getString("wifi_mask", "255.255.255.0") : "255.255.255.0");
+        staDNS.fromString(prefs.isKey("wifi_dns") ? prefs.getString("wifi_dns", "0.0.0.0") : "0.0.0.0");
     }
 
     updateBetaChannel = prefs.getBool("update_beta", false);
     autoUpdateEnabled = prefs.getBool("auto_upd", false);
+    prefs.end();
 
     dashLog("[BOOT] Prefs loaded HW=" + String(hwMode) + " SP=" + String(sp));
     dashLog("[BOOT] canActive=YES bypassTlssc=" + String(bypassTlssc ? "YES" : "NO"));
@@ -1165,9 +1163,9 @@ static void handleWifiStatus()
 {
     Preferences p;
     bool stored = false;
-    if (p.begin(PREFS_NS, true))
+    if (p.begin(PREFS_NS, false))
     {
-        stored = p.getString("wifi_ssid", "").length() > 0;
+        stored = p.isKey("wifi_ssid") && p.getString("wifi_ssid", "").length() > 0;
         p.end();
     }
     String j = "{\"connected\":";
@@ -1253,18 +1251,18 @@ static void handleSettingsExport()
     bool wStatic = false, beta = false, apHid = false;
     int canTx = -1, canRx = -1;
 
-    if (p.begin(PREFS_NS, true))
+    if (p.begin(PREFS_NS, false))
     {
-        apSsid = p.getString("ap_ssid", "");
-        apPass = p.getString("ap_pass", "");
+        if (p.isKey("ap_ssid")) apSsid = p.getString("ap_ssid", "");
+        if (p.isKey("ap_pass")) apPass = p.getString("ap_pass", "");
         apHid = p.getBool("ap_hidden", false);
-        wSsid = p.getString("wifi_ssid", "");
-        wPass = p.getString("wifi_pass", "");
+        if (p.isKey("wifi_ssid")) wSsid = p.getString("wifi_ssid", "");
+        if (p.isKey("wifi_pass")) wPass = p.getString("wifi_pass", "");
         wStatic = p.getBool("wifi_static", false);
-        wIp = p.getString("wifi_ip", "");
-        wGw = p.getString("wifi_gw", "");
-        wMask = p.getString("wifi_mask", "");
-        wDns = p.getString("wifi_dns", "");
+        if (p.isKey("wifi_ip")) wIp = p.getString("wifi_ip", "");
+        if (p.isKey("wifi_gw")) wGw = p.getString("wifi_gw", "");
+        if (p.isKey("wifi_mask")) wMask = p.getString("wifi_mask", "");
+        if (p.isKey("wifi_dns")) wDns = p.getString("wifi_dns", "");
         beta = p.getBool("upd_beta", false);
         p.end();
     }
@@ -1399,9 +1397,9 @@ static void handleApStatus()
 {
     Preferences p;
     bool stored = false;
-    if (p.begin(PREFS_NS, true))
+    if (p.begin(PREFS_NS, false))
     {
-        stored = p.getString("ap_ssid", "").length() > 0;
+        stored = p.isKey("ap_ssid") && p.getString("ap_ssid", "").length() > 0;
         p.end();
     }
     String j = "{\"ssid\":\"" + jsonEscape(apSSID) + "\"";
