@@ -400,10 +400,10 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   <div style="margin-bottom:14px">
     <div class="feat-name" style="margin-bottom:8px">WiFi Internet</div>
     <div class="feat-desc" style="margin-bottom:8px">Connect to your home WiFi for plugin downloads</div>
-    <div style="display:flex;gap:6px;margin-bottom:6px">
-      <input class="sniff-input" id="wifi-ssid" placeholder="WiFi SSID" style="flex:1">
-      <input class="sniff-input" id="wifi-pass" placeholder="Password" type="password" style="flex:1">
-      <button class="sniff-btn" onclick="saveWifi()">Connect</button>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">
+      <input class="sniff-input" id="wifi-ssid" placeholder="WiFi SSID" style="flex:1 1 180px;min-width:0">
+      <input class="sniff-input" id="wifi-pass" placeholder="Password" type="password" style="flex:1 1 180px;min-width:0">
+      <button class="sniff-btn" onclick="saveWifi()" style="flex:0 0 auto">Connect</button>
     </div>
     <div style="font-size:11px;color:var(--tx3)" id="wifi-status">Not configured</div>
   </div>
