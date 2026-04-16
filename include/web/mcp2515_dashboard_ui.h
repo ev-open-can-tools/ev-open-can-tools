@@ -111,6 +111,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 .sniff-ctrl{display:flex;gap:6px;margin-bottom:8px}
 .sniff-input{flex:1;background:var(--bg);border:1px solid var(--bd);border-radius:8px;
   padding:7px 10px;color:var(--tx);font-size:12px;font-family:inherit;transition:border .2s}
+.sniff-input{width:100%;min-width:0;box-sizing:border-box;} 
 .sniff-input:focus{outline:none;border-color:var(--acc)}
 .sniff-input::placeholder{color:var(--tx3)}
 .sniff-btn{padding:7px 12px;background:transparent;border:1px solid var(--bd);border-radius:8px;
@@ -464,7 +465,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   <div id="pe-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
     Build a plugin via form &mdash; no JSON writing needed. Add rules (one per CAN ID + optional mux), then operations per rule. The JSON preview updates live. Click Install to deploy, or Download to save the plugin file.
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr 90px;gap:6px;margin-bottom:10px">
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 90px;gap:6px;margin-bottom:10px">
     <input class="sniff-input" id="pe-name" placeholder="Plugin name" maxlength="31" oninput="peRenderPreview()">
     <input class="sniff-input" id="pe-author" placeholder="Author (optional)" oninput="peRenderPreview()">
     <input class="sniff-input" id="pe-version" placeholder="Version" value="1.0" oninput="peRenderPreview()">
