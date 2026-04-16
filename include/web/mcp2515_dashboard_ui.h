@@ -376,6 +376,13 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <input class="sniff-input" id="ap-ssid" placeholder="Hotspot Name" style="flex:1">
     <input class="sniff-input" id="ap-pass" placeholder="New Password (min 8)" type="password" style="flex:1">
   </div>
+  <div class="feat-row" style="padding:8px 0">
+    <div class="feat-info">
+      <div class="feat-name">Hide SSID</div>
+      <div class="feat-desc">Don't broadcast the hotspot name &mdash; clients must enter it manually</div>
+    </div>
+    <label class="tgl"><input type="checkbox" id="ap-hidden"><div class="tgl-track"><div class="tgl-thumb"></div></div></label>
+  </div>
   <div style="display:flex;gap:6px;align-items:center">
     <button class="sniff-btn" onclick="saveAP()">Save</button>
     <span style="font-size:11px;color:var(--tx3)" id="ap-status"></span>
@@ -882,10 +889,10 @@ async function pollRec(){
 
 // ── AP Hotspot management ──
 async function saveAP(){
-  const ssid=$('ap-ssid').value,pass=$('ap-pass').value;
+  const ssid=$('ap-ssid').value,pass=$('ap-pass').value,hidden=$('ap-hidden').checked?'1':'0';
   if(!ssid){$('ap-status').textContent='Enter hotspot name';$('ap-status').style.color='var(--err)';return;}
   if(pass&&pass.length<8){$('ap-status').textContent='Password min 8 chars';$('ap-status').style.color='var(--err)';return;}
-  try{const r=await fetch('/ap_config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)+'&pass='+encodeURIComponent(pass)});
+  try{const r=await fetch('/ap_config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)+'&pass='+encodeURIComponent(pass)+'&hidden='+hidden});
     const d=await r.json();
     if(d.ok){$('ap-status').textContent='Saved! Reboot to apply.';$('ap-status').style.color='var(--ok)';$('ap-pass').value='';}
     else{$('ap-status').textContent=d.error||'Error';$('ap-status').style.color='var(--err)';}
@@ -895,6 +902,7 @@ async function loadApStatus(){
   try{const r=await fetch('/ap_status');const d=await r.json();
     if(d.ssid)$('ap-ssid').value=d.ssid;
     $('ap-clients').textContent=d.clients+' client'+(d.clients!==1?'s':'');
+    if(typeof d.hidden!=='undefined')$('ap-hidden').checked=!!d.hidden;
     if(d.stored){$('ap-stored').textContent='saved';$('ap-stored').style.color='var(--ok)';}
     else{$('ap-stored').textContent='firmware default';$('ap-stored').style.color='var(--tx3)';}
   }catch(e){}

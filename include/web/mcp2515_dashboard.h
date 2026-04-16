@@ -92,6 +92,7 @@ static bool bypassTlssc = false;
 // WiFi AP (hotspot) — overridable at runtime
 static char apSSID[33] = "";
 static char apPass[65] = "";
+static bool apHidden = false; // when true, SSID is not broadcast (hidden AP)
 
 // WiFi STA (client) mode for internet access
 static char staSSID[33] = "";
@@ -331,6 +332,7 @@ static void dashLoadPrefs()
         strlcpy(apPass, apPassPref.c_str(), sizeof(apPass));
     else
         strlcpy(apPass, DASH_PASS, sizeof(apPass));
+    apHidden = prefs.getBool("ap_hidden", false);
 
     // Load WiFi STA credentials
     String wifiSsid = prefs.getString("wifi_ssid", "");
@@ -1050,7 +1052,7 @@ static void dashConnectSTA()
     if (strlen(staSSID) == 0)
         return;
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(apSSID, apPass);
+    WiFi.softAP(apSSID, apPass, 1, apHidden ? 1 : 0, 4);
     if (staStaticIP && (uint32_t)staIP != 0)
     {
         WiFi.config(staIP, staGW, staMask, staDNS);
@@ -1246,13 +1248,14 @@ static void handleSettingsExport()
     Preferences p;
     String apSsid = "", apPass = "", wSsid = "", wPass = "";
     String wIp = "", wGw = "", wMask = "", wDns = "";
-    bool wStatic = false, beta = false;
+    bool wStatic = false, beta = false, apHid = false;
     int canTx = -1, canRx = -1;
 
     if (p.begin(PREFS_NS, true))
     {
         apSsid = p.getString("ap_ssid", "");
         apPass = p.getString("ap_pass", "");
+        apHid = p.getBool("ap_hidden", false);
         wSsid = p.getString("wifi_ssid", "");
         wPass = p.getString("wifi_pass", "");
         wStatic = p.getBool("wifi_static", false);
@@ -1272,7 +1275,7 @@ static void handleSettingsExport()
     }
 
     String j = "{\"version\":\"" FIRMWARE_VERSION "\"";
-    j += ",\"ap\":{\"ssid\":\"" + jsonEscape(apSsid) + "\",\"pass\":\"" + jsonEscape(apPass) + "\"}";
+    j += ",\"ap\":{\"ssid\":\"" + jsonEscape(apSsid) + "\",\"pass\":\"" + jsonEscape(apPass) + "\",\"hidden\":" + String(apHid ? "true" : "false") + "}";
     j += ",\"wifi\":{\"ssid\":\"" + jsonEscape(wSsid) + "\",\"pass\":\"" + jsonEscape(wPass) + "\"";
     j += ",\"static\":" + String(wStatic ? "true" : "false");
     j += ",\"ip\":\"" + jsonEscape(wIp) + "\",\"gw\":\"" + jsonEscape(wGw) + "\"";
@@ -1315,6 +1318,7 @@ static void handleSettingsImport()
         const char *pw = doc["ap"]["pass"] | "";
         if (strlen(s) > 0) p.putString("ap_ssid", s);
         if (strlen(pw) >= 8) p.putString("ap_pass", pw);
+        if (doc["ap"]["hidden"].is<bool>()) p.putBool("ap_hidden", doc["ap"]["hidden"].as<bool>());
     }
     if (doc["wifi"].is<JsonObject>())
     {
@@ -1357,6 +1361,8 @@ static void handleApConfig()
 {
     String newSsid = server.arg("ssid");
     String newPass = server.arg("pass");
+    bool hasHidden = server.hasArg("hidden");
+    bool newHidden = hasHidden && (server.arg("hidden") == "1" || server.arg("hidden") == "true");
 
     if (newSsid.length() == 0)
     {
@@ -1372,14 +1378,18 @@ static void handleApConfig()
     strlcpy(apSSID, newSsid.c_str(), sizeof(apSSID));
     if (newPass.length() > 0)
         strlcpy(apPass, newPass.c_str(), sizeof(apPass));
+    if (hasHidden)
+        apHidden = newHidden;
 
     prefs.begin(PREFS_NS, false);
     prefs.putString("ap_ssid", newSsid);
     if (newPass.length() > 0)
         prefs.putString("ap_pass", newPass);
+    if (hasHidden)
+        prefs.putBool("ap_hidden", newHidden);
     prefs.end();
 
-    dashLog("[WIFI] AP config updated: SSID=" + newSsid);
+    dashLog("[WIFI] AP config updated: SSID=" + newSsid + (apHidden ? " (hidden)" : ""));
     server.send(200, "application/json", "{\"ok\":true,\"msg\":\"Saved. Reboot to apply new AP settings.\"}");
 }
 
@@ -1396,6 +1406,7 @@ static void handleApStatus()
     j += ",\"ip\":\"" + WiFi.softAPIP().toString() + "\"";
     j += ",\"clients\":" + String(WiFi.softAPgetStationNum());
     j += ",\"stored\":" + String(stored ? "true" : "false");
+    j += ",\"hidden\":" + String(apHidden ? "true" : "false");
     j += "}";
     server.send(200, "application/json", j);
 }
@@ -1916,19 +1927,25 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     // Set plugin processing hook
     appPluginProcess = dashPluginProcess;
 
-    // WiFi setup: AP+STA if STA credentials configured, AP-only otherwise
+    // WiFi setup: AP+STA if STA credentials configured, AP-only otherwise.
+    // WiFi.softAP(ssid, pass, channel=1, hidden=0, max_connection=4)
+    const int apChannel = 1;
+    const int apHiddenFlag = apHidden ? 1 : 0;
+    const int apMaxConn = 4;
     if (strlen(staSSID) > 0)
     {
         WiFi.mode(WIFI_AP_STA);
-        WiFi.softAP(apSSID, apPass);
+        WiFi.softAP(apSSID, apPass, apChannel, apHiddenFlag, apMaxConn);
         WiFi.begin(staSSID, staPass);
         dashLog("[WIFI] AP+STA mode, connecting to " + String(staSSID));
     }
     else
     {
         WiFi.mode(WIFI_AP);
-        WiFi.softAP(apSSID, apPass);
+        WiFi.softAP(apSSID, apPass, apChannel, apHiddenFlag, apMaxConn);
     }
+    if (apHidden)
+        dashLog("[WIFI] AP SSID is hidden");
     Serial.printf("[WIFI] AP: %s  IP: %s\n", apSSID, WiFi.softAPIP().toString().c_str());
 
     xTaskCreatePinnedToCore(webTask, "web", 8192, nullptr, 1, nullptr, 0);

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Migrate esp32_feather_v2_mcp2515 to new mcp2515 driver and web ui
 
+## [2.2.0-beta.7] - 2026-04-15
+
+### Added
+- Hidden SSID option in the WiFi Hotspot card. When enabled, the access point does not broadcast its SSID — clients have to enter the name manually. Setting is persisted in NVS and included in the settings backup/restore JSON (`ap.hidden`)
+- `/ap_config` endpoint accepts a new `hidden` parameter; `/ap_status` returns the current `hidden` flag
+
 ## [2.2.0-beta.6] - 2026-04-15
 
 ### Changed
