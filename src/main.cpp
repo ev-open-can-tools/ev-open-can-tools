@@ -168,12 +168,15 @@ void setup()
     gpio_num_t twaiRx = TWAI_RX_PIN;
     {
         Preferences canPrefs;
-        if (canPrefs.begin("can", true)) {
+        if (canPrefs.begin("can", true))
+        {
             int8_t tx = canPrefs.getChar("tx", -1);
             int8_t rx = canPrefs.getChar("rx", -1);
             canPrefs.end();
-            if (tx >= 0 && tx <= 39) twaiTx = (gpio_num_t)tx;
-            if (rx >= 0 && rx <= 39) twaiRx = (gpio_num_t)rx;
+            if (tx >= 0 && tx <= 39)
+                twaiTx = (gpio_num_t)tx;
+            if (rx >= 0 && rx <= 39)
+                twaiRx = (gpio_num_t)rx;
         }
     }
     appSetup<TWAIDriver>(std::make_unique<TWAIDriver>(twaiTx, twaiRx), "ESP32 TWAI ready @ 500k");

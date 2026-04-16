@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Migrate esp32_feather_v2_mcp2515 to new mcp2515 driver and web ui
 
+## [2.2.0-beta.8] - 2026-04-16
+
+### Added
+- Plugins card now shows the maximum plugin capacity, current usage, and a clearer message when the plugin limit has been reached
+- `/plugins` now returns `maxPlugins`, and plugin install errors include the configured maximum
+
+### Fixed
+- `DRIVER_TWAI` dashboard builds now treat the vehicle selection in `platformio_profile.h` as the default web UI hardware only; if none is selected, `HW3` is used by default
+- WiFi STA credentials are now loaded correctly from NVS on boot after being saved through the dashboard
+- Optional AP and WiFi preference reads no longer spam `Preferences` `NOT_FOUND` errors when keys have not been stored yet
+
 ## [2.2.0-beta.7] - 2026-04-15
 
 ### Added
