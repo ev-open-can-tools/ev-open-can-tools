@@ -66,7 +66,14 @@ def rewrite_define(line, should_enable):
 def main():
     args = parse_args()
     profile_path = Path(args.file)
-    enabled = {args.driver, args.vehicle, *args.enable}
+    if args.driver == "DRIVER_TWAI":
+        enabled = {args.driver, args.vehicle, *OPTIONAL_DEFINES}
+        vehicle_summary = f"default={args.vehicle}"
+        options_summary = ", ".join(OPTIONAL_DEFINES)
+    else:
+        enabled = {args.driver, args.vehicle, *args.enable}
+        vehicle_summary = args.vehicle
+        options_summary = ", ".join(args.enable) if args.enable else "none"
 
     lines = profile_path.read_text(encoding="utf-8").splitlines(keepends=True)
     updated_lines = []
@@ -89,10 +96,9 @@ def main():
 
     profile_path.write_text("".join(updated_lines), encoding="utf-8")
 
-    options = ", ".join(args.enable) if args.enable else "none"
     print(
-        f"Updated {profile_path}: driver={args.driver}, vehicle={args.vehicle}, "
-        f"options={options}"
+        f"Updated {profile_path}: driver={args.driver}, vehicle={vehicle_summary}, "
+        f"options={options_summary}"
     )
 
 

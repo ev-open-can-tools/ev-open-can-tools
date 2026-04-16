@@ -17,8 +17,9 @@
 // #define HW4    // HW4
 
 // ── DASHBOARD CREDENTIALS ────────────────────────────────────────
-// Required for all ESP32 dashboard builds. Change all values before flashing.
-// The build will fail if DASH_PASS or DASH_OTA_PASS are left unchanged.
+// Required for all ESP32 dashboard builds. These are the initial values used
+// on first boot; change them at runtime via the dashboard WiFi Hotspot card
+// (persisted in NVS and survive firmware updates).
 #define DASH_SSID "EVtools"      // WiFi AP name
 #define DASH_PASS "changeme"     // WiFi password (min 8 chars)
 #define DASH_OTA_USER "admin"    // OTA username

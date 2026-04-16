@@ -7,7 +7,7 @@ static const char DASH_HTML[] PROGMEM = R"HTML(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>ADUnlock</title>
+<title>ev-open-can-tools</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 [data-theme="dark"]{
@@ -195,7 +195,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 <div class="hdr">
   <div class="hdr-top">
     <div class="hdr-left">
-      <div class="hdr-title">ADUnlock</div>
+      <div class="hdr-title">ev-open-can-tools</div>
       <span class="hw-badge" id="hw-badge">HW3</span>
     </div>
     <button class="theme-btn" onclick="toggleTheme()" id="theme-btn">&#9788; Light</button>
@@ -286,15 +286,6 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
       <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
   </div>
 
-  <div class="feat-row">
-    <div class="feat-info">
-      <div class="feat-name">Nag Killer</div>
-      <div class="feat-desc">Echo CAN 880 counter+1 to suppress hands-on-wheel nag</div>
-    </div>
-    <label class="tgl"><input type="checkbox" id="tgl-nk" onchange="pushFeat()">
-      <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
-  </div>
-
   <div class="hw4-only" style="padding:12px 0;border-bottom:1px solid var(--bd)">
     <div class="feat-info" style="margin-bottom:8px">
       <div class="feat-name">Speed Offset</div>
@@ -373,27 +364,68 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 </div>
 
 <div class="card">
-  <div class="card-hdr"><div class="card-title">Firmware Update</div><div class="card-meta">OTA via WiFi</div></div>
-  <div class="ota-drop" id="ota-drop" onclick="$('ota-file').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop(event)">
-    <input type="file" id="ota-file" accept=".bin" onchange="fileSelected(this.files[0])">
-    <div class="ota-icon">&#8679;</div>
-    <div class="ota-text">Tap to select firmware .bin</div>
-    <div class="ota-sub">Or drag and drop a file here</div>
+  <div class="card-hdr">
+    <div class="card-title">WiFi Hotspot <span onclick="toggleInfo('ap-info')" style="color:var(--tx3);cursor:pointer;font-size:12px;margin-left:4px" title="About WiFi storage">&#9432;</span></div>
+    <div class="card-meta"><span id="ap-stored" style="margin-right:8px"></span><span id="ap-clients">0 clients</span></div>
   </div>
-  <div class="ota-progress" id="ota-progress">
-    <div class="ota-bar"><div class="ota-fill" id="ota-fill"></div></div>
-    <div class="ota-status" id="ota-status">Uploading...</div>
+  <div id="ap-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+    Stored in NVS (non-volatile storage). The SSID and password survive firmware updates and reboots. Only a full factory erase via USB clears them.
   </div>
-  <button class="ota-btn" id="ota-upload-btn" onclick="uploadFirmware()">Flash Firmware</button>
-  <div style="margin-top:10px;font-size:11px;color:var(--tx3);line-height:1.7">
-    Build your .bin in PlatformIO: <span style="color:var(--acc);font-family:monospace">Ctrl+Alt+B</span><br>
-    File is at: <span style="color:var(--acc);font-family:monospace">.pio/build/esp32_ext_mcp2515/firmware.bin</span>
+  <div class="feat-desc" style="margin-bottom:8px">Change the WiFi hotspot name and password</div>
+  <div style="display:flex;gap:6px;margin-bottom:6px">
+    <input class="sniff-input" id="ap-ssid" placeholder="Hotspot Name" style="flex:1">
+    <input class="sniff-input" id="ap-pass" placeholder="New Password (min 8)" type="password" style="flex:1">
   </div>
+  <div class="feat-row" style="padding:8px 0">
+    <div class="feat-info">
+      <div class="feat-name">Hide SSID</div>
+      <div class="feat-desc">Don't broadcast the hotspot name &mdash; clients must enter it manually</div>
+    </div>
+    <label class="tgl"><input type="checkbox" id="ap-hidden"><div class="tgl-track"><div class="tgl-thumb"></div></div></label>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center">
+    <button class="sniff-btn" onclick="saveAP()">Save</button>
+    <span style="font-size:11px;color:var(--tx3)" id="ap-status"></span>
+  </div>
+  <div style="font-size:10px;color:var(--tx3);margin-top:6px">Changes take effect after reboot. Leave password empty to keep current.</div>
 </div>
 
 <div class="card">
   <div class="card-hdr">
-    <div class="card-title">Plugins</div>
+    <div class="card-title">WiFi Internet <span id="wifi-stored" style="font-size:11px;font-weight:normal;color:var(--tx3)"></span></div>
+    <div class="card-meta" id="wifi-status">Not configured</div>
+  </div>
+  <div class="feat-desc" style="margin-bottom:8px">Connect to your home WiFi. Required for firmware updates and plugin downloads. Stored in NVS &mdash; survives firmware updates.</div>
+  <div style="display:flex;gap:6px;margin-bottom:6px">
+    <input class="sniff-input" id="wifi-ssid" placeholder="WiFi SSID" style="flex:1">
+    <button class="sniff-btn" onclick="scanWifi()" id="scan-btn">Scan</button>
+  </div>
+  <div id="wifi-nets" style="display:none;margin-bottom:6px;max-height:140px;overflow-y:auto;border:1px solid var(--bd);border-radius:6px;background:var(--bg2)"></div>
+  <div style="display:flex;gap:6px;margin-bottom:6px">
+    <input class="sniff-input" id="wifi-pass" placeholder="Password" type="password" style="flex:1">
+    <button class="sniff-btn" onclick="saveWifi()">Connect</button>
+  </div>
+  <details style="margin-top:4px">
+    <summary style="font-size:11px;color:var(--acc);cursor:pointer;user-select:none">Static IP (optional)</summary>
+    <div style="margin-top:6px">
+      <label style="font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        <input type="checkbox" id="wifi-static" onchange="toggleStaticIP()"> Use static IP
+      </label>
+      <div id="static-fields" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          <input class="sniff-input" id="wifi-ip" placeholder="IP (e.g. 192.168.1.100)">
+          <input class="sniff-input" id="wifi-gw" placeholder="Gateway (e.g. 192.168.1.1)">
+          <input class="sniff-input" id="wifi-mask" placeholder="Mask (255.255.255.0)" value="255.255.255.0">
+          <input class="sniff-input" id="wifi-dns" placeholder="DNS (e.g. 8.8.8.8)">
+        </div>
+      </div>
+    </div>
+  </details>
+</div>
+
+<div class="card">
+  <div class="card-hdr">
+    <div class="card-title">Plugins <span onclick="toggleInfo('plg-info')" style="color:var(--tx3);cursor:pointer;font-size:12px;margin-left:4px" title="What are plugins?">&#9432;</span></div>
     <div class="card-meta" id="plg-count">0 installed</div>
   </div>
 
@@ -406,10 +438,14 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
       <button class="sniff-btn" onclick="saveWifi()" style="flex:0 0 auto">Connect</button>
     </div>
     <div style="font-size:11px;color:var(--tx3)" id="wifi-status">Not configured</div>
+  <div id="plg-info" style="display:none;margin-bottom:12px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+    Plugins are JSON rules that modify CAN messages in real time. Install via URL, file upload or paste. A &#9888; marks conflicts with base firmware handlers &mdash; plugin rules then run <b>after</b> the original handler.
+    <div style="margin-top:6px"><a href="https://github.com/ev-open-can-tools/ev-open-can-tools/blob/main/docs/plugins.md" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">Documentation &amp; examples &rarr;</a></div>
   </div>
 
-  <div style="padding-top:12px;border-top:1px solid var(--bd);margin-bottom:14px">
+  <div style="margin-bottom:14px">
     <div class="feat-name" style="margin-bottom:8px">Install Plugin</div>
+    <div style="font-size:11px;color:var(--tx3);margin-bottom:8px" id="plg-limit">Maximum plugins: --</div>
     <div style="display:flex;gap:6px;margin-bottom:8px">
       <input class="sniff-input" id="plg-url" placeholder="Plugin JSON URL (https://...)" style="flex:1">
       <button class="sniff-btn" onclick="installPlugin()">Install</button>
@@ -430,12 +466,132 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 </div>
 
 <div class="card">
+  <div class="card-hdr">
+    <div class="card-title">Plugin Editor <span onclick="toggleInfo('pe-info')" style="color:var(--tx3);cursor:pointer;font-size:12px;margin-left:4px" title="About the editor">&#9432;</span></div>
+    <div class="card-meta" id="pe-count">0 rules</div>
+  </div>
+  <div id="pe-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+    Build a plugin via form &mdash; no JSON writing needed. Add rules (one per CAN ID + optional mux), then operations per rule. The JSON preview updates live. Click Install to deploy, or Download to save the plugin file.
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 90px;gap:6px;margin-bottom:10px">
+    <input class="sniff-input" id="pe-name" placeholder="Plugin name" maxlength="31" oninput="peRenderPreview()">
+    <input class="sniff-input" id="pe-author" placeholder="Author (optional)" oninput="peRenderPreview()">
+    <input class="sniff-input" id="pe-version" placeholder="Version" value="1.0" oninput="peRenderPreview()">
+  </div>
+  <div id="pe-rules"></div>
+  <button class="sniff-btn" onclick="peAddRule()" style="margin-top:6px">+ Add Rule</button>
+  <details style="margin-top:10px">
+    <summary style="font-size:11px;color:var(--acc);cursor:pointer;user-select:none">JSON Preview</summary>
+    <pre id="pe-preview" style="max-height:200px;overflow:auto;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;padding:8px;font-size:11px;color:var(--tx2);margin-top:6px;white-space:pre-wrap;word-break:break-all"></pre>
+  </details>
+  <div style="display:flex;gap:6px;margin-top:10px">
+    <button class="sniff-btn" onclick="peInstall()">Install</button>
+    <button class="sniff-btn" onclick="peDownload()">Download JSON</button>
+    <button class="sniff-btn" onclick="peReset()">Reset</button>
+  </div>
+  <div id="pe-status" style="font-size:11px;margin-top:6px;color:var(--tx3)"></div>
+</div>
+
+<div class="card">
+  <div class="card-hdr">
+    <div class="card-title">Firmware Update</div>
+    <div class="card-meta" id="fw-ver"></div>
+  </div>
+  <div style="margin-bottom:10px">
+    <div class="feat-row">
+      <div class="feat-info">
+        <div class="feat-name">Beta Channel</div>
+        <div class="feat-desc">Include pre-release / beta firmware versions</div>
+      </div>
+      <label class="tgl"><input type="checkbox" id="beta-tgl" onchange="toggleBeta()"><div class="tgl-track"><div class="tgl-thumb"></div></div></label>
+    </div>
+    <div class="feat-row">
+      <div class="feat-info">
+        <div class="feat-name">Auto-Update on Boot</div>
+        <div class="feat-desc">Check and install updates automatically ~15 s after WiFi connects</div>
+      </div>
+      <label class="tgl"><input type="checkbox" id="auto-upd-tgl" onchange="toggleAutoUpdate()"><div class="tgl-track"><div class="tgl-thumb"></div></div></label>
+    </div>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center">
+    <button class="sniff-btn" onclick="checkUpdate()" id="upd-check-btn">Check for Updates</button>
+    <span style="font-size:11px;color:var(--tx3)" id="upd-status"></span>
+  </div>
+  <div id="upd-info" style="display:none;margin-top:10px;padding:10px;background:var(--bg2);border-radius:6px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:13px;font-weight:600" id="upd-ver"></div>
+        <div style="font-size:11px;color:var(--tx3)" id="upd-detail"></div>
+      </div>
+      <button class="sniff-btn" onclick="installUpdate()" id="upd-install-btn" style="background:var(--ok);color:#fff;border-color:var(--ok)">Install</button>
+    </div>
+  </div>
+
+  <details style="margin-top:14px;padding-top:12px;border-top:1px solid var(--bd)">
+    <summary style="font-size:12px;color:var(--acc);cursor:pointer;user-select:none">Manual firmware upload (.bin)</summary>
+    <div style="margin-top:10px">
+      <div class="ota-drop" id="ota-drop" onclick="$('ota-file').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop(event)">
+        <input type="file" id="ota-file" accept=".bin" onchange="fileSelected(this.files[0])">
+        <div class="ota-icon">&#8679;</div>
+        <div class="ota-text">Tap to select firmware .bin</div>
+        <div class="ota-sub">Or drag and drop a file here</div>
+      </div>
+      <div class="ota-progress" id="ota-progress">
+        <div class="ota-bar"><div class="ota-fill" id="ota-fill"></div></div>
+        <div class="ota-status" id="ota-status">Uploading...</div>
+      </div>
+      <button class="ota-btn" id="ota-upload-btn" onclick="uploadFirmware()">Flash Firmware</button>
+      <div style="margin-top:10px;font-size:11px;color:var(--tx3);line-height:1.7">
+        Build your .bin in PlatformIO: <span style="color:var(--acc);font-family:monospace">Ctrl+Alt+B</span><br>
+        File is at: <span style="color:var(--acc);font-family:monospace">.pio/build/esp32_ext_mcp2515/firmware.bin</span>
+      </div>
+    </div>
+  </details>
+</div>
+
+<div class="card">
+  <div class="card-hdr">
+    <div class="card-title">CAN Pins <span onclick="toggleInfo('can-pins-info')" style="color:var(--tx3);cursor:pointer;font-size:12px;margin-left:4px" title="About CAN pins">&#9432;</span></div>
+    <div class="card-meta" id="can-pins-status">default</div>
+  </div>
+  <div id="can-pins-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+    GPIO pins for the CAN transceiver (TWAI). Persisted in NVS so they survive OTA updates. Leave empty to use the firmware&#39;s compile-time defaults. <b>Wrong pins disable CAN</b> &mdash; recovery needs a USB re-flash. GPIO 6&ndash;11 are reserved for SPI flash.
+  </div>
+  <div style="display:flex;gap:6px;align-items:center">
+    <input class="sniff-input" id="can-tx" type="number" min="0" max="39" placeholder="TX GPIO" style="flex:1">
+    <input class="sniff-input" id="can-rx" type="number" min="0" max="39" placeholder="RX GPIO" style="flex:1">
+    <button class="sniff-btn" onclick="saveCanPins()">Save</button>
+  </div>
+  <div style="font-size:11px;color:var(--tx3);margin-top:6px" id="can-pins-hint">Reboot required after change</div>
+</div>
+
+<div class="card">
+  <div class="card-hdr">
+    <div class="card-title">Settings Backup <span onclick="toggleInfo('backup-info')" style="color:var(--tx3);cursor:pointer;font-size:12px;margin-left:4px" title="About backup">&#9432;</span></div>
+    <div class="card-meta" id="backup-status"></div>
+  </div>
+  <div id="backup-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+    Exports AP credentials, WiFi Internet, CAN pins and beta channel as JSON. Useful before a full re-flash or when migrating to another device. <b>Passwords are included in clear text</b> &mdash; keep the file safe.
+  </div>
+  <div style="display:flex;gap:6px">
+    <button class="sniff-btn" onclick="exportSettings()">Download</button>
+    <button class="sniff-btn" onclick="document.getElementById('backup-file').click()">Upload &amp; Restore</button>
+    <input type="file" id="backup-file" accept=".json,application/json" style="display:none" onchange="importSettings(event)">
+  </div>
+</div>
+
+<div class="card">
   <div class="card-hdr"><div class="card-title">Live Log</div></div>
   <div class="log-box" id="log">Waiting...</div>
 </div>
 
 <div class="warn-bar">CAN bus writes affect vehicle behavior. Remove device immediately if unexpected behavior occurs. Not affiliated with any vehicle manufacturer.</div>
-<div class="foot">ADUnlock &bull; ESP32-S3 + MCP2515 &bull; 192.168.4.1</div>
+<div class="foot" id="dash-foot">ev-open-can-tools &bull; loading...</div>
+<div class="foot" style="margin-top:4px">
+  <a href="https://github.com/ev-open-can-tools/ev-open-can-tools" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">GitHub</a>
+  &bull;
+  <a href="https://discord.gg/ZTQKAUTd2F" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">Discord</a>
+</div>
 
 <script>
 const HW=['Legacy','HW3','HW4'];
@@ -508,7 +664,6 @@ async function pushFeat(){
     +'&summon='+($('tgl-summon').checked?'1':'0')
     +'&isa='+($('tgl-isa').checked?'1':'0')
     +'&evd='+($('tgl-evd').checked?'1':'0')
-    +'&nk='+($('tgl-nk').checked?'1':'0')
     +'&fAD='+($('tgl-fAD').checked?'1':'0')
     +'&eprn='+($('tgl-eprn').checked?'1':'0')
     +'&h4o='+state.h4o;
@@ -670,7 +825,7 @@ async function poll(){
     state.hw=d.hw;state.sp=d.sp;state.can=d.ci;
     $('btn-resume').style.display=d.ci?'none':'';
     updSeg($('hw-seg'),d.hw,'hw-btn');buildPills();updateHW4(d.hw);
-    if(d.feat){$('tgl-AD').checked=d.feat.AD;$('tgl-nag').checked=d.feat.nag;$('tgl-summon').checked=d.feat.summon;$('tgl-isa').checked=d.feat.isa;$('tgl-evd').checked=d.feat.evd;$('tgl-nk').checked=d.feat.nk;if(typeof d.feat.h4o!=='undefined'){state.h4o=d.feat.h4o;buildPills();}if(typeof d.feat.spl!=='undefined'){state.spl=d.feat.spl;}}
+    if(d.feat){$('tgl-AD').checked=d.feat.AD;$('tgl-nag').checked=d.feat.nag;$('tgl-summon').checked=d.feat.summon;$('tgl-isa').checked=d.feat.isa;$('tgl-evd').checked=d.feat.evd;if(typeof d.feat.h4o!=='undefined'){state.h4o=d.feat.h4o;buildPills();}if(typeof d.feat.spl!=='undefined'){state.spl=d.feat.spl;}}
     if(typeof d.fAD!=='undefined')$('tgl-fAD').checked=d.fAD;
     if(typeof d.eprn!=='undefined')$('tgl-eprn').checked=d.eprn;
   }catch(e){}
@@ -742,15 +897,76 @@ async function pollRec(){
   }catch(e){}
 }
 
-// ── Plugin management ──
+// ── AP Hotspot management ──
+async function saveAP(){
+  const ssid=$('ap-ssid').value,pass=$('ap-pass').value,hidden=$('ap-hidden').checked?'1':'0';
+  if(!ssid){$('ap-status').textContent='Enter hotspot name';$('ap-status').style.color='var(--err)';return;}
+  if(pass&&pass.length<8){$('ap-status').textContent='Password min 8 chars';$('ap-status').style.color='var(--err)';return;}
+  try{const r=await fetch('/ap_config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)+'&pass='+encodeURIComponent(pass)+'&hidden='+hidden});
+    const d=await r.json();
+    if(d.ok){$('ap-status').textContent='Saved! Reboot to apply.';$('ap-status').style.color='var(--ok)';$('ap-pass').value='';}
+    else{$('ap-status').textContent=d.error||'Error';$('ap-status').style.color='var(--err)';}
+  }catch(e){$('ap-status').textContent='Error';$('ap-status').style.color='var(--err)';}
+}
+async function loadApStatus(){
+  try{const r=await fetch('/ap_status');const d=await r.json();
+    if(d.ssid)$('ap-ssid').value=d.ssid;
+    $('ap-clients').textContent=d.clients+' client'+(d.clients!==1?'s':'');
+    if(typeof d.hidden!=='undefined')$('ap-hidden').checked=!!d.hidden;
+    if(d.stored){$('ap-stored').textContent='saved';$('ap-stored').style.color='var(--ok)';}
+    else{$('ap-stored').textContent='firmware default';$('ap-stored').style.color='var(--tx3)';}
+  }catch(e){}
+}
+// ── WiFi management ──
+function toggleStaticIP(){
+  $('static-fields').style.display=$('wifi-static').checked?'block':'none';
+}
+function rssiIcon(r){
+  if(r>=-50) return '\u2587\u2587\u2587\u2587';
+  if(r>=-60) return '\u2587\u2587\u2587\u2581';
+  if(r>=-70) return '\u2587\u2587\u2581\u2581';
+  return '\u2587\u2581\u2581\u2581';
+}
+async function scanWifi(){
+  $('scan-btn').textContent='Scanning...';$('scan-btn').disabled=true;
+  try{
+    const r=await fetch('/wifi_scan');const d=await r.json();
+    const el=$('wifi-nets');
+    if(!d.networks.length){el.innerHTML='<div style="padding:8px;font-size:11px;color:var(--tx3);text-align:center">No networks found</div>';el.style.display='block';}
+    else{el.innerHTML=d.networks.map(n=>'<div onclick="pickWifi(\''+n.ssid.replace(/'/g,"\\'")+'\')" style="padding:6px 10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--bd);font-size:12px" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'"><span>'+(n.enc?'\uD83D\uDD12 ':'')+n.ssid+'</span><span style="color:var(--tx3);font-size:10px">'+rssiIcon(n.rssi)+' '+n.rssi+'dBm CH'+n.ch+'</span></div>').join('');el.style.display='block';}
+  }catch(e){$('wifi-status').textContent='Scan failed';$('wifi-status').style.color='var(--err)';}
+  $('scan-btn').textContent='Scan';$('scan-btn').disabled=false;
+}
+function pickWifi(ssid){
+  $('wifi-ssid').value=ssid;$('wifi-nets').style.display='none';$('wifi-pass').focus();
+}
+async function loadWifiStatus(){
+  try{const r=await fetch('/wifi_status');const d=await r.json();
+    if(d.ssid)$('wifi-ssid').value=d.ssid;
+    if(d.stored){$('wifi-stored').textContent='\u2022 saved';$('wifi-stored').style.color='var(--ok)';}
+    else{$('wifi-stored').textContent='';}
+    if(d.connected){$('wifi-status').textContent='Connected: '+d.ip;$('wifi-status').style.color='var(--ok)';}
+    else if(d.ssid){$('wifi-status').textContent='Connecting to '+d.ssid+'...';$('wifi-status').style.color='var(--acc)';}
+    if(d.static){$('wifi-static').checked=true;toggleStaticIP();
+      if(d.cfg_ip)$('wifi-ip').value=d.cfg_ip;
+      if(d.cfg_gw)$('wifi-gw').value=d.cfg_gw;
+      if(d.cfg_mask)$('wifi-mask').value=d.cfg_mask;
+      if(d.cfg_dns)$('wifi-dns').value=d.cfg_dns;
+    }
+  }catch(e){}
+}
 async function saveWifi(){
   const ssid=$('wifi-ssid').value,pass=$('wifi-pass').value;
   if(!ssid){$('wifi-status').textContent='Enter SSID';return;}
-  const body='ssid='+encodeURIComponent(ssid)+'&pass='+encodeURIComponent(pass);
+  let body='ssid='+encodeURIComponent(ssid)+'&pass='+encodeURIComponent(pass);
+  if($('wifi-static').checked){
+    body+='&static=1&ip='+encodeURIComponent($('wifi-ip').value)+'&gw='+encodeURIComponent($('wifi-gw').value)+'&mask='+encodeURIComponent($('wifi-mask').value)+'&dns='+encodeURIComponent($('wifi-dns').value);
+  }
   try{await fetch('/wifi_config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
     $('wifi-status').textContent='Connecting to '+ssid+'...';$('wifi-status').style.color='var(--acc)';
   }catch(e){$('wifi-status').textContent='Error';$('wifi-status').style.color='var(--err)';}
 }
+// ── Plugin management ──
 async function installPlugin(){
   const url=$('plg-url').value;
   if(!url){$('plg-status').textContent='Enter URL';return;}
@@ -813,9 +1029,19 @@ function toggleDetails(idx){
   var el=$('plg-det-'+idx);
   if(el)el.style.display=el.style.display==='none'?'block':'none';
 }
+function toggleInfo(id){
+  var el=$(id);
+  if(el)el.style.display=el.style.display==='none'?'block':'none';
+}
 async function pollPlugins(){
   try{const r=await fetch('/plugins');const d=await r.json();
-    $('plg-count').textContent=d.plugins.length+' installed';
+    const max=d.maxPlugins||0;
+    $('plg-count').textContent=max?d.plugins.length+' / '+max+' installed':d.plugins.length+' installed';
+    if($('plg-limit')){
+      const full=max&&d.plugins.length>=max;
+      $('plg-limit').textContent=max?(full?'Maximum '+max+' plugins reached. Remove one before installing another.':'Maximum '+max+' plugins total. Remove one before installing another.'):'Maximum plugins: --';
+      $('plg-limit').style.color=full?'var(--err)':'var(--tx3)';
+    }
     const el=$('plg-list');
     if(!d.plugins.length){el.innerHTML='<div style="font-size:12px;color:var(--tx3);text-align:center;padding:12px">No plugins installed</div>';}
     else{el.innerHTML=d.plugins.map((p,i)=>{
@@ -838,17 +1064,271 @@ async function pollPlugins(){
       row+='</div>';
       return row;
     }).join('');}
-    if(d.wifi){
-      if(d.wifi.connected){$('wifi-status').textContent='Connected: '+d.wifi.ip;$('wifi-status').style.color='var(--ok)';}
-      else if(d.wifi.ssid){$('wifi-status').textContent='Connecting to '+d.wifi.ssid+'...';$('wifi-status').style.color='var(--acc)';}
-      else{$('wifi-status').textContent='Not configured';$('wifi-status').style.color='';}
-      if(d.wifi.ssid)$('wifi-ssid').value=d.wifi.ssid;
-    }
   }catch(e){}
 }
 
-setInterval(poll,2000);setInterval(pollLog,3000);setInterval(pollSniffer,1000);setInterval(pollPlugins,10000);
-updateHW4(1);buildPills();poll();pollLog();pollSniffer();pollRec();pollPlugins();
+// ── Firmware update ──
+var pendingUpdateUrl='';
+async function toggleBeta(){
+  const beta=$('beta-tgl').checked?'1':'0';
+  try{await fetch('/update_beta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'beta='+beta});}catch(e){}
+  $('upd-info').style.display='none';$('upd-status').textContent='';
+}
+async function checkUpdate(){
+  $('upd-check-btn').disabled=true;$('upd-status').textContent='Checking...';$('upd-status').style.color='var(--acc)';
+  $('upd-info').style.display='none';pendingUpdateUrl='';
+  try{const r=await fetch('/update_check');const d=await r.json();
+    if(!d.ok){$('upd-status').textContent=d.error||'Error';$('upd-status').style.color='var(--err)';$('upd-check-btn').disabled=false;return;}
+    $('fw-ver').textContent='v'+d.current;
+    if(d.update){
+      $('upd-status').textContent='Update available!';$('upd-status').style.color='var(--ok)';
+      $('upd-ver').textContent='v'+d.latest+(d.prerelease?' (beta)':'');
+      $('upd-detail').textContent=d.artifact+' \u2022 '+d.tag;
+      pendingUpdateUrl=d.url;
+      $('upd-info').style.display='block';
+    }else{
+      $('upd-status').textContent='Up to date (v'+d.current+')';$('upd-status').style.color='var(--ok)';
+    }
+  }catch(e){$('upd-status').textContent='Connection error';$('upd-status').style.color='var(--err)';}
+  $('upd-check-btn').disabled=false;
+}
+async function installUpdate(){
+  if(!pendingUpdateUrl){$('upd-status').textContent='No update URL';return;}
+  if(!confirm('Install firmware update? The device will reboot.'))return;
+  $('upd-install-btn').disabled=true;$('upd-status').textContent='Downloading & installing...';$('upd-status').style.color='var(--acc)';
+  try{await fetch('/update_install',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'url='+encodeURIComponent(pendingUpdateUrl)});
+    $('upd-status').textContent='Update installed! Rebooting...';$('upd-status').style.color='var(--ok)';
+    setTimeout(()=>location.reload(),15000);
+  }catch(e){$('upd-status').textContent='Update failed';$('upd-status').style.color='var(--err)';$('upd-install-btn').disabled=false;}
+}
+async function loadUpdateInfo(){
+  try{const r=await fetch('/update_beta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'noop=1'});
+    const d=await r.json();
+    if(d.version){$('fw-ver').textContent='v'+d.version;updateFoot(d.version);}
+    $('beta-tgl').checked=!!d.beta;
+  }catch(e){}
+  try{const r=await fetch('/auto_update');const d=await r.json();$('auto-upd-tgl').checked=!!d.enabled;}catch(e){}
+}
+async function toggleAutoUpdate(){
+  const en=$('auto-upd-tgl').checked?'1':'0';
+  try{await fetch('/auto_update',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'enabled='+en});}catch(e){}
+}
+function updateFoot(ver){
+  var ip=location.hostname||'192.168.4.1';
+  $('dash-foot').textContent='ev-open-can-tools \u2022 v'+ver+' \u2022 '+ip;
+}
+
+async function loadCanPins(){
+  try{const r=await fetch('/can_pins');const d=await r.json();
+    if(d.tx>=0)$('can-tx').value=d.tx;
+    if(d.rx>=0)$('can-rx').value=d.rx;
+    $('can-pins-status').textContent=d.customized?('custom TX='+d.tx+' RX='+d.rx):'firmware default';
+  }catch(e){}
+}
+async function saveCanPins(){
+  var tx=parseInt($('can-tx').value,10),rx=parseInt($('can-rx').value,10);
+  if(isNaN(tx)||isNaN(rx)){$('can-pins-hint').textContent='Enter both TX and RX';$('can-pins-hint').style.color='var(--err)';return;}
+  if(!confirm('Save CAN pins TX='+tx+' RX='+rx+' and reboot? Wrong pins disable CAN.'))return;
+  try{const r=await fetch('/can_pins',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'tx='+tx+'&rx='+rx});
+    const d=await r.json();
+    if(d.ok){
+      $('can-pins-hint').textContent='Saved. Rebooting...';$('can-pins-hint').style.color='var(--ok)';
+      await fetch('/reboot',{method:'POST'});
+      setTimeout(()=>location.reload(),8000);
+    }else{
+      $('can-pins-hint').textContent=d.error||'Save failed';$('can-pins-hint').style.color='var(--err)';
+    }
+  }catch(e){$('can-pins-hint').textContent='Connection error';$('can-pins-hint').style.color='var(--err)';}
+}
+
+async function exportSettings(){
+  $('backup-status').textContent='Preparing...';$('backup-status').style.color='var(--tx3)';
+  try{const r=await fetch('/settings_export');
+    if(!r.ok){throw new Error('HTTP '+r.status);}
+    const text=await r.text();
+    const blob=new Blob([text],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='evtools-backup.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    $('backup-status').textContent='Downloaded';$('backup-status').style.color='var(--ok)';
+  }catch(e){$('backup-status').textContent='Export failed';$('backup-status').style.color='var(--err)';}
+}
+async function importSettings(ev){
+  const f=ev.target.files[0];if(!f)return;
+  const text=await f.text();
+  try{JSON.parse(text);}catch(e){$('backup-status').textContent='Invalid JSON';$('backup-status').style.color='var(--err)';return;}
+  if(!confirm('Restore settings from '+f.name+' and reboot?'))return;
+  $('backup-status').textContent='Uploading...';$('backup-status').style.color='var(--acc)';
+  try{const r=await fetch('/settings_import',{method:'POST',headers:{'Content-Type':'application/json'},body:text});
+    const d=await r.json();
+    if(d.ok){
+      $('backup-status').textContent='Restored. Rebooting...';$('backup-status').style.color='var(--ok)';
+      await fetch('/reboot',{method:'POST'});
+      setTimeout(()=>location.reload(),8000);
+    }else{
+      $('backup-status').textContent=d.error||'Import failed';$('backup-status').style.color='var(--err)';
+    }
+  }catch(e){$('backup-status').textContent='Upload failed';$('backup-status').style.color='var(--err)';}
+  ev.target.value='';
+}
+
+// ── Plugin Editor ────────────────────────────────────────────────
+let peState={rules:[]};
+function peGetMeta(){return{name:($('pe-name').value||'').trim(),version:($('pe-version').value||'1.0').trim(),author:($('pe-author').value||'').trim()};}
+function peParseInt(s,def){if(typeof s==='number')return s;if(s===''||s==null)return def;s=String(s).trim();let n=s.toLowerCase().startsWith('0x')?parseInt(s,16):parseInt(s,10);return isNaN(n)?def:n;}
+function peSetStatus(msg,kind){const el=$('pe-status');el.textContent=msg;el.style.color=kind==='ok'?'var(--ok)':kind==='err'?'var(--err)':kind==='acc'?'var(--acc)':'var(--tx3)';}
+function peAddRule(){if(peState.rules.length>=16){peSetStatus('Max 16 rules per plugin','err');return;}peState.rules.push({id:0,mux:-1,send:true,ops:[]});peRender();}
+function peRemoveRule(i){peState.rules.splice(i,1);peRender();}
+function peAddOp(i,type){const r=peState.rules[i];if(!r)return;if(r.ops.length>=8){peSetStatus('Max 8 ops per rule','err');return;}
+  const op={type:type};
+  if(type==='set_bit'){op.bit=0;op.val=1;}
+  else if(type==='set_byte'){op.byte=0;op.val=0;op.mask=255;}
+  else if(type==='or_byte'){op.byte=0;op.val=0;}
+  else if(type==='and_byte'){op.byte=0;op.val=255;}
+  r.ops.push(op);peRender();}
+function peRemoveOp(i,j){peState.rules[i].ops.splice(j,1);peRender();}
+function peUpdateField(i,j,field,value){
+  if(j<0){const r=peState.rules[i];if(!r)return;
+    if(field==='id')r.id=peParseInt(value,0);
+    else if(field==='mux'){r.mux=value===''?-1:peParseInt(value,-1);}
+    else if(field==='send')r.send=!!value;
+    peRender();return;
+  }
+  const op=peState.rules[i].ops[j];if(!op)return;
+  if(field==='type'){const nt=value;Object.keys(op).forEach(k=>{if(k!=='type')delete op[k];});op.type=nt;
+    if(nt==='set_bit'){op.bit=0;op.val=1;}
+    else if(nt==='set_byte'){op.byte=0;op.val=0;op.mask=255;}
+    else if(nt==='or_byte'){op.byte=0;op.val=0;}
+    else if(nt==='and_byte'){op.byte=0;op.val=255;}
+    peRender();return;
+  }
+  if(field==='bit')op.bit=Math.max(0,Math.min(63,peParseInt(value,0)));
+  else if(field==='byte')op.byte=Math.max(0,Math.min(7,peParseInt(value,0)));
+  else if(field==='val')op.val=Math.max(0,Math.min(op.type==='set_bit'?1:255,peParseInt(value,0)));
+  else if(field==='mask')op.mask=Math.max(0,Math.min(255,peParseInt(value,255)));
+  peRenderPreview();
+}
+function peOpRow(i,j,op){
+  const sel='<select class="sniff-input" style="width:90px" onchange="peUpdateField('+i+','+j+',\'type\',this.value)">'+
+    ['set_bit','set_byte','or_byte','and_byte','checksum'].map(t=>'<option value="'+t+'"'+(op.type===t?' selected':'')+'>'+t+'</option>').join('')+'</select>';
+  let fields='';
+  if(op.type==='set_bit'){
+    fields='<input class="sniff-input" style="width:55px" type="number" min="0" max="63" value="'+op.bit+'" title="bit (0-63)" onchange="peUpdateField('+i+','+j+',\'bit\',this.value)">'+
+      '<select class="sniff-input" style="width:80px" onchange="peUpdateField('+i+','+j+',\'val\',this.value)"><option value="1"'+(op.val?' selected':'')+'>set (1)</option><option value="0"'+(!op.val?' selected':'')+'>clear (0)</option></select>';
+  }else if(op.type==='set_byte'){
+    fields='<input class="sniff-input" style="width:48px" type="number" min="0" max="7" value="'+op.byte+'" title="byte (0-7)" onchange="peUpdateField('+i+','+j+',\'byte\',this.value)">'+
+      '<input class="sniff-input" style="width:70px" value="0x'+((op.val||0)&255).toString(16)+'" title="val (0-255, hex or dec)" onchange="peUpdateField('+i+','+j+',\'val\',this.value)">'+
+      '<input class="sniff-input" style="width:70px" value="0x'+(op.mask===undefined?255:op.mask).toString(16)+'" title="mask (0-255)" onchange="peUpdateField('+i+','+j+',\'mask\',this.value)">';
+  }else if(op.type==='or_byte'||op.type==='and_byte'){
+    fields='<input class="sniff-input" style="width:48px" type="number" min="0" max="7" value="'+op.byte+'" title="byte (0-7)" onchange="peUpdateField('+i+','+j+',\'byte\',this.value)">'+
+      '<input class="sniff-input" style="width:70px" value="0x'+((op.val||0)&255).toString(16)+'" title="val (0-255)" onchange="peUpdateField('+i+','+j+',\'val\',this.value)">';
+  }else{
+    fields='<span style="font-size:11px;color:var(--tx3);align-self:center;padding:0 4px">recalc byte 7 checksum</span>';
+  }
+  return '<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;flex-wrap:wrap">'+sel+fields+'<button class="sniff-btn" style="margin-left:auto;padding:2px 8px" onclick="peRemoveOp('+i+','+j+')" title="Remove op">&times;</button></div>';
+}
+function peRuleBlock(i,r){
+  const ops=r.ops.length?r.ops.map((op,j)=>peOpRow(i,j,op)).join(''):'<div style="font-size:11px;color:var(--tx3);padding:4px 0">No ops &mdash; add one below</div>';
+  const hex=r.id?'0x'+r.id.toString(16).toUpperCase():'?';
+  return '<details open style="margin-bottom:10px;border:1px solid var(--bd);border-radius:6px;padding:8px;background:var(--bg2)">'+
+    '<summary style="cursor:pointer;font-size:12px;color:var(--tx);user-select:none">Rule '+(i+1)+' &mdash; CAN '+hex+(r.id?' ('+r.id+')':'')+(r.mux>=0?' mux='+r.mux:'')+' &middot; '+r.ops.length+' op'+(r.ops.length===1?'':'s')+'</summary>'+
+    '<div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap">'+
+      '<input class="sniff-input" style="width:100px" type="number" min="0" max="2047" value="'+(r.id||'')+'" placeholder="CAN ID" onchange="peUpdateField('+i+',-1,\'id\',this.value)">'+
+      '<input class="sniff-input" style="width:100px" type="number" min="-1" max="7" value="'+r.mux+'" placeholder="mux (-1=any)" onchange="peUpdateField('+i+',-1,\'mux\',this.value)">'+
+      '<label style="font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:4px"><input type="checkbox"'+(r.send?' checked':'')+' onchange="peUpdateField('+i+',-1,\'send\',this.checked)"> send</label>'+
+      '<button class="sniff-btn" style="margin-left:auto" onclick="peRemoveRule('+i+')">Remove Rule</button>'+
+    '</div>'+
+    ops+
+    '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">'+
+      '<button class="sniff-btn" onclick="peAddOp('+i+',\'set_bit\')">+ set_bit</button>'+
+      '<button class="sniff-btn" onclick="peAddOp('+i+',\'set_byte\')">+ set_byte</button>'+
+      '<button class="sniff-btn" onclick="peAddOp('+i+',\'or_byte\')">+ or_byte</button>'+
+      '<button class="sniff-btn" onclick="peAddOp('+i+',\'and_byte\')">+ and_byte</button>'+
+      '<button class="sniff-btn" onclick="peAddOp('+i+',\'checksum\')">+ checksum</button>'+
+    '</div>'+
+  '</details>';
+}
+function peRender(){
+  const el=$('pe-rules');
+  if(!peState.rules.length){el.innerHTML='<div style="font-size:12px;color:var(--tx3);text-align:center;padding:12px;border:1px dashed var(--bd);border-radius:6px">No rules yet. Click &ldquo;+ Add Rule&rdquo; below.</div>';}
+  else{el.innerHTML=peState.rules.map((r,i)=>peRuleBlock(i,r)).join('');}
+  $('pe-count').textContent=peState.rules.length+' rule'+(peState.rules.length===1?'':'s');
+  peRenderPreview();
+}
+function peBuildObj(){
+  const meta=peGetMeta();
+  const obj={name:meta.name||'Untitled',version:meta.version||'1.0'};
+  if(meta.author)obj.author=meta.author;
+  obj.rules=peState.rules.map(r=>{
+    const out={id:r.id|0};
+    if(r.mux>=0)out.mux=r.mux|0;
+    if(r.send===false)out.send=false;
+    out.ops=r.ops.map(op=>{
+      const o={type:op.type};
+      if(op.type==='set_bit'){o.bit=op.bit|0;o.val=op.val?1:0;}
+      else if(op.type==='set_byte'){o.byte=op.byte|0;o.val=(op.val|0)&255;if(op.mask!==undefined&&op.mask!==255)o.mask=op.mask|0;}
+      else if(op.type==='or_byte'||op.type==='and_byte'){o.byte=op.byte|0;o.val=(op.val|0)&255;}
+      return o;
+    });
+    return out;
+  });
+  return obj;
+}
+function peRenderPreview(){$('pe-preview').textContent=JSON.stringify(peBuildObj(),null,2);}
+function peValidate(){
+  const meta=peGetMeta();
+  if(!meta.name)return 'Plugin name required';
+  if(meta.name.length>31)return 'Name too long (max 31)';
+  if(!peState.rules.length)return 'Add at least one rule';
+  for(let i=0;i<peState.rules.length;i++){
+    const r=peState.rules[i];
+    if(!r.id||r.id<1||r.id>2047)return 'Rule '+(i+1)+': CAN ID must be 1-2047';
+    if(r.mux<-1||r.mux>7)return 'Rule '+(i+1)+': mux must be -1..7';
+    if(!r.ops.length)return 'Rule '+(i+1)+': add at least one op';
+    for(let j=0;j<r.ops.length;j++){
+      const op=r.ops[j];
+      if(op.type==='set_bit'){if(op.bit<0||op.bit>63)return 'Rule '+(i+1)+' op '+(j+1)+': bit must be 0-63';}
+      else if(op.type==='set_byte'||op.type==='or_byte'||op.type==='and_byte'){
+        if(op.byte<0||op.byte>7)return 'Rule '+(i+1)+' op '+(j+1)+': byte must be 0-7';
+        if(op.val<0||op.val>255)return 'Rule '+(i+1)+' op '+(j+1)+': val must be 0-255';
+      }
+    }
+  }
+  return null;
+}
+async function peInstall(){
+  const err=peValidate();
+  if(err){peSetStatus(err,'err');return;}
+  const obj=peBuildObj();
+  try{const r=await fetch('/plugins');const d=await r.json();
+    if(d.plugins&&d.plugins.some(p=>p.name===obj.name)){
+      if(!confirm('A plugin named "'+obj.name+'" already exists. Overwrite?'))return;
+    }
+  }catch(e){}
+  peSetStatus('Installing...','acc');
+  try{const r=await fetch('/plugin_upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)});
+    const d=await r.json();
+    if(d.ok){peSetStatus('Installed!','ok');pollPlugins();}
+    else{peSetStatus(d.error||'Install failed','err');}
+  }catch(e){peSetStatus('Connection error','err');}
+}
+function peDownload(){
+  const err=peValidate();
+  if(err){peSetStatus(err,'err');return;}
+  const obj=peBuildObj();
+  const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=(obj.name||'plugin').replace(/[^A-Za-z0-9_-]/g,'_').toLowerCase()+'.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  peSetStatus('Downloaded','ok');
+}
+function peReset(){
+  if(peState.rules.length&&!confirm('Discard current editor contents?'))return;
+  peState={rules:[]};
+  $('pe-name').value='';$('pe-author').value='';$('pe-version').value='1.0';
+  peRender();peSetStatus('','');
+}
+
+setInterval(poll,2000);setInterval(pollLog,3000);setInterval(pollSniffer,1000);setInterval(pollPlugins,10000);setInterval(loadWifiStatus,10000);setInterval(loadApStatus,10000);
+updateHW4(1);buildPills();poll();pollLog();pollSniffer();pollRec();pollPlugins();loadWifiStatus();loadApStatus();loadUpdateInfo();loadCanPins();peRender();
 </script>
 </body>
 </html>

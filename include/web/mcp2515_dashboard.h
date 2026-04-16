@@ -89,10 +89,24 @@ static uint8_t hwMode = DASH_DEFAULT_HW;
 static bool canActive = true;
 static bool bypassTlssc = false;
 
+// WiFi AP (hotspot) — overridable at runtime
+static char apSSID[33] = "";
+static char apPass[65] = "";
+static bool apHidden = false; // when true, SSID is not broadcast (hidden AP)
+
 // WiFi STA (client) mode for internet access
 static char staSSID[33] = "";
 static char staPass[65] = "";
 static bool staConnected = false;
+static bool staStaticIP = false;
+static bool updateBetaChannel = false;
+static bool autoUpdateEnabled = false;
+static bool autoUpdateDone = false;          // one-shot per boot
+static unsigned long autoUpdateEligibleAt = 0; // millis() at which auto-check may fire
+static IPAddress staIP(0, 0, 0, 0);
+static IPAddress staGW(0, 0, 0, 0);
+static IPAddress staMask(255, 255, 255, 0);
+static IPAddress staDNS(0, 0, 0, 0);
 
 static void dashSwapHandler(uint8_t mode);
 static void dashApplyFilters();
@@ -292,6 +306,8 @@ static void dashLoadPrefs()
     speedProfileLocked = prefs.getBool("sp_lock", false);
     uint8_t sp = prefs.getUChar("sp", 1);
     bool ep = prefs.getBool("eprn", true);
+    String wifiSsid = prefs.getString("wifi_ssid", "");
+    String wifiPass = prefs.getString("wifi_pass", "");
     prefs.end();
 
     canActive = true;
@@ -307,11 +323,35 @@ static void dashLoadPrefs()
         dashHandler->speedProfile = sp;
         dashHandler->enablePrint = ep;
     }
+    // Load WiFi AP overrides (hotspot name/password)
+    String apSsidPref = prefs.getString("ap_ssid", "");
+    String apPassPref = prefs.getString("ap_pass", "");
+    if (apSsidPref.length() > 0)
+        strlcpy(apSSID, apSsidPref.c_str(), sizeof(apSSID));
+    else
+        strlcpy(apSSID, DASH_SSID, sizeof(apSSID));
+    if (apPassPref.length() > 0)
+        strlcpy(apPass, apPassPref.c_str(), sizeof(apPass));
+    else
+        strlcpy(apPass, DASH_PASS, sizeof(apPass));
+    apHidden = prefs.getBool("ap_hidden", false);
+
     // Load WiFi STA credentials
     String wifiSsid = prefs.getString("wifi_ssid", "");
     String wifiPass = prefs.getString("wifi_pass", "");
     strlcpy(staSSID, wifiSsid.c_str(), sizeof(staSSID));
     strlcpy(staPass, wifiPass.c_str(), sizeof(staPass));
+    staStaticIP = prefs.getBool("wifi_static", false);
+    if (staStaticIP)
+    {
+        staIP.fromString(prefs.getString("wifi_ip", "0.0.0.0"));
+        staGW.fromString(prefs.getString("wifi_gw", "0.0.0.0"));
+        staMask.fromString(prefs.getString("wifi_mask", "255.255.255.0"));
+        staDNS.fromString(prefs.getString("wifi_dns", "0.0.0.0"));
+    }
+
+    updateBetaChannel = prefs.getBool("update_beta", false);
+    autoUpdateEnabled = prefs.getBool("auto_upd", false);
 
     dashLog("[BOOT] Prefs loaded HW=" + String(hwMode) + " SP=" + String(sp));
     dashLog("[BOOT] canActive=YES bypassTlssc=" + String(bypassTlssc ? "YES" : "NO"));
@@ -831,7 +871,7 @@ static bool isHandlerCanId(uint32_t id)
 
 static void handlePluginList()
 {
-    String j = "{\"plugins\":[";
+    String j = "{\"maxPlugins\":" + String(PLUGIN_MAX) + ",\"plugins\":[";
     for (uint8_t i = 0; i < pluginCount; i++)
     {
         if (i)
@@ -930,7 +970,7 @@ static void handlePluginUpload()
     if (pluginInstallJson(json, ""))
         server.send(200, "application/json", "{\"ok\":true}");
     else
-        server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid plugin JSON or max plugins reached\"}");
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid plugin JSON or max " + String(PLUGIN_MAX) + " plugins reached\"}");
 }
 
 static void handlePluginInstallFromUrl()
@@ -968,7 +1008,7 @@ static void handlePluginInstallFromUrl()
     if (pluginInstallJson(json, url))
         server.send(200, "application/json", "{\"ok\":true}");
     else
-        server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid plugin JSON\"}");
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid plugin JSON or max " + String(PLUGIN_MAX) + " plugins reached\"}");
 }
 
 static void handlePluginToggle()
@@ -1014,10 +1054,21 @@ static void dashConnectSTA()
     if (strlen(staSSID) == 0)
         return;
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(DASH_SSID, DASH_PASS);
+    WiFi.softAP(apSSID, apPass, 1, apHidden ? 1 : 0, 4);
+    if (staStaticIP && (uint32_t)staIP != 0)
+    {
+        WiFi.config(staIP, staGW, staMask, staDNS);
+        dashLog("[WIFI] Static IP: " + staIP.toString());
+    }
+    else
+    {
+        WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    }
     WiFi.begin(staSSID, staPass);
     dashLog("[WIFI] Connecting to " + String(staSSID) + "...");
 }
+
+static void performAutoUpdate(); // forward decl, defined below
 
 static void dashCheckWifi()
 {
@@ -1033,10 +1084,41 @@ static void dashCheckWifi()
     {
         staConnected = connected;
         if (connected)
+        {
             dashLog("[WIFI] Connected to " + String(staSSID) + " IP: " + WiFi.localIP().toString());
+            // Schedule auto-update check 15 s after STA comes up (grace period for other boot work)
+            if (autoUpdateEnabled && !autoUpdateDone)
+                autoUpdateEligibleAt = millis() + 15000;
+        }
         else
             dashLog("[WIFI] Disconnected from " + String(staSSID));
     }
+
+    // Fire one-shot auto-update check once eligible
+    if (autoUpdateEnabled && !autoUpdateDone && staConnected && autoUpdateEligibleAt > 0 && millis() >= autoUpdateEligibleAt)
+    {
+        autoUpdateDone = true;
+        performAutoUpdate();
+    }
+}
+
+static void handleWifiScan()
+{
+    int n = WiFi.scanNetworks(false, false, false, 300);
+    String j = "{\"networks\":[";
+    for (int i = 0; i < n && i < 20; i++)
+    {
+        if (i)
+            j += ",";
+        j += "{\"ssid\":\"" + jsonEscape(WiFi.SSID(i).c_str()) + "\"";
+        j += ",\"rssi\":" + String(WiFi.RSSI(i));
+        j += ",\"enc\":" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? "true" : "false");
+        j += ",\"ch\":" + String(WiFi.channel(i));
+        j += "}";
+    }
+    j += "]}";
+    WiFi.scanDelete();
+    server.send(200, "application/json", j);
 }
 
 static void handleWifiConfig()
@@ -1051,12 +1133,709 @@ static void handleWifiConfig()
         prefs.begin(PREFS_NS, false);
         prefs.putString("wifi_ssid", ssid);
         prefs.putString("wifi_pass", pass);
+
+        // Static IP config
+        if (server.hasArg("static") && server.arg("static") == "1")
+        {
+            staStaticIP = true;
+            staIP.fromString(server.arg("ip"));
+            staGW.fromString(server.arg("gw"));
+            staMask.fromString(server.arg("mask"));
+            staDNS.fromString(server.arg("dns"));
+            prefs.putBool("wifi_static", true);
+            prefs.putString("wifi_ip", server.arg("ip"));
+            prefs.putString("wifi_gw", server.arg("gw"));
+            prefs.putString("wifi_mask", server.arg("mask"));
+            prefs.putString("wifi_dns", server.arg("dns"));
+        }
+        else
+        {
+            staStaticIP = false;
+            prefs.putBool("wifi_static", false);
+        }
         prefs.end();
 
         staConnected = false;
         dashConnectSTA();
     }
     server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handleWifiStatus()
+{
+    Preferences p;
+    bool stored = false;
+    if (p.begin(PREFS_NS, true))
+    {
+        stored = p.getString("wifi_ssid", "").length() > 0;
+        p.end();
+    }
+    String j = "{\"connected\":";
+    j += staConnected ? "true" : "false";
+    j += ",\"ssid\":\"" + jsonEscape(staSSID) + "\"";
+    j += ",\"stored\":" + String(stored ? "true" : "false");
+    if (staConnected)
+        j += ",\"ip\":\"" + WiFi.localIP().toString() + "\"";
+    j += ",\"static\":" + String(staStaticIP ? "true" : "false");
+    if (staStaticIP)
+    {
+        j += ",\"cfg_ip\":\"" + staIP.toString() + "\"";
+        j += ",\"cfg_gw\":\"" + staGW.toString() + "\"";
+        j += ",\"cfg_mask\":\"" + staMask.toString() + "\"";
+        j += ",\"cfg_dns\":\"" + staDNS.toString() + "\"";
+    }
+    j += "}";
+    server.send(200, "application/json", j);
+}
+
+// ── AP Config (hotspot name/password) ───────────────────────────
+
+static void handleCanPins()
+{
+    Preferences canPrefs;
+    int tx = -1, rx = -1;
+    if (canPrefs.begin("can", true))
+    {
+        tx = canPrefs.getChar("tx", -1);
+        rx = canPrefs.getChar("rx", -1);
+        canPrefs.end();
+    }
+    String j = "{\"tx\":" + String(tx);
+    j += ",\"rx\":" + String(rx);
+    j += ",\"customized\":" + String((tx >= 0 || rx >= 0) ? "true" : "false");
+    j += "}";
+    server.send(200, "application/json", j);
+}
+
+static void handleCanPinsSave()
+{
+    int tx = server.arg("tx").toInt();
+    int rx = server.arg("rx").toInt();
+
+    if (tx < 0 || tx > 39 || rx < 0 || rx > 39)
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Pin must be 0-39\"}");
+        return;
+    }
+    if (tx == rx)
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"TX and RX must differ\"}");
+        return;
+    }
+    // GPIO 6-11 are reserved for SPI flash on most ESP32 modules
+    if ((tx >= 6 && tx <= 11) || (rx >= 6 && rx <= 11))
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"GPIO 6-11 reserved for flash\"}");
+        return;
+    }
+
+    Preferences canPrefs;
+    if (!canPrefs.begin("can", false))
+    {
+        server.send(500, "application/json", "{\"ok\":false,\"error\":\"NVS open failed\"}");
+        return;
+    }
+    canPrefs.putChar("tx", (int8_t)tx);
+    canPrefs.putChar("rx", (int8_t)rx);
+    canPrefs.end();
+
+    dashLog("[CAN] Pins saved: TX=" + String(tx) + " RX=" + String(rx) + " (reboot required)");
+    server.send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
+}
+
+// ── Settings Backup / Restore ───────────────────────────────────
+
+static void handleSettingsExport()
+{
+    Preferences p;
+    String apSsid = "", apPass = "", wSsid = "", wPass = "";
+    String wIp = "", wGw = "", wMask = "", wDns = "";
+    bool wStatic = false, beta = false, apHid = false;
+    int canTx = -1, canRx = -1;
+
+    if (p.begin(PREFS_NS, true))
+    {
+        apSsid = p.getString("ap_ssid", "");
+        apPass = p.getString("ap_pass", "");
+        apHid = p.getBool("ap_hidden", false);
+        wSsid = p.getString("wifi_ssid", "");
+        wPass = p.getString("wifi_pass", "");
+        wStatic = p.getBool("wifi_static", false);
+        wIp = p.getString("wifi_ip", "");
+        wGw = p.getString("wifi_gw", "");
+        wMask = p.getString("wifi_mask", "");
+        wDns = p.getString("wifi_dns", "");
+        beta = p.getBool("upd_beta", false);
+        p.end();
+    }
+    Preferences cp;
+    if (cp.begin("can", true))
+    {
+        canTx = cp.getChar("tx", -1);
+        canRx = cp.getChar("rx", -1);
+        cp.end();
+    }
+
+    String j = "{\"version\":\"" FIRMWARE_VERSION "\"";
+    j += ",\"ap\":{\"ssid\":\"" + jsonEscape(apSsid) + "\",\"pass\":\"" + jsonEscape(apPass) + "\",\"hidden\":" + String(apHid ? "true" : "false") + "}";
+    j += ",\"wifi\":{\"ssid\":\"" + jsonEscape(wSsid) + "\",\"pass\":\"" + jsonEscape(wPass) + "\"";
+    j += ",\"static\":" + String(wStatic ? "true" : "false");
+    j += ",\"ip\":\"" + jsonEscape(wIp) + "\",\"gw\":\"" + jsonEscape(wGw) + "\"";
+    j += ",\"mask\":\"" + jsonEscape(wMask) + "\",\"dns\":\"" + jsonEscape(wDns) + "\"}";
+    j += ",\"can\":{\"tx\":" + String(canTx) + ",\"rx\":" + String(canRx) + "}";
+    j += ",\"beta\":" + String(beta ? "true" : "false");
+    j += "}";
+
+    server.sendHeader("Content-Disposition", "attachment; filename=\"evtools-backup.json\"");
+    server.send(200, "application/json", j);
+}
+
+static void handleSettingsImport()
+{
+    String body = server.arg("plain");
+    if (body.length() == 0)
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Empty body\"}");
+        return;
+    }
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, body);
+    if (err)
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid JSON\"}");
+        return;
+    }
+
+    Preferences p;
+    if (!p.begin(PREFS_NS, false))
+    {
+        server.send(500, "application/json", "{\"ok\":false,\"error\":\"NVS open failed\"}");
+        return;
+    }
+
+    if (doc["ap"].is<JsonObject>())
+    {
+        const char *s = doc["ap"]["ssid"] | "";
+        const char *pw = doc["ap"]["pass"] | "";
+        if (strlen(s) > 0) p.putString("ap_ssid", s);
+        if (strlen(pw) >= 8) p.putString("ap_pass", pw);
+        if (doc["ap"]["hidden"].is<bool>()) p.putBool("ap_hidden", doc["ap"]["hidden"].as<bool>());
+    }
+    if (doc["wifi"].is<JsonObject>())
+    {
+        const char *s = doc["wifi"]["ssid"] | "";
+        const char *pw = doc["wifi"]["pass"] | "";
+        p.putString("wifi_ssid", s);
+        p.putString("wifi_pass", pw);
+        p.putBool("wifi_static", doc["wifi"]["static"] | false);
+        p.putString("wifi_ip", (const char *)(doc["wifi"]["ip"] | ""));
+        p.putString("wifi_gw", (const char *)(doc["wifi"]["gw"] | ""));
+        p.putString("wifi_mask", (const char *)(doc["wifi"]["mask"] | ""));
+        p.putString("wifi_dns", (const char *)(doc["wifi"]["dns"] | ""));
+    }
+    if (doc["beta"].is<bool>())
+        p.putBool("upd_beta", doc["beta"].as<bool>());
+    p.end();
+
+    if (doc["can"].is<JsonObject>())
+    {
+        int tx = doc["can"]["tx"] | -1;
+        int rx = doc["can"]["rx"] | -1;
+        Preferences cp;
+        if (cp.begin("can", false))
+        {
+            if (tx >= 0 && tx <= 39 && rx >= 0 && rx <= 39 && tx != rx &&
+                !((tx >= 6 && tx <= 11) || (rx >= 6 && rx <= 11)))
+            {
+                cp.putChar("tx", (int8_t)tx);
+                cp.putChar("rx", (int8_t)rx);
+            }
+            cp.end();
+        }
+    }
+
+    dashLog("[BACKUP] Settings imported (reboot required)");
+    server.send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
+}
+
+static void handleApConfig()
+{
+    String newSsid = server.arg("ssid");
+    String newPass = server.arg("pass");
+    bool hasHidden = server.hasArg("hidden");
+    bool newHidden = hasHidden && (server.arg("hidden") == "1" || server.arg("hidden") == "true");
+
+    if (newSsid.length() == 0)
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"SSID required\"}");
+        return;
+    }
+    if (newPass.length() > 0 && newPass.length() < 8)
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Password must be at least 8 characters\"}");
+        return;
+    }
+
+    strlcpy(apSSID, newSsid.c_str(), sizeof(apSSID));
+    if (newPass.length() > 0)
+        strlcpy(apPass, newPass.c_str(), sizeof(apPass));
+    if (hasHidden)
+        apHidden = newHidden;
+
+    prefs.begin(PREFS_NS, false);
+    prefs.putString("ap_ssid", newSsid);
+    if (newPass.length() > 0)
+        prefs.putString("ap_pass", newPass);
+    if (hasHidden)
+        prefs.putBool("ap_hidden", newHidden);
+    prefs.end();
+
+    dashLog("[WIFI] AP config updated: SSID=" + newSsid + (apHidden ? " (hidden)" : ""));
+    server.send(200, "application/json", "{\"ok\":true,\"msg\":\"Saved. Reboot to apply new AP settings.\"}");
+}
+
+static void handleApStatus()
+{
+    Preferences p;
+    bool stored = false;
+    if (p.begin(PREFS_NS, true))
+    {
+        stored = p.getString("ap_ssid", "").length() > 0;
+        p.end();
+    }
+    String j = "{\"ssid\":\"" + jsonEscape(apSSID) + "\"";
+    j += ",\"ip\":\"" + WiFi.softAPIP().toString() + "\"";
+    j += ",\"clients\":" + String(WiFi.softAPgetStationNum());
+    j += ",\"stored\":" + String(stored ? "true" : "false");
+    j += ",\"hidden\":" + String(apHidden ? "true" : "false");
+    j += "}";
+    server.send(200, "application/json", j);
+}
+
+// ── OTA GitHub Update ───────────────────────────────────────────
+
+#ifndef FIRMWARE_VERSION
+#define FIRMWARE_VERSION "unknown"
+#endif
+
+static const char *GITHUB_REPO = "ev-open-can-tools/ev-open-can-tools";
+
+// Map driver type to release artifact filename
+static const char *getFirmwareArtifact()
+{
+#if defined(DRIVER_ESP32_EXT_MCP2515)
+    return "firmware-esp32-ext-mcp2515.bin";
+#else
+    return "firmware-esp32.bin";
+#endif
+}
+
+// Parse a semver-ish version string into (major, minor, patch, preRank, preNum).
+// Pre-release rank: 0 = stable (no suffix, sorts highest among same M.m.p),
+//                  1 = -alpha.N, 2 = -beta.N, 3 = -rc.N (higher rank = closer to stable).
+// Unknown suffix → treated as stable (rank 0).
+static void parseVersion(const String &v, int &maj, int &min, int &pat, int &preRank, int &preNum)
+{
+    maj = min = pat = 0;
+    preRank = 0;
+    preNum = 0;
+    int i = 0;
+    int len = v.length();
+    auto readInt = [&](int &out) {
+        int val = 0;
+        bool any = false;
+        while (i < len && v[i] >= '0' && v[i] <= '9')
+        {
+            val = val * 10 + (v[i] - '0');
+            i++;
+            any = true;
+        }
+        if (any)
+            out = val;
+    };
+    readInt(maj);
+    if (i < len && v[i] == '.')
+    {
+        i++;
+        readInt(min);
+    }
+    if (i < len && v[i] == '.')
+    {
+        i++;
+        readInt(pat);
+    }
+    if (i < len && v[i] == '-')
+    {
+        i++;
+        String tail = v.substring(i);
+        tail.toLowerCase();
+        if (tail.startsWith("alpha"))
+            preRank = 1;
+        else if (tail.startsWith("beta"))
+            preRank = 2;
+        else if (tail.startsWith("rc"))
+            preRank = 3;
+        else
+            preRank = 0; // unknown → treat as stable
+        int dot = tail.indexOf('.');
+        if (dot >= 0)
+            preNum = tail.substring(dot + 1).toInt();
+    }
+}
+
+// Returns true iff `candidate` is strictly newer than `current`.
+static bool isVersionNewer(const String &candidate, const String &current)
+{
+    int cM, cm, cp, cR, cN;
+    int uM, um, up, uR, uN;
+    parseVersion(candidate, cM, cm, cp, cR, cN);
+    parseVersion(current, uM, um, up, uR, uN);
+    if (cM != uM)
+        return cM > uM;
+    if (cm != um)
+        return cm > um;
+    if (cp != up)
+        return cp > up;
+    // Same M.m.p — stable (rank 0) beats any prerelease (rank 1-3)
+    // For two prereleases: higher rank beats lower (rc > beta > alpha)
+    int cEff = (cR == 0) ? 1000 : cR; // stable → very high
+    int uEff = (uR == 0) ? 1000 : uR;
+    if (cEff != uEff)
+        return cEff > uEff;
+    return cN > uN;
+}
+
+static void handleUpdateCheck()
+{
+    if (!staConnected)
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"WiFi not connected\"}");
+        return;
+    }
+
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+
+    String url;
+    if (updateBetaChannel)
+        url = "https://api.github.com/repos/" + String(GITHUB_REPO) + "/releases?per_page=1";
+    else
+        url = "https://api.github.com/repos/" + String(GITHUB_REPO) + "/releases/latest";
+
+    http.begin(client, url);
+    http.addHeader("Accept", "application/vnd.github+json");
+    http.addHeader("User-Agent", "ESP32-OTA");
+    int code = http.GET();
+
+    if (code != 200)
+    {
+        http.end();
+        server.send(502, "application/json", "{\"ok\":false,\"error\":\"GitHub API error " + String(code) + "\"}");
+        return;
+    }
+
+    String payload = http.getString();
+    http.end();
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, payload);
+    if (err)
+    {
+        server.send(500, "application/json", "{\"ok\":false,\"error\":\"JSON parse error\"}");
+        return;
+    }
+
+    // Find the right release
+    JsonObject release;
+    if (updateBetaChannel)
+    {
+        JsonArray arr = doc.as<JsonArray>();
+        for (JsonObject r : arr)
+        {
+            release = r;
+            break; // first (newest) release
+        }
+    }
+    else
+    {
+        release = doc.as<JsonObject>();
+    }
+
+    if (release.isNull())
+    {
+        server.send(404, "application/json", "{\"ok\":false,\"error\":\"No release found\"}");
+        return;
+    }
+
+    String tagName = release["tag_name"] | "";
+    bool prerelease = release["prerelease"] | false;
+    String version = tagName;
+    if (version.startsWith("v"))
+        version = version.substring(1);
+
+    // Find the matching firmware asset
+    String downloadUrl = "";
+    const char *artifact = getFirmwareArtifact();
+    JsonArray assets = release["assets"];
+    for (JsonObject asset : assets)
+    {
+        String name = asset["name"] | "";
+        if (name == artifact)
+        {
+            downloadUrl = asset["browser_download_url"].as<String>();
+            break;
+        }
+    }
+
+    String j = "{\"ok\":true";
+    j += ",\"current\":\"" + jsonEscape(FIRMWARE_VERSION) + "\"";
+    j += ",\"latest\":\"" + jsonEscape(version.c_str()) + "\"";
+    j += ",\"tag\":\"" + jsonEscape(tagName.c_str()) + "\"";
+    j += ",\"prerelease\":" + String(prerelease ? "true" : "false");
+    j += ",\"artifact\":\"" + jsonEscape(artifact) + "\"";
+    j += ",\"url\":\"" + jsonEscape(downloadUrl.c_str()) + "\"";
+    bool isNewer = isVersionNewer(version, String(FIRMWARE_VERSION));
+    j += ",\"update\":" + String(isNewer && downloadUrl.length() > 0 ? "true" : "false");
+    j += ",\"beta\":" + String(updateBetaChannel ? "true" : "false");
+    j += "}";
+    server.send(200, "application/json", j);
+}
+
+static void handleUpdateInstall()
+{
+    if (!staConnected)
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"WiFi not connected\"}");
+        return;
+    }
+
+    String url = server.arg("url");
+    if (url.length() == 0)
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"No URL provided\"}");
+        return;
+    }
+
+    dashLog("[OTA] Starting GitHub update from: " + url);
+    server.send(200, "application/json", "{\"ok\":true,\"msg\":\"Downloading and installing... Device will reboot.\"}");
+    delay(500);
+
+    WiFiClientSecure client;
+    client.setInsecure();
+
+    // Follow redirects — GitHub release assets redirect to S3
+    HTTPClient http;
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    http.begin(client, url);
+    http.addHeader("Accept", "application/octet-stream");
+    int code = http.GET();
+
+    if (code != 200)
+    {
+        dashLog("[OTA] Download failed: HTTP " + String(code));
+        http.end();
+        return;
+    }
+
+    int contentLength = http.getSize();
+    if (contentLength <= 0)
+    {
+        dashLog("[OTA] Invalid content length");
+        http.end();
+        return;
+    }
+
+    if (!Update.begin(contentLength))
+    {
+        dashLog("[OTA] Not enough space for update");
+        http.end();
+        return;
+    }
+
+    WiFiClient *stream = http.getStreamPtr();
+    size_t written = Update.writeStream(*stream);
+    http.end();
+
+    if (written != (size_t)contentLength)
+    {
+        dashLog("[OTA] Written " + String(written) + " of " + String(contentLength) + " bytes");
+        Update.abort();
+        return;
+    }
+
+    if (!Update.end())
+    {
+        dashLog("[OTA] Update finalize failed");
+        return;
+    }
+
+    dashLog("[OTA] Update successful! Rebooting...");
+    delay(1000);
+    ESP.restart();
+}
+
+// Check GitHub for a newer release and, if found, download + install it.
+// Blocking; on success calls ESP.restart() and never returns.
+static void performAutoUpdate()
+{
+    if (!staConnected)
+        return;
+
+    dashLog("[AUTO-OTA] Checking for updates...");
+
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+
+    String url;
+    if (updateBetaChannel)
+        url = "https://api.github.com/repos/" + String(GITHUB_REPO) + "/releases?per_page=1";
+    else
+        url = "https://api.github.com/repos/" + String(GITHUB_REPO) + "/releases/latest";
+
+    http.begin(client, url);
+    http.addHeader("Accept", "application/vnd.github+json");
+    http.addHeader("User-Agent", "ESP32-OTA");
+    int code = http.GET();
+    if (code != 200)
+    {
+        dashLog("[AUTO-OTA] GitHub API error " + String(code));
+        http.end();
+        return;
+    }
+    String payload = http.getString();
+    http.end();
+
+    JsonDocument doc;
+    if (deserializeJson(doc, payload))
+    {
+        dashLog("[AUTO-OTA] JSON parse error");
+        return;
+    }
+
+    JsonObject release;
+    if (updateBetaChannel)
+    {
+        JsonArray arr = doc.as<JsonArray>();
+        for (JsonObject r : arr)
+        {
+            release = r;
+            break;
+        }
+    }
+    else
+    {
+        release = doc.as<JsonObject>();
+    }
+    if (release.isNull())
+    {
+        dashLog("[AUTO-OTA] No release found");
+        return;
+    }
+
+    String tagName = release["tag_name"] | "";
+    String version = tagName;
+    if (version.startsWith("v"))
+        version = version.substring(1);
+    if (!isVersionNewer(version, String(FIRMWARE_VERSION)))
+    {
+        dashLog("[AUTO-OTA] No newer release (latest=" + version + ", current=" FIRMWARE_VERSION ")");
+        return;
+    }
+
+    const char *artifact = getFirmwareArtifact();
+    String downloadUrl = "";
+    for (JsonObject asset : release["assets"].as<JsonArray>())
+    {
+        String name = asset["name"] | "";
+        if (name == artifact)
+        {
+            downloadUrl = asset["browser_download_url"].as<String>();
+            break;
+        }
+    }
+    if (!downloadUrl.length())
+    {
+        dashLog("[AUTO-OTA] No matching artifact for this build");
+        return;
+    }
+
+    dashLog("[AUTO-OTA] Update " + version + " available. Installing...");
+
+    HTTPClient http2;
+    http2.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    http2.begin(client, downloadUrl);
+    http2.addHeader("Accept", "application/octet-stream");
+    int code2 = http2.GET();
+    if (code2 != 200)
+    {
+        dashLog("[AUTO-OTA] Download failed: HTTP " + String(code2));
+        http2.end();
+        return;
+    }
+    int len = http2.getSize();
+    if (len <= 0)
+    {
+        dashLog("[AUTO-OTA] Invalid content length");
+        http2.end();
+        return;
+    }
+    if (!Update.begin(len))
+    {
+        dashLog("[AUTO-OTA] Not enough space for update");
+        http2.end();
+        return;
+    }
+    WiFiClient *stream = http2.getStreamPtr();
+    size_t written = Update.writeStream(*stream);
+    http2.end();
+    if (written != (size_t)len)
+    {
+        dashLog("[AUTO-OTA] Written " + String(written) + "/" + String(len) + " bytes");
+        Update.abort();
+        return;
+    }
+    if (!Update.end())
+    {
+        dashLog("[AUTO-OTA] Finalize failed");
+        return;
+    }
+    dashLog("[AUTO-OTA] Update successful! Rebooting...");
+    delay(1000);
+    ESP.restart();
+}
+
+static void handleAutoUpdate()
+{
+    if (server.hasArg("enabled"))
+    {
+        autoUpdateEnabled = server.arg("enabled") == "1";
+        prefs.begin(PREFS_NS, false);
+        prefs.putBool("auto_upd", autoUpdateEnabled);
+        prefs.end();
+        dashLog("[AUTO-OTA] " + String(autoUpdateEnabled ? "enabled" : "disabled"));
+    }
+    String j = "{\"ok\":true,\"enabled\":";
+    j += autoUpdateEnabled ? "true" : "false";
+    j += "}";
+    server.send(200, "application/json", j);
+}
+
+static void handleUpdateBeta()
+{
+    if (server.hasArg("beta"))
+    {
+        updateBetaChannel = server.arg("beta") == "1";
+        prefs.begin(PREFS_NS, false);
+        prefs.putBool("update_beta", updateBetaChannel);
+        prefs.end();
+        dashLog("[OTA] Channel: " + String(updateBetaChannel ? "beta" : "stable"));
+    }
+    String j = "{\"ok\":true,\"beta\":" + String(updateBetaChannel ? "true" : "false");
+    j += ",\"version\":\"" + jsonEscape(FIRMWARE_VERSION) + "\"}";
+    server.send(200, "application/json", j);
 }
 
 // ── Plugin frame callback wrapper ───────────────────────────────
@@ -1150,24 +1929,30 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     // Set plugin processing hook
     appPluginProcess = dashPluginProcess;
 
-    // WiFi setup: AP+STA if STA credentials configured, AP-only otherwise
+    // WiFi setup: AP+STA if STA credentials configured, AP-only otherwise.
+    // WiFi.softAP(ssid, pass, channel=1, hidden=0, max_connection=4)
+    const int apChannel = 1;
+    const int apHiddenFlag = apHidden ? 1 : 0;
+    const int apMaxConn = 4;
     if (strlen(staSSID) > 0)
     {
         WiFi.mode(WIFI_AP_STA);
-        WiFi.softAP(DASH_SSID, DASH_PASS);
+        WiFi.softAP(apSSID, apPass, apChannel, apHiddenFlag, apMaxConn);
         WiFi.begin(staSSID, staPass);
         dashLog("[WIFI] AP+STA mode, connecting to " + String(staSSID));
     }
     else
     {
         WiFi.mode(WIFI_AP);
-        WiFi.softAP(DASH_SSID, DASH_PASS);
+        WiFi.softAP(apSSID, apPass, apChannel, apHiddenFlag, apMaxConn);
     }
-    Serial.printf("[WIFI] AP: %s  IP: %s\n", DASH_SSID, WiFi.softAPIP().toString().c_str());
+    if (apHidden)
+        dashLog("[WIFI] AP SSID is hidden");
+    Serial.printf("[WIFI] AP: %s  IP: %s\n", apSSID, WiFi.softAPIP().toString().c_str());
 
     xTaskCreatePinnedToCore(webTask, "web", 8192, nullptr, 1, nullptr, 0);
 
-    ArduinoOTA.setHostname("ADunlock");
+    ArduinoOTA.setHostname("ev-open-can-tools");
     ArduinoOTA.setPassword(DASH_OTA_PASS);
     ArduinoOTA.onStart([]()
                        { dashLog("[OTA] Starting..."); });
@@ -1196,11 +1981,24 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     server.on("/plugin_install", HTTP_POST, handlePluginInstallFromUrl);
     server.on("/plugin_toggle", HTTP_POST, handlePluginToggle);
     server.on("/plugin_remove", HTTP_POST, handlePluginRemove);
+    server.on("/ap_config", HTTP_POST, handleApConfig);
+    server.on("/ap_status", HTTP_GET, handleApStatus);
+    server.on("/can_pins", HTTP_GET, handleCanPins);
+    server.on("/can_pins", HTTP_POST, handleCanPinsSave);
+    server.on("/settings_export", HTTP_GET, handleSettingsExport);
+    server.on("/settings_import", HTTP_POST, handleSettingsImport);
+    server.on("/wifi_scan", HTTP_GET, handleWifiScan);
     server.on("/wifi_config", HTTP_POST, handleWifiConfig);
+    server.on("/wifi_status", HTTP_GET, handleWifiStatus);
+    server.on("/update_check", HTTP_GET, handleUpdateCheck);
+    server.on("/update_install", HTTP_POST, handleUpdateInstall);
+    server.on("/update_beta", HTTP_POST, handleUpdateBeta);
+    server.on("/auto_update", HTTP_GET, handleAutoUpdate);
+    server.on("/auto_update", HTTP_POST, handleAutoUpdate);
 
     server.begin();
-    Serial.println("[WEB] Dashboard: http://192.168.4.1");
-    dashLog("[BOOT] ADUnlock ready");
+    Serial.println("[WEB] Dashboard: http://" + WiFi.softAPIP().toString());
+    dashLog("[BOOT] ev-open-can-tools ready");
 }
 
 static void mcpDashboardLoop()

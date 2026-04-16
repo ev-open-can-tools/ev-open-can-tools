@@ -176,10 +176,26 @@ jobs:
               mv "$f" "release-assets/${name}.${ext}"
             done
           done
+      - name: Extract changelog section for this tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          # Extract section between "## [VER]" and the next "## [" heading
+          awk -v v="$VER" 'BEGIN{f=0} /^## \[/{ if(f) exit; if($0 ~ "^## \\[" v "\\]") { f=1; print; next } } f { print }' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "Release ${TAG}" > release-notes.md
+          fi
+          echo "--- release-notes.md ---"
+          cat release-notes.md
       - uses: softprops/action-gh-release@v2
         with:
-          name: Release ${{ github.ref_name }}
-          body_path: CHANGELOG.md
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+          # Create as draft so assets can be uploaded. The immutable-releases
+          # repo setting blocks uploads once a release is published, so we
+          # keep it as a draft during upload and then flip to published below.
+          draft: true
           files: |
             release-assets/firmware-rp2040.uf2
             release-assets/firmware-m4.bin
@@ -187,6 +203,10 @@ jobs:
             release-assets/firmware-m5stack.bin
             release-assets/firmware-esp32-featherwing.bin
             release-assets/firmware-esp32-ext-mcp2515.bin
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false
 
   notify-discord-release:
     if: startsWith(github.ref, 'refs/tags/v')

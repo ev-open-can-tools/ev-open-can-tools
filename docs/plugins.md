@@ -221,9 +221,11 @@ A plugin can contain multiple rules that target different CAN IDs or mux values.
 
 1. Open the dashboard at `192.168.4.1`
 2. Scroll to the **Plugins** card
-3. Enter your home WiFi SSID and password, click **Connect**
-4. Wait for the "Connected" status
-5. Paste the plugin URL (e.g. a GitHub raw link) and click **Install**
+3. Click **Scan** to find available WiFi networks, then select yours — or type the SSID manually
+4. Enter the WiFi password and click **Connect**
+5. Optionally expand **Static IP** to configure a fixed IP address, gateway, subnet mask and DNS
+6. Wait for the "Connected" status
+7. Paste the plugin URL (e.g. a GitHub raw link) and click **Install**
 
 ### Via file upload
 
