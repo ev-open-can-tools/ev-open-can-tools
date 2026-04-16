@@ -1113,7 +1113,7 @@ async function loadCanPins(){
   try{const r=await fetch('/can_pins');const d=await r.json();
     if(d.tx>=0)$('can-tx').value=d.tx;
     if(d.rx>=0)$('can-rx').value=d.rx;
-    $('can-pins-status').textContent=d.customized?('custom TX='+d.tx+' RX='+d.rx):'firmware default';
+    $('can-pins-status').textContent=d.customized?('custom TX='+d.tx+' RX='+d.rx):('firmware default TX='+d.tx+' RX='+d.rx);
   }catch(e){}
 }
 async function saveCanPins(){
