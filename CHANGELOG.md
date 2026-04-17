@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0-beta.12] - 2026-04-17
+
+### Fixed
+- Plugin detail panels in the dashboard now stay open across the background plugin-list refresh instead of collapsing unexpectedly
+- Dashboard confirmation prompts now use an in-page modal so reboot and other confirm actions work reliably in Chrome on iOS
+
 ## [2.2.0-beta.11] - 2026-04-17
 
 ### Added

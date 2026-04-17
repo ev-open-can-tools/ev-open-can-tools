@@ -155,6 +155,17 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 .btn-reboot{border-color:var(--bd2);color:var(--tx2)}
 .btn-reboot:hover{border-color:var(--acc);color:var(--acc)}
 
+/* Confirm modal */
+.modal-backdrop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+  padding:16px;background:rgba(0,0,0,.55);z-index:9999}
+.modal-card{width:min(100%,360px);background:var(--card);border:1px solid var(--bd2);
+  border-radius:12px;padding:16px;box-shadow:0 16px 40px rgba(0,0,0,.35)}
+.modal-title{font-size:14px;font-weight:700;color:var(--tx)}
+.modal-msg{margin-top:8px;font-size:12px;color:var(--tx2);line-height:1.6;white-space:pre-wrap}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.modal-btn-primary{background:var(--accBg);border-color:var(--accBd);color:var(--acc)}
+.modal-btn-primary:hover{background:var(--acc);color:#fff}
+
 /* OTA upload */
 .ota-drop{border:2px dashed var(--bd2);border-radius:10px;padding:24px 16px;
   text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
@@ -597,6 +608,18 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 </div>
 
 <div class="warn-bar">CAN bus writes affect vehicle behavior. Remove device immediately if unexpected behavior occurs. Not affiliated with any vehicle manufacturer.</div>
+
+<div class="modal-backdrop" id="confirm-modal" onclick="dashConfirmBackdrop(event)">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <div class="modal-title" id="confirm-title">Confirm</div>
+    <div class="modal-msg" id="confirm-msg"></div>
+    <div class="modal-actions">
+      <button class="sniff-btn" id="confirm-cancel" onclick="dashConfirmResolve(false)">Cancel</button>
+      <button class="sniff-btn modal-btn-primary" id="confirm-ok" onclick="dashConfirmResolve(true)">Continue</button>
+    </div>
+  </div>
+</div>
+
 <div class="foot" id="dash-foot">ev-open-can-tools &bull; loading...</div>
 <div class="foot" style="margin-top:4px">
   <a href="https://github.com/ev-open-can-tools/ev-open-can-tools" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">GitHub</a>
@@ -620,6 +643,8 @@ let logSince=0;
 let installedPlugins=[];
 let peLoadedPluginName='';
 let peTestPollTimer=null;
+let pluginDetailOpen={};
+let dashConfirmState=null;
 let dashboardPollTimers=[];
 let dashboardPollFailures=0;
 let dashboardPollStopped=false;
@@ -668,6 +693,37 @@ async function runPoll(name,fn){
   pollLocks[name]=true;
   try{return await fn();}finally{pollLocks[name]=false;}
 }
+
+function dashConfirmResolve(ok){
+  if(!dashConfirmState)return;
+  const resolve=dashConfirmState.resolve;
+  dashConfirmState=null;
+  $('confirm-modal').style.display='none';
+  document.body.style.overflow='';
+  resolve(!!ok);
+}
+
+function dashConfirmBackdrop(ev){
+  if(ev.target===$('confirm-modal'))dashConfirmResolve(false);
+}
+
+function dashConfirm(message,title,okText,cancelText){
+  if(dashConfirmState)dashConfirmResolve(false);
+  return new Promise(resolve=>{
+    dashConfirmState={resolve};
+    $('confirm-title').textContent=title||'Confirm';
+    $('confirm-msg').textContent=message||'';
+    $('confirm-ok').textContent=okText||'Continue';
+    $('confirm-cancel').textContent=cancelText||'Cancel';
+    $('confirm-modal').style.display='flex';
+    document.body.style.overflow='hidden';
+    setTimeout(()=>{$('confirm-ok').focus();},0);
+  });
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&dashConfirmState)dashConfirmResolve(false);
+});
 
 function toggleTheme(){
   const html=document.documentElement;
@@ -757,9 +813,9 @@ async function pushFeat(){
   poll();
 }
 
-async function emergencyStop(){if(!confirm('Stop injecting? This remains disabled after reboot until you press Resume Injection.'))return;try{await fetch('/disable',{method:'POST'});}catch(e){}poll();}
+async function emergencyStop(){if(!await dashConfirm('Stop injecting? This remains disabled after reboot until you press Resume Injection.','Stop injection','Stop'))return;try{await fetch('/disable',{method:'POST'});}catch(e){}poll();}
 async function resumeInj(){try{await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'hw='+state.hw+'&sp='+state.sp+'&can=1'});}catch(e){}poll();}
-async function reboot(){if(!confirm('Reboot device?'))return;try{await fetch('/reboot',{method:'POST'});}catch(e){}}
+async function reboot(){if(!await dashConfirm('Reboot device?','Reboot','Reboot'))return;try{await fetch('/reboot',{method:'POST'});}catch(e){}}
 
 function fmtUp(s){
   if(s<60)return s+'s';
@@ -1105,7 +1161,7 @@ async function togglePlugin(idx){
   try{await fetch('/plugin_toggle',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'idx='+idx});pollPlugins();}catch(e){}
 }
 async function removePlugin(idx){
-  if(!confirm('Remove this plugin?'))return;
+  if(!await dashConfirm('Remove this plugin?','Remove plugin','Remove'))return;
   try{await fetch('/plugin_remove',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'idx='+idx});pollPlugins();}catch(e){}
 }
 function fmtOp(o){
@@ -1129,8 +1185,11 @@ function renderPluginDetails(details){
     +'</div>';
 }
 function toggleDetails(idx){
+  var p=installedPlugins[idx];
+  if(!p||!p.name)return;
+  pluginDetailOpen[p.name]=!pluginDetailOpen[p.name];
   var el=$('plg-det-'+idx);
-  if(el)el.style.display=el.style.display==='none'?'block':'none';
+  if(el)el.style.display=pluginDetailOpen[p.name]?'block':'none';
 }
 function toggleInfo(id){
   var el=$(id);
@@ -1141,6 +1200,9 @@ async function pollPlugins(){
     try{
       const d=await fetchPollJson('/plugins',2000);
       installedPlugins=d.plugins||[];
+      const nextOpen={};
+      installedPlugins.forEach(p=>{if(p&&p.name&&pluginDetailOpen[p.name])nextOpen[p.name]=true;});
+      pluginDetailOpen=nextOpen;
       const max=d.maxPlugins||0;
       $('plg-count').textContent=max?installedPlugins.length+' / '+max+' installed':installedPlugins.length+' installed';
       if($('plg-limit')){
@@ -1152,6 +1214,7 @@ async function pollPlugins(){
       if(!installedPlugins.length){el.innerHTML='<div style="font-size:12px;color:var(--tx3);text-align:center;padding:12px">No plugins installed</div>';}
       else{el.innerHTML=installedPlugins.map((p,i)=>{
         let hasConflict=p.details&&p.details.some(r=>r.conflict);
+        let detailsOpen=!!pluginDetailOpen[p.name];
         let row='<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--bd)">';
         row+='<div class="feat-row"><div class="feat-info" style="cursor:pointer" onclick="toggleDetails('+i+')">';
         row+='<div class="feat-name">'+p.name+' <span style="color:var(--tx3);font-size:11px">v'+p.version+'</span>';
@@ -1163,7 +1226,7 @@ async function pollPlugins(){
         row+='<button onclick="peLoadInstalledPlugin('+i+')" style="margin-left:8px;padding:4px 8px;border:1px solid var(--bd);border-radius:5px;background:transparent;color:var(--acc);cursor:pointer;font-size:10px;font-family:inherit">Edit</button>';
         row+='<button onclick="removePlugin('+i+')" style="margin-left:8px;padding:4px 8px;border:1px solid var(--errBd);border-radius:5px;background:transparent;color:var(--err);cursor:pointer;font-size:10px;font-family:inherit">X</button></div>';
         if(p.details){
-          row+='<div id="plg-det-'+i+'" style="display:none">';
+          row+='<div id="plg-det-'+i+'" style="display:'+(detailsOpen?'block':'none')+'">';
           if(hasConflict) row+='<div style="margin-top:6px;padding:6px 8px;background:var(--errBg,#3a1a1a);border:1px solid var(--errBd);border-radius:6px;font-size:11px;color:var(--err)">&#9888; Some CAN IDs overlap with base firmware. Plugin rules run <b>after</b> the original handler. Both will send modified frames.</div>';
           row+=renderPluginDetails(p.details);
           row+='</div>';
@@ -1202,7 +1265,7 @@ async function checkUpdate(){
 }
 async function installUpdate(){
   if(!pendingUpdateUrl){$('upd-status').textContent='No update URL';return;}
-  if(!confirm('Install firmware update? The device will reboot.'))return;
+  if(!await dashConfirm('Install firmware update? The device will reboot.','Install update','Install'))return;
   $('upd-install-btn').disabled=true;$('upd-status').textContent='Downloading & installing...';$('upd-status').style.color='var(--acc)';
   try{await fetch('/update_install',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'url='+encodeURIComponent(pendingUpdateUrl)});
     $('upd-status').textContent='Update installed! Rebooting...';$('upd-status').style.color='var(--ok)';
@@ -1236,7 +1299,7 @@ async function loadCanPins(){
 async function saveCanPins(){
   var tx=parseInt($('can-tx').value,10),rx=parseInt($('can-rx').value,10);
   if(isNaN(tx)||isNaN(rx)){$('can-pins-hint').textContent='Enter both TX and RX';$('can-pins-hint').style.color='var(--err)';return;}
-  if(!confirm('Save CAN pins TX='+tx+' RX='+rx+' and reboot? Wrong pins disable CAN.'))return;
+  if(!await dashConfirm('Save CAN pins TX='+tx+' RX='+rx+' and reboot? Wrong pins disable CAN.','Save CAN pins','Save'))return;
   try{const r=await fetch('/can_pins',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'tx='+tx+'&rx='+rx});
     const d=await r.json();
     if(d.ok){
@@ -1264,7 +1327,7 @@ async function importSettings(ev){
   const f=ev.target.files[0];if(!f)return;
   const text=await f.text();
   try{JSON.parse(text);}catch(e){$('backup-status').textContent='Invalid JSON';$('backup-status').style.color='var(--err)';return;}
-  if(!confirm('Restore settings from '+f.name+' and reboot?'))return;
+  if(!await dashConfirm('Restore settings from '+f.name+' and reboot?','Restore settings','Restore'))return;
   $('backup-status').textContent='Uploading...';$('backup-status').style.color='var(--acc)';
   try{const r=await fetch('/settings_import',{method:'POST',headers:{'Content-Type':'application/json'},body:text});
     const d=await r.json();
@@ -1461,9 +1524,9 @@ async function pePollTestStatus(){
     }
   }catch(e){}
 }
-function peLoadInstalledPlugin(idx){
+async function peLoadInstalledPlugin(idx){
   const p=installedPlugins[idx];if(!p)return;
-  if(peHasContent()&&!confirm('Load installed plugin into the editor? Current editor contents will be replaced.'))return;
+  if(peHasContent()&&!await dashConfirm('Load installed plugin into the editor? Current editor contents will be replaced.','Load plugin','Load'))return;
   $('pe-name').value=p.name||'';$('pe-author').value=p.author||'';$('pe-version').value=p.version||'1.0';
   peState={rules:(p.details||[]).map(r=>({id:r.id|0,mux:typeof r.mux==='number'?r.mux:-1,send:r.send!==false,ops:(r.ops||[]).map(op=>{const out={type:op.type};if(op.type==='set_bit'){out.bit=op.bit|0;out.val=op.val?1:0;}else if(op.type==='set_byte'){out.byte=op.byte|0;out.val=(op.val|0)&255;out.mask=((typeof op.mask==='number'?op.mask:255)|0)&255;}else if(op.type==='or_byte'||op.type==='and_byte'){out.byte=op.byte|0;out.val=(op.val|0)&255;}return out;})}))};
   peLoadedPluginName=p.name||'';peStopTestPoll();peSetTestStatus('Idle','');peRender();peSetStatus('Loaded "'+p.name+'" into editor','ok');
@@ -1496,7 +1559,7 @@ async function peInstall(){
   const obj=peBuildObj();
   try{const r=await fetch('/plugins');const d=await r.json();
     if(d.plugins&&d.plugins.some(p=>p.name===obj.name)&&obj.name!==peLoadedPluginName){
-      if(!confirm('A plugin named "'+obj.name+'" already exists. Overwrite?'))return;
+      if(!await dashConfirm('A plugin named "'+obj.name+'" already exists. Overwrite?','Overwrite plugin','Overwrite'))return;
     }
   }catch(e){}
   peSetStatus('Installing...','acc');
@@ -1544,8 +1607,8 @@ function peDownload(){
   const a=document.createElement('a');a.href=url;a.download=(obj.name||'plugin').replace(/[^A-Za-z0-9_-]/g,'_').toLowerCase()+'.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   peSetStatus('Downloaded','ok');
 }
-function peReset(){
-  if(peState.rules.length&&!confirm('Discard current editor contents?'))return;
+async function peReset(){
+  if(peState.rules.length&&!await dashConfirm('Discard current editor contents?','Discard changes','Discard'))return;
   peState={rules:[]};peLoadedPluginName='';peStopTestPoll();
   $('pe-name').value='';$('pe-author').value='';$('pe-version').value='1.0';
   peRender();peSetStatus('','');peSetTestStatus('Idle','');
