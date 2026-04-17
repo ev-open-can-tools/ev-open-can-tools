@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- Migrate esp32_feather_v2_mcp2515 to new mcp2515 driver and web ui
+## [2.2.0-beta.9] - 2026-04-17
+
+### Added
+- CAN Sniffer now has a toggle to switch between on-wire 11-bit CAN IDs and DBC JSON IDs with the current bus prefix
+- The sniffer filter now accepts both on-wire IDs and prefixed DBC JSON IDs
+
+### Changed
+- Migrated `esp32_feather_v2_mcp2515` to the new MCP2515 driver and web UI
+- Dashboard feature and injection defaults now follow the selected build flags, and `DASH_INJECTION_ON_BOOT` can be used to start injecting automatically after boot
+- Dashboard grid inputs now size correctly in narrower layouts, and `platformio_profile.h` no longer ships with `DRIVER_TWAI` and `HW3` preselected by default
+
+### Fixed
+- "Stop Injecting" now persists across reboot instead of silently re-enabling injection on startup
+- Runtime AD gating is now applied consistently across Legacy, HW3, and HW4 handlers so blocked mux paths no longer keep injecting
 
 ## [2.2.0-beta.8] - 2026-04-16
 
