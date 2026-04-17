@@ -464,7 +464,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <div class="card-meta" id="pe-count">0 rules</div>
   </div>
   <div id="pe-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
-    Build a plugin via form &mdash; no JSON writing needed. Add rules (one per CAN ID + optional mux), then operations per rule. The JSON preview updates live. Click Install to deploy, or Download to save the plugin file.
+    Build or edit a plugin via form &mdash; no JSON writing needed. Load an installed plugin into the editor, change rules, then reinstall it. You can also send a temporary test frame for one rule before installing.
   </div>
   <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 90px;gap:6px;margin-bottom:10px">
     <input class="sniff-input" id="pe-name" placeholder="Plugin name" maxlength="31" oninput="peRenderPreview()">
@@ -477,6 +477,24 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <summary style="font-size:11px;color:var(--acc);cursor:pointer;user-select:none">JSON Preview</summary>
     <pre id="pe-preview" style="max-height:200px;overflow:auto;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;padding:8px;font-size:11px;color:var(--tx2);margin-top:6px;white-space:pre-wrap;word-break:break-all"></pre>
   </details>
+  <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bd)">
+    <div class="feat-name" style="margin-bottom:6px">Rule Test</div>
+    <div style="font-size:11px;color:var(--tx3);line-height:1.5;margin-bottom:8px">
+      Choose one rule from the editor, enter the base 8-byte frame, then send the resulting modified frame on CAN. Count = how many times, interval = how fast.
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 110px;gap:6px;margin-bottom:6px">
+      <select class="sniff-input" id="pe-test-rule" onchange="peUpdateTestPreview()"></select>
+      <input class="sniff-input" id="pe-test-count" type="number" min="1" max="200" value="1" onchange="peUpdateTestPreview()">
+      <input class="sniff-input" id="pe-test-interval" type="number" min="10" max="5000" value="100" onchange="peUpdateTestPreview()">
+    </div>
+    <input class="sniff-input" id="pe-test-data" value="00 00 00 00 00 00 00 00" placeholder="Base data bytes: 00 00 00 00 00 00 00 00" oninput="peUpdateTestPreview()" style="width:100%;margin-bottom:6px">
+    <pre id="pe-test-preview" style="min-height:54px;overflow:auto;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;padding:8px;font-size:11px;color:var(--tx2);white-space:pre-wrap;word-break:break-word">Add a rule to preview a test frame.</pre>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+      <button class="sniff-btn" onclick="peStartTest()">Start Test</button>
+      <button class="sniff-btn" onclick="peStopTest()">Stop Test</button>
+      <span id="pe-test-status" style="font-size:11px;color:var(--tx3)">Idle</span>
+    </div>
+  </div>
   <div style="display:flex;gap:6px;margin-top:10px">
     <button class="sniff-btn" onclick="peInstall()">Install</button>
     <button class="sniff-btn" onclick="peDownload()">Download JSON</button>
@@ -548,7 +566,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <div class="card-meta" id="can-pins-status">default</div>
   </div>
   <div id="can-pins-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
-    GPIO pins for the CAN transceiver (TWAI). Persisted in NVS so they survive OTA updates. Leave empty to use the firmware&#39;s compile-time defaults. <b>Wrong pins disable CAN</b> &mdash; recovery needs a USB re-flash. GPIO 6&ndash;11 are reserved for SPI flash.
+    GPIO pins for the CAN transceiver (TWAI). Persisted in NVS so they survive OTA updates. Leave empty to use the firmware&#39;s compile-time defaults. <b>Wrong pins disable CAN</b> &mdash; recovery needs a USB re-flash. On most ESP32 boards GPIO 6&ndash;11 remain reserved for SPI flash.
   </div>
   <div style="display:flex;gap:6px;align-items:center">
     <input class="sniff-input" id="can-tx" type="number" min="0" max="39" placeholder="TX GPIO" style="flex:1">
@@ -599,6 +617,9 @@ let sniffShowDbcIds=localStorage.getItem('sniffIdMode')==='dbc';
 let otaFile=null;
 let otaUser=localStorage.getItem('otaU')||'',otaPass=localStorage.getItem('otaP')||'';
 let logSince=0;
+let installedPlugins=[];
+let peLoadedPluginName='';
+let peTestPollTimer=null;
 let dashboardPollTimers=[];
 let dashboardPollFailures=0;
 let dashboardPollStopped=false;
@@ -1119,16 +1140,17 @@ async function pollPlugins(){
   return runPoll('plugins',async()=>{
     try{
       const d=await fetchPollJson('/plugins',2000);
+      installedPlugins=d.plugins||[];
       const max=d.maxPlugins||0;
-      $('plg-count').textContent=max?d.plugins.length+' / '+max+' installed':d.plugins.length+' installed';
+      $('plg-count').textContent=max?installedPlugins.length+' / '+max+' installed':installedPlugins.length+' installed';
       if($('plg-limit')){
-        const full=max&&d.plugins.length>=max;
+        const full=max&&installedPlugins.length>=max;
         $('plg-limit').textContent=max?(full?'Maximum '+max+' plugins reached. Remove one before installing another.':'Maximum '+max+' plugins total. Remove one before installing another.'):'Maximum plugins: --';
         $('plg-limit').style.color=full?'var(--err)':'var(--tx3)';
       }
       const el=$('plg-list');
-      if(!d.plugins.length){el.innerHTML='<div style="font-size:12px;color:var(--tx3);text-align:center;padding:12px">No plugins installed</div>';}
-      else{el.innerHTML=d.plugins.map((p,i)=>{
+      if(!installedPlugins.length){el.innerHTML='<div style="font-size:12px;color:var(--tx3);text-align:center;padding:12px">No plugins installed</div>';}
+      else{el.innerHTML=installedPlugins.map((p,i)=>{
         let hasConflict=p.details&&p.details.some(r=>r.conflict);
         let row='<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--bd)">';
         row+='<div class="feat-row"><div class="feat-info" style="cursor:pointer" onclick="toggleDetails('+i+')">';
@@ -1138,6 +1160,7 @@ async function pollPlugins(){
         row+='<div class="feat-desc">'+p.rules+' rule'+(p.rules!==1?'s':'')+(p.author?' &bull; '+p.author:'')+' &bull; <span style="color:var(--acc);cursor:pointer">details</span></div>';
         row+='</div>';
         row+='<label class="tgl"><input type="checkbox" '+(p.enabled?'checked':'')+' onchange="togglePlugin('+i+')"><div class="tgl-track"><div class="tgl-thumb"></div></div></label>';
+        row+='<button onclick="peLoadInstalledPlugin('+i+')" style="margin-left:8px;padding:4px 8px;border:1px solid var(--bd);border-radius:5px;background:transparent;color:var(--acc);cursor:pointer;font-size:10px;font-family:inherit">Edit</button>';
         row+='<button onclick="removePlugin('+i+')" style="margin-left:8px;padding:4px 8px;border:1px solid var(--errBd);border-radius:5px;background:transparent;color:var(--err);cursor:pointer;font-size:10px;font-family:inherit">X</button></div>';
         if(p.details){
           row+='<div id="plg-det-'+i+'" style="display:none">';
@@ -1261,6 +1284,17 @@ let peState={rules:[]};
 function peGetMeta(){return{name:($('pe-name').value||'').trim(),version:($('pe-version').value||'1.0').trim(),author:($('pe-author').value||'').trim()};}
 function peParseInt(s,def){if(typeof s==='number')return s;if(s===''||s==null)return def;s=String(s).trim();let n=s.toLowerCase().startsWith('0x')?parseInt(s,16):parseInt(s,10);return isNaN(n)?def:n;}
 function peSetStatus(msg,kind){const el=$('pe-status');el.textContent=msg;el.style.color=kind==='ok'?'var(--ok)':kind==='err'?'var(--err)':kind==='acc'?'var(--acc)':'var(--tx3)';}
+function peSetTestStatus(msg,kind){const el=$('pe-test-status');el.textContent=msg;el.style.color=kind==='ok'?'var(--ok)':kind==='err'?'var(--err)':kind==='acc'?'var(--acc)':'var(--tx3)';}
+function peHasContent(){const meta=peGetMeta();return !!(meta.name||meta.author||meta.version!=='1.0'||peState.rules.length);}
+function peRuleLabel(r,i){return 'Rule '+(i+1)+' · CAN 0x'+toHex((r.id||0)&0x7FF,3)+(r.mux>=0?' · mux '+r.mux:'');}
+function peUpdateRuleOptions(){
+  const sel=$('pe-test-rule');if(!sel)return;
+  const prev=parseInt(sel.value,10);
+  if(!peState.rules.length){sel.disabled=true;sel.innerHTML='<option value="">No rules</option>';return;}
+  sel.disabled=false;
+  sel.innerHTML=peState.rules.map((r,i)=>'<option value="'+i+'">'+peRuleLabel(r,i)+'</option>').join('');
+  sel.value=String(!isNaN(prev)&&prev>=0&&prev<peState.rules.length?prev:0);
+}
 function peAddRule(){if(peState.rules.length>=16){peSetStatus('Max 16 rules per plugin','err');return;}peState.rules.push({id:0,mux:-1,send:true,ops:[]});peRender();}
 function peRemoveRule(i){peState.rules.splice(i,1);peRender();}
 function peAddOp(i,type){const r=peState.rules[i];if(!r)return;if(r.ops.length>=8){peSetStatus('Max 8 ops per rule','err');return;}
@@ -1290,7 +1324,7 @@ function peUpdateField(i,j,field,value){
   else if(field==='byte')op.byte=Math.max(0,Math.min(7,peParseInt(value,0)));
   else if(field==='val')op.val=Math.max(0,Math.min(op.type==='set_bit'?1:255,peParseInt(value,0)));
   else if(field==='mask')op.mask=Math.max(0,Math.min(255,peParseInt(value,255)));
-  peRenderPreview();
+  peRenderPreview();peUpdateTestPreview();
 }
 function peOpRow(i,j,op){
   const sel='<select class="sniff-input" style="width:90px" onchange="peUpdateField('+i+','+j+',\'type\',this.value)">'+
@@ -1337,7 +1371,9 @@ function peRender(){
   if(!peState.rules.length){el.innerHTML='<div style="font-size:12px;color:var(--tx3);text-align:center;padding:12px;border:1px dashed var(--bd);border-radius:6px">No rules yet. Click &ldquo;+ Add Rule&rdquo; below.</div>';}
   else{el.innerHTML=peState.rules.map((r,i)=>peRuleBlock(i,r)).join('');}
   $('pe-count').textContent=peState.rules.length+' rule'+(peState.rules.length===1?'':'s');
+  peUpdateRuleOptions();
   peRenderPreview();
+  peUpdateTestPreview();
 }
 function peBuildObj(){
   const meta=peGetMeta();
@@ -1359,6 +1395,80 @@ function peBuildObj(){
   return obj;
 }
 function peRenderPreview(){$('pe-preview').textContent=JSON.stringify(peBuildObj(),null,2);}
+function peParseTestBytes(){
+  const raw=($('pe-test-data').value||'').trim();
+  const parts=raw?raw.split(/[\s,]+/).filter(Boolean):[];
+  if(parts.length>8)return{error:'Base data supports max 8 bytes'};
+  const bytes=[];
+  for(const part of parts){
+    const value=peParseInt(part,NaN);
+    if(isNaN(value)||value<0||value>255)return{error:'Base data must contain bytes 0-255'};
+    bytes.push(value&255);
+  }
+  while(bytes.length<8)bytes.push(0);
+  return{bytes};
+}
+function peComputeChecksum(id,data){
+  let sum=(id&0xFF)+((id>>8)&0xFF);
+  for(let i=0;i<8;i++){if(i!==7)sum+=data[i]&255;}
+  return sum&255;
+}
+function peApplyRuleToBytes(rule,baseBytes){
+  const data=(baseBytes||[]).slice(0,8);
+  while(data.length<8)data.push(0);
+  if(rule.mux>=0)data[0]=(data[0]&0xF8)|(rule.mux&0x07);
+  (rule.ops||[]).forEach(op=>{
+    if(op.type==='set_bit'){
+      const byte=Math.floor((op.bit||0)/8),bit=(op.bit||0)%8,mask=1<<bit;
+      if(byte>=0&&byte<8)data[byte]=op.val?(data[byte]|mask):((data[byte]&(~mask))&255);
+    }else if(op.type==='set_byte'){
+      const byte=op.byte|0,mask=((typeof op.mask==='number'?op.mask:255)&255),val=(op.val||0)&255;
+      if(byte>=0&&byte<8)data[byte]=((data[byte]&((~mask)&255))|(val&mask))&255;
+    }else if(op.type==='or_byte'){
+      const byte=op.byte|0;if(byte>=0&&byte<8)data[byte]=(data[byte]|((op.val||0)&255))&255;
+    }else if(op.type==='and_byte'){
+      const byte=op.byte|0;if(byte>=0&&byte<8)data[byte]=(data[byte]&((op.val||0)&255))&255;
+    }else if(op.type==='checksum'){
+      data[7]=peComputeChecksum(rule.id|0,data);
+    }
+  });
+  return data;
+}
+function peFormatBytes(bytes){return(bytes||[]).slice(0,8).map(b=>toHex((b||0)&255,2)).join(' ');}
+function peUpdateTestPreview(){
+  const el=$('pe-test-preview');if(!el)return;
+  if(!peState.rules.length){el.textContent='Add a rule to preview a test frame.';peSetTestStatus('Idle','');return;}
+  const idx=parseInt($('pe-test-rule').value,10);
+  if(isNaN(idx)||idx<0||idx>=peState.rules.length){el.textContent='Select a rule to test.';return;}
+  const parsed=peParseTestBytes();
+  if(parsed.error){el.textContent=parsed.error;return;}
+  const count=parseInt($('pe-test-count').value,10),interval=parseInt($('pe-test-interval').value,10);
+  if(isNaN(count)||count<1||count>200){el.textContent='Count must be 1-200.';return;}
+  if(isNaN(interval)||interval<10||interval>5000){el.textContent='Interval must be 10-5000 ms.';return;}
+  const rule=peState.rules[idx],out=peApplyRuleToBytes(rule,parsed.bytes);
+  el.textContent='Preview '+peRuleLabel(rule,idx)+'\nFrame: '+peFormatBytes(out)+'\nSend '+count+'x every '+interval+' ms';
+}
+function peStopTestPoll(){if(peTestPollTimer){clearInterval(peTestPollTimer);peTestPollTimer=null;}}
+async function pePollTestStatus(){
+  try{
+    const r=await fetch('/plugin_test_status');const d=await r.json();
+    if(d.id||d.data){$('pe-test-preview').textContent='Test CAN 0x'+toHex((d.id||0)&0x7FF,3)+'\nFrame: '+peFormatBytes(d.data||[])+(d.total?'\nProgress: '+d.sent+'/'+d.total:'');}
+    if(d.active){
+      peSetTestStatus('Running '+d.sent+'/'+d.total+' · every '+d.interval+' ms','acc');
+    }else{
+      peSetTestStatus(d.total?(d.sent<d.total?'Stopped '+d.sent+'/'+d.total:'Done '+d.sent+'/'+d.total):'Idle',d.total&&d.sent>=d.total?'ok':'');
+      peStopTestPoll();
+    }
+  }catch(e){}
+}
+function peLoadInstalledPlugin(idx){
+  const p=installedPlugins[idx];if(!p)return;
+  if(peHasContent()&&!confirm('Load installed plugin into the editor? Current editor contents will be replaced.'))return;
+  $('pe-name').value=p.name||'';$('pe-author').value=p.author||'';$('pe-version').value=p.version||'1.0';
+  peState={rules:(p.details||[]).map(r=>({id:r.id|0,mux:typeof r.mux==='number'?r.mux:-1,send:r.send!==false,ops:(r.ops||[]).map(op=>{const out={type:op.type};if(op.type==='set_bit'){out.bit=op.bit|0;out.val=op.val?1:0;}else if(op.type==='set_byte'){out.byte=op.byte|0;out.val=(op.val|0)&255;out.mask=((typeof op.mask==='number'?op.mask:255)|0)&255;}else if(op.type==='or_byte'||op.type==='and_byte'){out.byte=op.byte|0;out.val=(op.val|0)&255;}return out;})}))};
+  peLoadedPluginName=p.name||'';peStopTestPoll();peSetTestStatus('Idle','');peRender();peSetStatus('Loaded "'+p.name+'" into editor','ok');
+  $('pe-name').scrollIntoView({behavior:'smooth',block:'center'});
+}
 function peValidate(){
   const meta=peGetMeta();
   if(!meta.name)return 'Plugin name required';
@@ -1385,16 +1495,45 @@ async function peInstall(){
   if(err){peSetStatus(err,'err');return;}
   const obj=peBuildObj();
   try{const r=await fetch('/plugins');const d=await r.json();
-    if(d.plugins&&d.plugins.some(p=>p.name===obj.name)){
+    if(d.plugins&&d.plugins.some(p=>p.name===obj.name)&&obj.name!==peLoadedPluginName){
       if(!confirm('A plugin named "'+obj.name+'" already exists. Overwrite?'))return;
     }
   }catch(e){}
   peSetStatus('Installing...','acc');
   try{const r=await fetch('/plugin_upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)});
     const d=await r.json();
-    if(d.ok){peSetStatus('Installed!','ok');pollPlugins();}
+    if(d.ok){peLoadedPluginName=obj.name;peSetStatus('Installed!','ok');pollPlugins();}
     else{peSetStatus(d.error||'Install failed','err');}
   }catch(e){peSetStatus('Connection error','err');}
+}
+async function peStartTest(){
+  if(!peState.rules.length){peSetTestStatus('Add a rule first','err');return;}
+  const idx=parseInt($('pe-test-rule').value,10);
+  if(isNaN(idx)||idx<0||idx>=peState.rules.length){peSetTestStatus('Select a valid rule','err');return;}
+  const parsed=peParseTestBytes();
+  if(parsed.error){peSetTestStatus(parsed.error,'err');return;}
+  const count=parseInt($('pe-test-count').value,10),interval=parseInt($('pe-test-interval').value,10);
+  if(isNaN(count)||count<1||count>200){peSetTestStatus('Count must be 1-200','err');return;}
+  if(isNaN(interval)||interval<10||interval>5000){peSetTestStatus('Interval must be 10-5000 ms','err');return;}
+  peSetTestStatus('Starting...','acc');
+  try{
+    const r=await fetch('/plugin_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plugin:peBuildObj(),rule:idx,data:parsed.bytes,count:count,interval:interval})});
+    const d=await r.json();
+    if(d.ok){
+      $('pe-test-preview').textContent='Test CAN 0x'+toHex((d.id||0)&0x7FF,3)+'\nFrame: '+peFormatBytes(d.data||[])+'\nProgress: '+(d.sent||0)+'/'+(d.total||0);
+      peSetTestStatus(d.active?('Running '+(d.sent||0)+'/'+(d.total||0)+' · every '+(d.interval||interval)+' ms'):'Done','acc');
+      peStopTestPoll();peTestPollTimer=setInterval(pePollTestStatus,500);pePollTestStatus();
+    }else{
+      peSetTestStatus(d.error||'Test failed','err');
+    }
+  }catch(e){peSetTestStatus('Connection error','err');}
+}
+async function peStopTest(){
+  try{
+    const r=await fetch('/plugin_test_stop',{method:'POST'});const d=await r.json();
+    peStopTestPoll();
+    peSetTestStatus(d.total?(d.sent<d.total?'Stopped '+d.sent+'/'+d.total:'Done '+d.sent+'/'+d.total):'Idle',d.total&&d.sent>=d.total?'ok':'');
+  }catch(e){peSetTestStatus('Connection error','err');}
 }
 function peDownload(){
   const err=peValidate();
@@ -1407,9 +1546,9 @@ function peDownload(){
 }
 function peReset(){
   if(peState.rules.length&&!confirm('Discard current editor contents?'))return;
-  peState={rules:[]};
+  peState={rules:[]};peLoadedPluginName='';peStopTestPoll();
   $('pe-name').value='';$('pe-author').value='';$('pe-version').value='1.0';
-  peRender();peSetStatus('','');
+  peRender();peSetStatus('','');peSetTestStatus('Idle','');
 }
 
 dashboardPollTimers.push(setInterval(poll,2000));dashboardPollTimers.push(setInterval(pollLog,3000));dashboardPollTimers.push(setInterval(pollSniffer,1000));dashboardPollTimers.push(setInterval(pollPlugins,10000));dashboardPollTimers.push(setInterval(loadWifiStatus,10000));dashboardPollTimers.push(setInterval(loadApStatus,10000));

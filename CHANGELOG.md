@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0-beta.11] - 2026-04-17
+
+### Added
+- Plugin Editor can now load installed plugins for in-place editing
+- Plugin Editor now includes a rule test tool that can send a generated CAN frame multiple times at a chosen interval
+
+### Changed
+- Reinstalling an existing plugin by name now preserves its enabled/disabled state and still works when the plugin list is already full
+
+### Fixed
+- Atom S3 and Atom Lite dashboard builds can now save CAN pin settings that use GPIO 6-11 instead of being blocked by the generic ESP32 flash-pin restriction
+
 ## [2.2.0-beta.10] - 2026-04-17
 
 ### Fixed
