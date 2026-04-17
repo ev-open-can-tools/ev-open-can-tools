@@ -37,6 +37,12 @@
 #define DASH_DEFAULT_HW 1
 #endif
 
+#if defined(DASH_INJECTION_ON_BOOT)
+static constexpr bool kDashInjectionDefaultEnabled = true;
+#else
+static constexpr bool kDashInjectionDefaultEnabled = false;
+#endif
+
 #if defined(DRIVER_TWAI)
 #ifndef TWAI_TX_PIN
 #define TWAI_TX_PIN GPIO_NUM_5
@@ -57,10 +63,10 @@ static Preferences prefs;
 struct Features
 {
     bool ADEnabled = true;
-    bool nagSuppress = true;
-    bool summonUnlock = true;
-    bool isaSuppress = false;
-    bool evDetection = false;
+    bool nagSuppress = kEnhancedAutopilotDefaultEnabled;
+    bool summonUnlock = kEnhancedAutopilotDefaultEnabled;
+    bool isaSuppress = kIsaSpeedChimeSuppressDefaultEnabled;
+    bool evDetection = kEmergencyVehicleDetectionDefaultEnabled;
     uint8_t hw4Offset = 0;
 };
 
@@ -95,8 +101,8 @@ static const uint8_t mcpEflg = 0;
 #endif
 
 static uint8_t hwMode = DASH_DEFAULT_HW;
-static bool canActive = true;
-static bool bypassTlssc = false;
+static bool canActive = kDashInjectionDefaultEnabled;
+static bool bypassTlssc = kBypassTlsscRequirementDefaultEnabled;
 
 // WiFi AP (hotspot) — overridable at runtime
 static char apSSID[33] = "";
@@ -120,6 +126,7 @@ static IPAddress staDNS(0, 0, 0, 0);
 static void dashSwapHandler(uint8_t mode);
 static void dashApplyFilters();
 static void dashReapplyFiltersWithPlugins();
+static void dashApplyRuntimeState();
 
 // CAN recorder
 #define REC_CAP 2000
@@ -280,6 +287,34 @@ static String jsonEscape(const String &s)
     return out;
 }
 
+static bool dashCheckADEnabled()
+{
+    return canActive && feat.ADEnabled;
+}
+
+static bool dashCheckNagEnabled()
+{
+    return canActive && feat.nagSuppress;
+}
+
+static void dashApplyRuntimeState()
+{
+    bypassTlsscRequirementRuntime = canActive && bypassTlssc;
+    emergencyVehicleDetectionRuntime = canActive && feat.evDetection;
+    isaSpeedChimeSuppressRuntime = canActive && feat.isaSuppress;
+    enhancedAutopilotRuntime = canActive && (feat.nagSuppress || feat.summonUnlock);
+    nagKillerRuntime = canActive && kNagKillerDefaultEnabled;
+    hw4OffsetRuntime = canActive ? feat.hw4Offset : 0;
+
+    if (dashHandler)
+    {
+        dashHandler->checkAD = dashCheckADEnabled;
+        dashHandler->checkNag = dashCheckNagEnabled;
+        if (!canActive || !feat.ADEnabled)
+            dashHandler->ADEnabled = false;
+    }
+}
+
 // Store config
 static void dashSavePrefs()
 {
@@ -303,27 +338,19 @@ static void dashLoadPrefs()
 {
     prefs.begin(PREFS_NS, false);
     hwMode = prefs.getUChar("hw", DASH_DEFAULT_HW);
-    bool canActiveLoaded = prefs.getBool("can", true);
-    bypassTlssc = prefs.getBool("fAD", false);
+    canActive = prefs.getBool("can", kDashInjectionDefaultEnabled);
+    bypassTlssc = prefs.getBool("fAD", kBypassTlsscRequirementDefaultEnabled);
     feat.ADEnabled = prefs.getBool("f_AD", true);
-    feat.nagSuppress = prefs.getBool("f_nag", true);
-    feat.summonUnlock = prefs.getBool("f_sum", true);
-    enhancedAutopilotRuntime = feat.nagSuppress || feat.summonUnlock;
-    feat.isaSuppress = prefs.getBool("f_isa", false);
-    feat.evDetection = prefs.getBool("f_evd", false);
+    feat.nagSuppress = prefs.getBool("f_nag", kEnhancedAutopilotDefaultEnabled);
+    feat.summonUnlock = prefs.getBool("f_sum", kEnhancedAutopilotDefaultEnabled);
+    feat.isaSuppress = prefs.getBool("f_isa", kIsaSpeedChimeSuppressDefaultEnabled);
+    feat.evDetection = prefs.getBool("f_evd", kEmergencyVehicleDetectionDefaultEnabled);
     feat.hw4Offset = prefs.getUChar("f_h4o", 0);
     speedProfileLocked = prefs.getBool("sp_lock", false);
     uint8_t sp = prefs.getUChar("sp", 1);
     bool ep = prefs.getBool("eprn", true);
 
-    canActive = true;
-    if (!canActiveLoaded)
-        dashLog("[WARN] canActive was OFF (prior emergency stop) -- auto-reset to ON");
-
-    bypassTlsscRequirementRuntime = bypassTlssc;
-    emergencyVehicleDetectionRuntime = feat.evDetection;
-    isaSpeedChimeSuppressRuntime = feat.isaSuppress;
-    hw4OffsetRuntime = feat.hw4Offset;
+    dashApplyRuntimeState();
     if (dashHandler)
     {
         dashHandler->speedProfile = sp;
@@ -361,7 +388,8 @@ static void dashLoadPrefs()
     prefs.end();
 
     dashLog("[BOOT] Prefs loaded HW=" + String(hwMode) + " SP=" + String(sp));
-    dashLog("[BOOT] canActive=YES bypassTlssc=" + String(bypassTlssc ? "YES" : "NO"));
+    dashLog("[BOOT] canActive=" + String(canActive ? "YES" : "NO") +
+            " bypassTlssc=" + String(bypassTlssc ? "YES" : "NO"));
     dashLog("[BOOT] feat: AD=" + String(feat.ADEnabled ? "ON" : "OFF") +
             " nag=" + String(feat.nagSuppress ? "ON" : "OFF") +
             " summon=" + String(feat.summonUnlock ? "ON" : "OFF") +
@@ -565,6 +593,7 @@ static void handleConfig()
         dashSwapHandler(hwMode);
         dashApplyFilters();
     }
+    dashApplyRuntimeState();
     dashSavePrefs();
     server.send(200, "application/json", "{\"ok\":true}");
 }
@@ -579,38 +608,32 @@ static void handleFeatures()
     if (server.hasArg("nag"))
     {
         feat.nagSuppress = server.arg("nag") == "1";
-        enhancedAutopilotRuntime = feat.nagSuppress || feat.summonUnlock;
         dashLog("[FEAT] Nag suppress " + String(feat.nagSuppress ? "ON" : "OFF"));
     }
     if (server.hasArg("summon"))
     {
         feat.summonUnlock = server.arg("summon") == "1";
-        enhancedAutopilotRuntime = feat.nagSuppress || feat.summonUnlock;
         dashLog("[FEAT] Summon unlock " + String(feat.summonUnlock ? "ON" : "OFF"));
     }
     if (server.hasArg("isa"))
     {
         feat.isaSuppress = server.arg("isa") == "1";
-        isaSpeedChimeSuppressRuntime = feat.isaSuppress;
         dashLog("[FEAT] ISA suppress " + String(feat.isaSuppress ? "ON" : "OFF"));
     }
     if (server.hasArg("evd"))
     {
         feat.evDetection = server.arg("evd") == "1";
-        emergencyVehicleDetectionRuntime = feat.evDetection;
         dashLog("[FEAT] EV detection " + String(feat.evDetection ? "ON" : "OFF"));
     }
     if (server.hasArg("h4o"))
     {
         uint8_t v = (uint8_t)constrain(server.arg("h4o").toInt(), 0, 63);
         feat.hw4Offset = v;
-        hw4OffsetRuntime = v;
         dashLog("[FEAT] HW4 offset raw=" + String(v) + (v == 0 ? " (off)" : ""));
     }
     if (server.hasArg("fAD"))
     {
         bypassTlssc = server.arg("fAD") == "1";
-        bypassTlsscRequirementRuntime = bypassTlssc;
         dashLog("[FEAT] Bypass TLSSC " + String(bypassTlssc ? "ON" : "OFF"));
     }
     if (server.hasArg("eprn") && dashHandler)
@@ -619,6 +642,7 @@ static void handleFeatures()
         dashHandler->enablePrint = ep;
         dashLog("[FEAT] Logging " + String(ep ? "ON" : "OFF"));
     }
+    dashApplyRuntimeState();
     dashSavePrefs();
     server.send(200, "application/json", "{\"ok\":true}");
 }
@@ -758,17 +782,11 @@ static void handleRecDownload()
 
 static void handleDisable()
 {
-    feat.ADEnabled = false;
-    feat.nagSuppress = false;
-    feat.summonUnlock = false;
-    feat.isaSuppress = false;
-    feat.evDetection = false;
     canActive = false;
-    if (dashHandler)
-        dashHandler->ADEnabled = false;
+    dashApplyRuntimeState();
     dashSavePrefs();
-    dashLog("[CFG] EMERGENCY STOP -- all features disabled");
-    server.send(200, "text/plain", "All injection disabled.");
+    dashLog("[CFG] Stop injecting");
+    server.send(200, "text/plain", "Injection stopped.");
 }
 
 static void handleReboot()
@@ -1916,6 +1934,7 @@ static void dashSwapHandler(uint8_t mode)
     }
     appActiveHandler = next;
     dashHandler = next;
+    dashApplyRuntimeState();
     // Update driver acceptance filters for the new handler.
     // For MCP2515 (ext) dashApplyFilters() will also fine-tune the hardware
     // filter registers. For TWAI and old MCP2515 this abstract call is enough.

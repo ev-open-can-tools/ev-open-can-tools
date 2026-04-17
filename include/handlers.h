@@ -72,7 +72,7 @@ struct LegacyHandler : public CarManagerBase
                 return;
             auto index = readMuxID(frame);
             if (index == 0)
-                ADEnabled = isADSelectedInUI(frame);
+                ADEnabled = isADSelectedInUI(frame) && (!checkAD || checkAD());
             if (index == 0 && ADEnabled && (!checkAD || checkAD()))
             {
                 setBit(frame, 46, true);
@@ -224,7 +224,7 @@ struct HW3Handler : public CarManagerBase
                 return;
             auto index = readMuxID(frame);
             if (index == 0)
-                ADEnabled = isADSelectedInUI(frame);
+                ADEnabled = isADSelectedInUI(frame) && (!checkAD || checkAD());
             if (index == 0 && ADEnabled && (!checkAD || checkAD()))
             {
                 speedOffset = std::max(std::min(((uint8_t)((frame.data[3] >> 1) & 0x3F) - 30) * 5, 100), 0);
@@ -508,7 +508,7 @@ struct HW4Handler : public CarManagerBase
                 return;
             auto index = readMuxID(frame);
             if (index == 0)
-                ADEnabled = isADSelectedInUI(frame);
+                ADEnabled = isADSelectedInUI(frame) && (!checkAD || checkAD());
             if (index == 0 && ADEnabled && (!checkAD || checkAD()))
             {
                 setBit(frame, 46, true);
@@ -546,7 +546,7 @@ struct HW4Handler : public CarManagerBase
                         onSend(1, true);
                 }
             }
-            if (index == 2 && ADEnabled)
+            if (index == 2 && ADEnabled && (!checkAD || checkAD()))
             {
                 frame.data[7] &= ~(0x07 << 4);
                 frame.data[7] |= (speedProfile & 0x07) << 4;

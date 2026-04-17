@@ -8,6 +8,16 @@
 static MockDriver mock;
 static LegacyHandler handler;
 
+static bool denyAD()
+{
+    return false;
+}
+
+static bool denyNag()
+{
+    return false;
+}
+
 void setUp()
 {
     mock.reset();
@@ -94,6 +104,18 @@ void test_legacy_AD_sets_speed_profile_in_frame()
     TEST_ASSERT_EQUAL_HEX8(0x04, mock.sent[0].data[6] & 0x06);
 }
 
+void test_legacy_checkAD_blocks_mux0_send()
+{
+    handler.checkAD = denyAD;
+
+    CanFrame f = {.id = 1006};
+    f.data[0] = 0x00;
+    f.data[4] = 0x40;
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_FALSE(handler.ADEnabled);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
 // --- Nag suppression (mux 1) ---
 
 void test_legacy_nag_suppression_clears_bit19_on_mux1()
@@ -104,6 +126,17 @@ void test_legacy_nag_suppression_clears_bit19_on_mux1()
     handler.handleMessage(f, mock);
     TEST_ASSERT_EQUAL(1, mock.sent.size());
     TEST_ASSERT_FALSE((mock.sent[0].data[2] >> 3) & 0x01);
+}
+
+void test_legacy_checkNag_blocks_mux1_send()
+{
+    handler.checkNag = denyNag;
+
+    CanFrame f = {.id = 1006};
+    f.data[0] = 0x01;
+    setBit(f, 19, true);
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
 }
 
 // --- No sends on unrelated CAN IDs ---
@@ -145,8 +178,10 @@ int main()
     RUN_TEST(test_legacy_no_send_when_AD_disabled);
     RUN_TEST(test_legacy_AD_sets_bit46);
     RUN_TEST(test_legacy_AD_sets_speed_profile_in_frame);
+    RUN_TEST(test_legacy_checkAD_blocks_mux0_send);
 
     RUN_TEST(test_legacy_nag_suppression_clears_bit19_on_mux1);
+    RUN_TEST(test_legacy_checkNag_blocks_mux1_send);
     RUN_TEST(test_legacy_ignores_unrelated_can_id);
 
     return UNITY_END();

@@ -314,7 +314,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   </div>
 
   <div class="btn-row">
-    <button class="btn btn-stop" onclick="emergencyStop()">Emergency Stop</button>
+    <button class="btn btn-stop" id="btn-stop" style="display:none" onclick="emergencyStop()">Stop Injecting</button>
     <button class="btn" id="btn-resume" style="display:none;background:var(--accBg);color:var(--acc);border:1px solid var(--accBd)" onclick="resumeInj()">Resume Injection</button>
     <button class="btn btn-reboot" onclick="reboot()">Reboot</button>
   </div>
@@ -645,6 +645,11 @@ function setHW(v){state.hw=v;updSeg($('hw-seg'),v,'hw-btn');buildPills();updateH
 function setSP(v){state.sp=v;state.spl=true;buildPills();pushCfg();}
 function setSPL(v){state.spl=v;buildPills();pushCfg();}
 
+function updateInjectButtons(active){
+  $('btn-stop').style.display=active?'':'none';
+  $('btn-resume').style.display=active?'none':'';
+}
+
 async function pushCfg(){
   const body='hw='+state.hw+'&sp='+state.sp+'&can='+(state.can?'1':'0')+'&spl='+(state.spl?'1':'0');
   try{await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});}catch(e){}
@@ -663,7 +668,7 @@ async function pushFeat(){
   poll();
 }
 
-async function emergencyStop(){if(!confirm('Emergency stop: disable all injection?'))return;try{await fetch('/disable',{method:'POST'});}catch(e){}poll();}
+async function emergencyStop(){if(!confirm('Stop injecting? This remains disabled after reboot until you press Resume Injection.'))return;try{await fetch('/disable',{method:'POST'});}catch(e){}poll();}
 async function resumeInj(){try{await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'hw='+state.hw+'&sp='+state.sp+'&can=1'});}catch(e){}poll();}
 async function reboot(){if(!confirm('Reboot device?'))return;try{await fetch('/reboot',{method:'POST'});}catch(e){}}
 
@@ -815,7 +820,7 @@ async function poll(){
     renderEflg(d.eflg);
     if(d.mux){for(let i=0;i<3;i++){$(('m'+i+'rx')).textContent=d.mux[i].rx;$(('m'+i+'tx')).textContent=d.mux[i].tx;const e=$(('m'+i+'err'));e.textContent=d.mux[i].err;e.style.color=d.mux[i].err>0?'var(--err)':'';}}
     state.hw=d.hw;state.sp=d.sp;state.can=d.ci;
-    $('btn-resume').style.display=d.ci?'none':'';
+    updateInjectButtons(d.ci);
     updSeg($('hw-seg'),d.hw,'hw-btn');buildPills();updateHW4(d.hw);
     if(d.feat){$('tgl-AD').checked=d.feat.AD;$('tgl-nag').checked=d.feat.nag;$('tgl-summon').checked=d.feat.summon;$('tgl-isa').checked=d.feat.isa;$('tgl-evd').checked=d.feat.evd;if(typeof d.feat.h4o!=='undefined'){state.h4o=d.feat.h4o;buildPills();}if(typeof d.feat.spl!=='undefined'){state.spl=d.feat.spl;}}
     if(typeof d.fAD!=='undefined')$('tgl-fAD').checked=d.fAD;

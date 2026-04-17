@@ -8,6 +8,11 @@
 static MockDriver mock;
 static HW4Handler handler;
 
+static bool denyInjection()
+{
+    return false;
+}
+
 void setUp()
 {
     mock.reset();
@@ -123,6 +128,25 @@ void test_hw4_no_send_when_AD_disabled_mux0()
     f.data[4] = 0x00;
     handler.handleMessage(f, mock);
     TEST_ASSERT_FALSE(handler.ADEnabled);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
+void test_hw4_checkAD_blocks_mux0_and_mux2_send()
+{
+    handler.checkAD = denyInjection;
+
+    CanFrame f0 = {.id = 1021};
+    f0.data[0] = 0x00;
+    f0.data[4] = 0x40;
+    handler.handleMessage(f0, mock);
+    TEST_ASSERT_FALSE(handler.ADEnabled);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+
+    mock.reset();
+    handler.ADEnabled = true;
+    CanFrame f2 = {.id = 1021};
+    f2.data[0] = 0x02;
+    handler.handleMessage(f2, mock);
     TEST_ASSERT_EQUAL(0, mock.sent.size());
 }
 
@@ -321,6 +345,7 @@ int main()
     RUN_TEST(test_hw4_AD_mux0_sets_emergency_bit59);
     RUN_TEST(test_hw4_AD_mux0_skips_emergency_bit59_when_runtime_disabled);
     RUN_TEST(test_hw4_no_send_when_AD_disabled_mux0);
+    RUN_TEST(test_hw4_checkAD_blocks_mux0_and_mux2_send);
 
     RUN_TEST(test_hw4_nag_suppression_clears_bit19_sets_bit47);
     RUN_TEST(test_hw4_nag_suppression_skips_mux1_changes_when_eap_runtime_disabled);
