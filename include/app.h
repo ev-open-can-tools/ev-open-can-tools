@@ -49,6 +49,7 @@ static void canISR() { frameReady = true; }
 
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD) && defined(DASH_RGB_STATUS_LED)
 static void appRefreshStatusLed(bool force = false);
+static void appWriteStatusLed(uint8_t red, uint8_t green, uint8_t blue);
 #endif
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD) && defined(DASH_INJECTION_TOGGLE_PIN)
 static void appPollInjectionToggleButton();
@@ -59,6 +60,15 @@ static void appPollInjectionToggleButton();
 #endif
 
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD) && defined(DASH_RGB_STATUS_LED)
+static void appWriteStatusLed(uint8_t red, uint8_t green, uint8_t blue)
+{
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
+    rgbLedWrite(PIN_LED, red, green, blue);
+#else
+    neopixelWrite(PIN_LED, red, green, blue);
+#endif
+}
+
 static void appRefreshStatusLed(bool force)
 {
     static bool known = false;
@@ -73,7 +83,7 @@ static void appRefreshStatusLed(bool force)
     if (!force && known && lastInjecting == injecting)
         return;
 
-    rgbLedWrite(PIN_LED, injecting ? 0 : kStatusLedLevel, injecting ? kStatusLedLevel : 0, 0);
+    appWriteStatusLed(injecting ? 0 : kStatusLedLevel, injecting ? kStatusLedLevel : 0, 0);
     lastInjecting = injecting;
     known = true;
 }
