@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-04-18
+
+### Added
+- Dedicated documentation pages for build and flash setup, dashboard usage, and a docs index for GitHub Pages
+- Hardware-specific example plugins for HW3 and HW4 feature replacements, including AD activation, TLSSC bypass, nag suppression, Summon unlock, ISA chime suppression, emergency vehicle detection, and HW4 speed offsets
+
 ### Changed
 - Dashboard Features card now only exposes Enable Logging; the other vehicle overrides are no longer shown there
+- GitHub Actions are now split into separate workflows for tests, releases, and GitHub Pages deployment
+- Dashboard and README documentation now reflect the plugin-based override flow and current Pages structure
 
 ## [2.2.0] - 2026-04-18
 
