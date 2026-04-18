@@ -1,6 +1,6 @@
 # Plugin System
 
-[Project Home](../) | [Documentation](index.md) | [Dashboard Guide](dashboard.md) | [Build & Flash](building.md) | [Release Notes](../CHANGELOG.md)
+[Project Home](../) | [Documentation](index.md) | [Dashboard Guide](dashboard.md) | [Build & Flash](building.md) | [Release Notes](../CHANGELOG.md) | [Plugin repo](https://github.com/ev-open-can-tools/ev-open-can-tools-plugins)
 
 The plugin system allows you to create and share CAN frame modification rules as JSON files. Plugins are loaded at runtime on the ESP32 — no recompilation needed, and nothing has to be stored in this repository.
 
