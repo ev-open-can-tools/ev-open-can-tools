@@ -1,0 +1,75 @@
+name: Apply issue type label
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  label-by-type:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply label based on issue form content
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || "";
+            const issue_number = context.payload.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const typeLabels = {
+              "Bug": "bug",
+              "Feature Request": "enhancement",
+              "Task": "task",
+              "Documentation": "documentation"
+            };
+
+            let selectedType = null;
+
+            const match = body.match(/### Issue Type\s+([^\n\r]+)/);
+            if (match) {
+              selectedType = match[1].trim();
+            }
+
+            const newLabel = typeLabels[selectedType];
+
+            if (!newLabel) {
+              core.info("No matching issue type found.");
+              return;
+            }
+
+            const { data: issue } = await github.rest.issues.get({
+              owner,
+              repo,
+              issue_number
+            });
+
+            const existingLabels = issue.labels.map(label => label.name);
+            const allTypeLabels = Object.values(typeLabels);
+
+            for (const label of allTypeLabels) {
+              if (existingLabels.includes(label) && label !== newLabel) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner,
+                    repo,
+                    issue_number,
+                    name: label
+                  });
+                } catch (error) {
+                  core.warning(`Could not remove label ${label}: ${error.message}`);
+                }
+              }
+            }
+
+            if (!existingLabels.includes(newLabel)) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number,
+                labels: [newLabel]
+              });
+            }
