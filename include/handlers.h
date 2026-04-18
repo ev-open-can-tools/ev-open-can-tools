@@ -200,8 +200,9 @@ struct HW3Handler : public CarManagerBase
             }
             if (index == 1)
             {
+#if !defined(ESP32_DASHBOARD)
                 bool modified = false;
-#if defined(ENHANCED_AUTOPILOT) && !defined(ESP32_DASHBOARD)
+#if defined(ENHANCED_AUTOPILOT)
                 if (enhancedAutopilotRuntime)
                 {
                     setBit(frame, 19, false);
@@ -220,6 +221,7 @@ struct HW3Handler : public CarManagerBase
                     if (onSend)
                         onSend(1, true);
                 }
+#endif
             }
             if (index == 0 && enablePrint)
             {
@@ -338,10 +340,10 @@ struct HW4Handler : public CarManagerBase
     }
     uint8_t filterIdCount() const override { return 4; }
 #else
-            static constexpr uint32_t ids[] = {1016, 1021, 2047};
-            return ids;
-        }
-        uint8_t filterIdCount() const override { return 3; }
+        static constexpr uint32_t ids[] = {1016, 1021, 2047};
+        return ids;
+    }
+    uint8_t filterIdCount() const override { return 3; }
 #endif
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
@@ -443,8 +445,9 @@ struct HW4Handler : public CarManagerBase
             }
             if (index == 1)
             {
+#if !defined(ESP32_DASHBOARD)
                 bool modified = false;
-#if defined(ENHANCED_AUTOPILOT) && !defined(ESP32_DASHBOARD)
+#if defined(ENHANCED_AUTOPILOT)
                 if (enhancedAutopilotRuntime)
                 {
                     setBit(frame, 19, false);
@@ -464,6 +467,7 @@ struct HW4Handler : public CarManagerBase
                     if (onSend)
                         onSend(1, true);
                 }
+#endif
             }
             if (index == 0 && enablePrint)
             {
