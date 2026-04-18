@@ -1,0 +1,51 @@
+name: General Issue
+description: Create a new issue
+title: "[TYPE] "
+labels: []
+body:
+  - type: dropdown
+    id: type
+    attributes:
+      label: Issue Type
+      description: What type of issue is this?
+      options:
+        - Bug
+        - Feature Request
+        - Task
+        - Documentation
+    validations:
+      required: true
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: Short description of the issue
+      placeholder: Briefly describe the issue
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Provide a detailed explanation
+      placeholder: What happened? What do you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce (if applicable)
+      description: How can this be reproduced?
+      placeholder: |
+        1. Go to...
+        2. Click on...
+        3. See error...
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Logs, screenshots, or anything else
