@@ -8,7 +8,7 @@ The dashboard is available on ESP32 builds that include `ESP32_DASHBOARD`. It ru
 
 - **Hardware**: switch the active runtime mode between `Legacy`, `HW3`, and `HW4`
 - **Speed Profile**: follow the stalk automatically or lock a manual profile; HW4 adds `Max` and `Sloth`
-- **Features**: toggle AD activation, nag suppression, Summon EU unlock, TLSSC bypass, logging, and the HW4-only ISA / emergency-vehicle options and speed offset
+- **Features**: only `Enable Logging` remains on the main card; the other vehicle overrides are no longer exposed there
 - **Injection control**: stop or resume CAN injection without reflashing, then reboot from the UI when needed
 
 ## CAN Tools
@@ -33,6 +33,8 @@ The dashboard is available on ESP32 builds that include `ESP32_DASHBOARD`. It ru
 - **Plugin list**: inspect rules, enable or disable plugins, remove them, and spot overlaps with built-in firmware handlers
 - **Plugin Editor**: create plugins without hand-writing JSON, preview the result live, load an installed plugin back into the editor, and download the generated file
 - **Rule Test**: generate a frame from one editor rule and send it repeatedly with a chosen count and interval before installing the plugin
+- Plugin-based overrides such as nag suppression and Summon unlock can live here instead of on the main Features card
+- Build-default behavior still applies for the compiled firmware features that are no longer exposed as dashboard toggles
 
 ## Persistence Notes
 

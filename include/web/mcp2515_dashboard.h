@@ -314,9 +314,9 @@ static void dashApplyRuntimeState()
     bypassTlsscRequirementRuntime = canActive && bypassTlssc;
     emergencyVehicleDetectionRuntime = canActive && feat.evDetection;
     isaSpeedChimeSuppressRuntime = canActive && feat.isaSuppress;
-    enhancedAutopilotRuntime = canActive && (feat.nagSuppress || feat.summonUnlock);
+    enhancedAutopilotRuntime = false;
     nagKillerRuntime = canActive && kNagKillerDefaultEnabled;
-    hw4OffsetRuntime = canActive ? feat.hw4Offset : 0;
+    hw4OffsetRuntime = 0;
 
     if (dashHandler)
     {
@@ -375,13 +375,13 @@ static void dashLoadPrefs()
     prefs.begin(PREFS_NS, false);
     hwMode = prefs.getUChar("hw", DASH_DEFAULT_HW);
     canActive = prefs.getBool("can", kDashInjectionDefaultEnabled);
-    bypassTlssc = prefs.getBool("fAD", kBypassTlsscRequirementDefaultEnabled);
-    feat.ADEnabled = prefs.getBool("f_AD", true);
-    feat.nagSuppress = prefs.getBool("f_nag", kEnhancedAutopilotDefaultEnabled);
-    feat.summonUnlock = prefs.getBool("f_sum", kEnhancedAutopilotDefaultEnabled);
-    feat.isaSuppress = prefs.getBool("f_isa", kIsaSpeedChimeSuppressDefaultEnabled);
-    feat.evDetection = prefs.getBool("f_evd", kEmergencyVehicleDetectionDefaultEnabled);
-    feat.hw4Offset = prefs.getUChar("f_h4o", 0);
+    bypassTlssc = kBypassTlsscRequirementDefaultEnabled;
+    feat.ADEnabled = true;
+    feat.nagSuppress = false;
+    feat.summonUnlock = false;
+    feat.isaSuppress = kIsaSpeedChimeSuppressDefaultEnabled;
+    feat.evDetection = kEmergencyVehicleDetectionDefaultEnabled;
+    feat.hw4Offset = 0;
     speedProfileLocked = prefs.getBool("sp_lock", false);
     uint8_t sp = prefs.getUChar("sp", 1);
     bool ep = prefs.getBool("eprn", true);
@@ -691,42 +691,6 @@ static void handleConfig()
 
 static void handleFeatures()
 {
-    if (server.hasArg("AD"))
-    {
-        feat.ADEnabled = server.arg("AD") == "1";
-        dashLog("[FEAT] AD " + String(feat.ADEnabled ? "ON" : "OFF"));
-    }
-    if (server.hasArg("nag"))
-    {
-        feat.nagSuppress = server.arg("nag") == "1";
-        dashLog("[FEAT] Nag suppress " + String(feat.nagSuppress ? "ON" : "OFF"));
-    }
-    if (server.hasArg("summon"))
-    {
-        feat.summonUnlock = server.arg("summon") == "1";
-        dashLog("[FEAT] Summon unlock " + String(feat.summonUnlock ? "ON" : "OFF"));
-    }
-    if (server.hasArg("isa"))
-    {
-        feat.isaSuppress = server.arg("isa") == "1";
-        dashLog("[FEAT] ISA suppress " + String(feat.isaSuppress ? "ON" : "OFF"));
-    }
-    if (server.hasArg("evd"))
-    {
-        feat.evDetection = server.arg("evd") == "1";
-        dashLog("[FEAT] EV detection " + String(feat.evDetection ? "ON" : "OFF"));
-    }
-    if (server.hasArg("h4o"))
-    {
-        uint8_t v = (uint8_t)constrain(server.arg("h4o").toInt(), 0, 63);
-        feat.hw4Offset = v;
-        dashLog("[FEAT] HW4 offset raw=" + String(v) + (v == 0 ? " (off)" : ""));
-    }
-    if (server.hasArg("fAD"))
-    {
-        bypassTlssc = server.arg("fAD") == "1";
-        dashLog("[FEAT] Bypass TLSSC " + String(bypassTlssc ? "ON" : "OFF"));
-    }
     if (server.hasArg("eprn") && dashHandler)
     {
         bool ep = server.arg("eprn") == "1";

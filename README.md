@@ -4,7 +4,7 @@
 
 An open-source CAN bus modification tool for supported vehicles and ESP32/Feather CAN hardware. The firmware sits on the vehicle CAN bus, watches the frames it cares about, modifies the required bits or bytes, and retransmits the result in real time.
 
-ESP32 dashboard builds add a local web interface for runtime feature control, CAN diagnostics, plugins, WiFi management, and OTA firmware updates.
+ESP32 dashboard builds add a local web interface for runtime dashboard control, CAN diagnostics, plugins, WiFi management, and OTA firmware updates.
 
 ## Disclaimer
 
@@ -15,7 +15,7 @@ ESP32 dashboard builds add a local web interface for runtime feature control, CA
 ## Highlights
 
 - **Vehicle-side features**: AD activation, nag suppression, Actually Smart Summon EU unlock, speed profile mapping, HW4 ISA speed chime suppression, HW4 emergency vehicle detection, optional TLSSC bypass, and a dedicated Autosteer nag-killer build
-- **ESP32 dashboard**: runtime hardware mode switching, live status, feature toggles, CAN sniffer, CAN recorder, controller stats, live log, stop/resume injection, and reboot control
+- **ESP32 dashboard**: runtime hardware mode switching, live status, CAN sniffer, CAN recorder, controller stats, live log, stop/resume injection, and reboot control
 - **Connectivity and OTA**: configurable WiFi hotspot, hidden SSID support, WiFi STA with scan and optional static IP, GitHub release updates, beta channel, auto-update on boot, and manual `.bin` upload
 - **Plugin system**: install plugins by URL, file upload, or pasted JSON; inspect rules; detect firmware overlap; keep enable state across reboot; build plugins in the browser with the Plugin Editor; test generated frames before install
 - **Persistent settings**: WiFi hotspot, WiFi internet, CAN pins, update channel, auto-update, plugin enabled state, and other runtime settings are stored in NVS/SPIFFS where applicable

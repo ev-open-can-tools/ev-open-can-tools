@@ -255,68 +255,6 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 
   <div class="feat-row">
     <div class="feat-info">
-      <div class="feat-name">AD Activation</div>
-      <div class="feat-desc">Requires active AD subscription</div>
-    </div>
-    <label class="tgl"><input type="checkbox" id="tgl-AD" checked onchange="pushFeat()">
-      <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
-  </div>
-
-  <div class="feat-row">
-    <div class="feat-info">
-      <div class="feat-name">Nag Suppression</div>
-      <div class="feat-desc">Remove hands-on-wheel warning (ECE R79)</div>
-    </div>
-    <label class="tgl"><input type="checkbox" id="tgl-nag" checked onchange="pushFeat()">
-      <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
-  </div>
-
-  <div class="feat-row">
-    <div class="feat-info">
-      <div class="feat-name">Summon EU Unlock</div>
-      <div class="feat-desc">Remove Smart Summon distance restriction</div>
-    </div>
-    <label class="tgl"><input type="checkbox" id="tgl-summon" checked onchange="pushFeat()">
-      <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
-  </div>
-
-  <div class="feat-row hw4-only" id="row-isa">
-    <div class="feat-info">
-      <div class="feat-name">ISA Chime Suppress</div>
-      <div class="feat-desc">Disable speed limit warning chime</div>
-    </div>
-    <label class="tgl"><input type="checkbox" id="tgl-isa" onchange="pushFeat()">
-      <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
-  </div>
-
-  <div class="feat-row hw4-only" id="row-evd">
-    <div class="feat-info">
-      <div class="feat-name">Emergency Vehicle Detection</div>
-      <div class="feat-desc">Enable approaching EV detection</div>
-    </div>
-    <label class="tgl"><input type="checkbox" id="tgl-evd" onchange="pushFeat()">
-      <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
-  </div>
-
-  <div class="hw4-only" style="padding:12px 0;border-bottom:1px solid var(--bd)">
-    <div class="feat-info" style="margin-bottom:8px">
-      <div class="feat-name">Speed Offset</div>
-      <div class="feat-desc">Static offset injected on mux 2</div>
-    </div>
-    <div id="h4o-pills" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-  </div>
-
-  <div class="feat-row">
-    <div class="feat-info">
-      <div class="feat-name">Bypass TLSSC</div>
-      <div class="feat-desc">Bypass TLSSC requirement — enables AD without steering wheel check (persists reboot)</div>
-    </div>
-    <label class="tgl"><input type="checkbox" id="tgl-fAD" onchange="pushFeat()">
-      <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
-  </div>
-
-  <div class="feat-row">
-    <div class="feat-info">
       <div class="feat-name">Enable Logging</div>
       <div class="feat-desc">Toggle serial and dashboard log output</div>
     </div>
@@ -786,7 +724,6 @@ function buildPills(){
 
 function updateHW4(hw){
   document.querySelectorAll('.hw4-only').forEach(el=>el.classList.toggle('hidden',hw!==2));
-  ['tgl-isa','tgl-evd'].forEach(id=>{const e=$(id);if(e)e.disabled=hw!==2;});
 }
 
 function updSeg(el,v,cls){
@@ -826,14 +763,7 @@ async function pushCfg(){
 }
 
 async function pushFeat(){
-  const body='AD='+($('tgl-AD').checked?'1':'0')
-    +'&nag='+($('tgl-nag').checked?'1':'0')
-    +'&summon='+($('tgl-summon').checked?'1':'0')
-    +'&isa='+($('tgl-isa').checked?'1':'0')
-    +'&evd='+($('tgl-evd').checked?'1':'0')
-    +'&fAD='+($('tgl-fAD').checked?'1':'0')
-    +'&eprn='+($('tgl-eprn').checked?'1':'0')
-    +'&h4o='+state.h4o;
+  const body='eprn='+($('tgl-eprn').checked?'1':'0');
   try{await fetch('/features',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});}catch(e){}
   poll();
 }
@@ -998,8 +928,7 @@ async function poll(){
     updateInjectButtons(d.ci);
     updateSniffIdToggle();
     updSeg($('hw-seg'),d.hw,'hw-btn');buildPills();updateHW4(d.hw);
-    if(d.feat){$('tgl-AD').checked=d.feat.AD;$('tgl-nag').checked=d.feat.nag;$('tgl-summon').checked=d.feat.summon;$('tgl-isa').checked=d.feat.isa;$('tgl-evd').checked=d.feat.evd;if(typeof d.feat.h4o!=='undefined'){state.h4o=d.feat.h4o;buildPills();}if(typeof d.feat.spl!=='undefined'){state.spl=d.feat.spl;}}
-    if(typeof d.fAD!=='undefined')$('tgl-fAD').checked=d.fAD;
+    if(d.feat){if(typeof d.feat.h4o!=='undefined'){state.h4o=d.feat.h4o;buildPills();}if(typeof d.feat.spl!=='undefined'){state.spl=d.feat.spl;}}
     if(typeof d.eprn!=='undefined')$('tgl-eprn').checked=d.eprn;
     }catch(e){}
   });

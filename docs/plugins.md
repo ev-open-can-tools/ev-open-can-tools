@@ -127,6 +127,27 @@ Always place this as the **last** operation if the frame uses checksums.
 
 > **Note:** The following examples are for illustration purposes only and do not represent real, tested functionality. They demonstrate the plugin JSON syntax and available operations.
 
+### Dashboard feature replacement examples
+
+Example JSON files that match the dashboard features removed from the main Features card are stored in [`docs/examples/`](examples/).
+
+- `ad-activation-hw3.json`
+- `ad-activation-hw4.json`
+- `bypass-tlssc-hw3.json`
+- `bypass-tlssc-hw4.json`
+- `emergency-vehicle-detection-hw4.json`
+- `hw4-speed-offset-plus-5.json`
+- `hw4-speed-offset-plus-7.json`
+- `hw4-speed-offset-plus-10.json`
+- `hw4-speed-offset-plus-15.json`
+- `isa-chime-suppress-hw4.json`
+- `nag-suppression-hw3.json`
+- `nag-suppression-hw4.json`
+- `summon-eu-unlock-hw3.json`
+- `summon-eu-unlock-hw4.json`
+
+Use only the files that match your hardware and intended behavior. The firmware supports at most 8 installed plugins at a time.
+
 ### Example 1: ISA speed chime suppression
 
 Suppresses the ISA speed warning chime on HW4 by setting bit 13 on CAN ID 921 (DAS_status).
