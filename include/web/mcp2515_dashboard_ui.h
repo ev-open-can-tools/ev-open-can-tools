@@ -66,10 +66,14 @@ body{background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSyst
 hr{border:none;border-top:1px solid var(--bd);margin:16px}
 
 /* Cards */
-.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin:0 16px 12px}
-.card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin:0 16px 12px;overflow:hidden}
+.card-hdr{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;column-gap:8px;margin-bottom:14px}
 .card-title{font-size:13px;font-weight:600;color:var(--tx);text-transform:uppercase;letter-spacing:.5px}
 .card-meta{font-size:11px;color:var(--tx3)}
+.card-min-btn{padding:4px 8px;font-size:10px}
+.card.collapsed{padding-bottom:12px}
+.card.collapsed .card-hdr{margin-bottom:0}
+.card.collapsed>:not(.card-hdr){display:none !important}
 
 /* HW seg */
 .hw-seg{display:flex;background:var(--card2);border:1px solid var(--bd);border-radius:9px;padding:3px;gap:2px}
@@ -436,6 +440,16 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <input class="sniff-input" id="pe-author" placeholder="Author (optional)" oninput="peRenderPreview()">
     <input class="sniff-input" id="pe-version" placeholder="Version" value="1.0" oninput="peRenderPreview()">
   </div>
+  <div style="margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px">
+    <div class="feat-name" style="margin-bottom:4px">Quick Rule</div>
+    <div style="font-size:11px;color:var(--tx3);line-height:1.5;margin-bottom:8px">
+      Paste a shorthand line like <span style="font-family:monospace">0x7FF mux=2 byte[5] = 0x4C</span> to create one rule directly.
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <input class="sniff-input" id="pe-shortcut" placeholder="0x7FF mux=2 byte[5] = 0x4C (bit 2 flipped -> tier 3 SELF_DRIVING)" onkeydown="if(event.key==='Enter'){event.preventDefault();peAddRuleFromShortcut()}" style="flex:1">
+      <button class="sniff-btn" onclick="peAddRuleFromShortcut()">Add Shortcut</button>
+    </div>
+  </div>
   <div id="pe-rules"></div>
   <button class="sniff-btn" onclick="peAddRule()" style="margin-top:6px">+ Add Rule</button>
   <details style="margin-top:10px">
@@ -650,6 +664,34 @@ async function runPoll(name,fn){
 
 function waitMs(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 
+function initCardMinimizers(){
+  document.querySelectorAll('.card').forEach((card,i)=>{
+    const hdr=card.querySelector('.card-hdr');if(!hdr||hdr.querySelector('.card-min-btn'))return;
+    const title=card.querySelector('.card-title');
+    const key='cardCollapse:'+i+':'+((title?title.textContent:'card').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-'));
+    card.dataset.collapseKey=key;
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.className='sniff-btn card-min-btn';
+    btn.onclick=()=>{
+      const collapsed=!card.classList.contains('collapsed');
+      card.classList.toggle('collapsed',collapsed);
+      localStorage.setItem(key,collapsed?'1':'0');
+      btn.textContent=collapsed?'Show':'Hide';
+    };
+    hdr.appendChild(btn);
+    const collapsed=localStorage.getItem(key)==='1';
+    card.classList.toggle('collapsed',collapsed);
+    btn.textContent=collapsed?'Show':'Hide';
+  });
+}
+
+function syncSniffPauseButton(){
+  const b=$('sniff-pause-btn');if(!b)return;
+  b.textContent=sniffPaused?'Resume':'Pause';
+  b.classList.toggle('paused',sniffPaused);
+}
+
 function actionErrorMessage(e,fallback){
   if(!e)return fallback;
   if(e.name==='AbortError'||e.name==='SyntaxError'||e.message==='Failed to fetch'||e.message==='Empty response')return fallback;
@@ -829,9 +871,8 @@ function renderEflg(e){
 
 function togglePause(){
   sniffPaused=!sniffPaused;
-  const b=$('sniff-pause-btn');
-  b.textContent=sniffPaused?'Resume':'Pause';
-  b.classList.toggle('paused',sniffPaused);
+  syncSniffPauseButton();
+  renderSniffer();
 }
 
 function renderSniffer(){
@@ -846,7 +887,7 @@ function renderSniffer(){
   }
   $('sniff-count').textContent=frames.length+' frames';
   if(!frames.length){
-    el.innerHTML='<div style="padding:20px;color:var(--tx3);text-align:center;font-size:12px">No frames</div>';
+    el.innerHTML='<div style="padding:20px;color:var(--tx3);text-align:center;font-size:12px">'+(sniffPaused?'Sniffer paused':'No frames')+'</div>';
     return;
   }
   const ADIds=new Set([1021,1016,921]);
@@ -1395,6 +1436,20 @@ function peSetStatus(msg,kind){const el=$('pe-status');el.textContent=msg;el.sty
 function peSetTestStatus(msg,kind){const el=$('pe-test-status');el.textContent=msg;el.style.color=kind==='ok'?'var(--ok)':kind==='err'?'var(--err)':kind==='acc'?'var(--acc)':'var(--tx3)';}
 function peHasContent(){const meta=peGetMeta();return !!(meta.name||meta.author||meta.version!=='1.0'||peState.rules.length);}
 function peRuleLabel(r,i){return 'Rule '+(i+1)+' · CAN 0x'+toHex((r.id||0)&0x7FF,3)+(r.mux>=0?' · mux '+r.mux:'');}
+function peParseShortcutLine(line){
+  const raw=(line||'').trim();
+  if(!raw)return{error:'Shortcut line required'};
+  const m=raw.match(/^\s*(0x[0-9a-fA-F]+|\d+)(?:\s+mux\s*=\s*(-?\d+))?\s+byte\[(\d+)\]\s*=\s*(0x[0-9a-fA-F]+|\d+)(?:\s+mask\s*=\s*(0x[0-9a-fA-F]+|\d+))?(?:\s*\((.*)\))?\s*$/);
+  if(!m)return{error:'Use format like 0x7FF mux=2 byte[5] = 0x4C'};
+  const canId=peParseInt(m[1],NaN),mux=m[2]===undefined?-1:peParseInt(m[2],NaN);
+  const byte=peParseInt(m[3],NaN),val=peParseInt(m[4],NaN),mask=m[5]===undefined?255:peParseInt(m[5],NaN);
+  if(isNaN(canId)||canId<1||canId>0x7FF)return{error:'CAN ID must be 1-0x7FF'};
+  if(isNaN(mux)||mux<-1||mux>7)return{error:'mux must be -1..7'};
+  if(isNaN(byte)||byte<0||byte>7)return{error:'byte must be 0-7'};
+  if(isNaN(val)||val<0||val>255)return{error:'value must be 0-255'};
+  if(isNaN(mask)||mask<0||mask>255)return{error:'mask must be 0-255'};
+  return{rule:{id:canId|0,mux:mux|0,send:true,ops:[{type:'set_byte',byte:byte|0,val:val|0,mask:mask|0}]},note:raw};
+}
 function peUpdateRuleOptions(){
   const sel=$('pe-test-rule');if(!sel)return;
   const prev=parseInt(sel.value,10);
@@ -1404,6 +1459,15 @@ function peUpdateRuleOptions(){
   sel.value=String(!isNaN(prev)&&prev>=0&&prev<peState.rules.length?prev:0);
 }
 function peAddRule(){if(peState.rules.length>=16){peSetStatus('Max 16 rules per plugin','err');return;}peState.rules.push({id:0,mux:-1,send:true,ops:[]});peRender();}
+function peAddRuleFromShortcut(){
+  if(peState.rules.length>=16){peSetStatus('Max 16 rules per plugin','err');return;}
+  const input=$('pe-shortcut');const parsed=peParseShortcutLine(input.value);
+  if(parsed.error){peSetStatus(parsed.error,'err');return;}
+  peState.rules.push(parsed.rule);
+  input.value='';
+  peRender();
+  peSetStatus('Shortcut added','ok');
+}
 function peRemoveRule(i){peState.rules.splice(i,1);peRender();}
 function peAddOp(i,type){const r=peState.rules[i];if(!r)return;if(r.ops.length>=8){peSetStatus('Max 8 ops per rule','err');return;}
   const op={type:type};
@@ -1459,7 +1523,7 @@ function peRuleBlock(i,r){
   return '<details open style="margin-bottom:10px;border:1px solid var(--bd);border-radius:6px;padding:8px;background:var(--bg2)">'+
     '<summary style="cursor:pointer;font-size:12px;color:var(--tx);user-select:none">Rule '+(i+1)+' &mdash; CAN '+hex+(r.id?' ('+r.id+')':'')+(r.mux>=0?' mux='+r.mux:'')+' &middot; '+r.ops.length+' op'+(r.ops.length===1?'':'s')+'</summary>'+
     '<div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap">'+
-      '<input class="sniff-input" style="width:100px" type="number" min="0" max="2047" value="'+(r.id||'')+'" placeholder="CAN ID" onchange="peUpdateField('+i+',-1,\'id\',this.value)">'+
+      '<input class="sniff-input" style="width:110px" value="'+(r.id?('0x'+(r.id|0).toString(16).toUpperCase()):'')+'" placeholder="CAN / 0x7FF" onchange="peUpdateField('+i+',-1,\'id\',this.value)">'+
       '<input class="sniff-input" style="width:100px" type="number" min="-1" max="7" value="'+r.mux+'" placeholder="mux (-1=any)" onchange="peUpdateField('+i+',-1,\'mux\',this.value)">'+
       '<label style="font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:4px"><input type="checkbox"'+(r.send?' checked':'')+' onchange="peUpdateField('+i+',-1,\'send\',this.checked)"> send</label>'+
       '<button class="sniff-btn" style="margin-left:auto" onclick="peRemoveRule('+i+')">Remove Rule</button>'+
@@ -1503,8 +1567,7 @@ function peBuildObj(){
   return obj;
 }
 function peRenderPreview(){$('pe-preview').textContent=JSON.stringify(peBuildObj(),null,2);}
-function peParseTestBytes(){
-  const raw=($('pe-test-data').value||'').trim();
+function parseDataBytes(raw){
   const parts=raw?raw.split(/[\s,]+/).filter(Boolean):[];
   if(parts.length>8)return{error:'Base data supports max 8 bytes'};
   const bytes=[];
@@ -1516,6 +1579,7 @@ function peParseTestBytes(){
   while(bytes.length<8)bytes.push(0);
   return{bytes};
 }
+function peParseTestBytes(){return parseDataBytes(($('pe-test-data').value||'').trim());}
 function peComputeChecksum(id,data){
   let sum=(id&0xFF)+((id>>8)&0xFF);
   for(let i=0;i<8;i++){if(i!==7)sum+=data[i]&255;}
@@ -1667,7 +1731,7 @@ async function peReset(){
 }
 
 dashboardPollTimers.push(setInterval(poll,2000));dashboardPollTimers.push(setInterval(pollLog,3000));dashboardPollTimers.push(setInterval(pollSniffer,1000));dashboardPollTimers.push(setInterval(pollPlugins,10000));dashboardPollTimers.push(setInterval(loadWifiStatus,10000));dashboardPollTimers.push(setInterval(loadApStatus,10000));
-updateHW4(1);updateSniffIdToggle();poll();pollLog();pollSniffer();pollRec();pollPlugins();loadWifiStatus();loadApStatus();loadUpdateInfo();loadCanPins();peRender();
+initCardMinimizers();updateHW4(1);updateSniffIdToggle();poll();pollLog();pollSniffer();pollRec();pollPlugins();loadWifiStatus();loadApStatus();loadUpdateInfo();loadCanPins();peRender();
 </script>
 </body>
 </html>

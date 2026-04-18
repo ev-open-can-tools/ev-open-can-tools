@@ -32,10 +32,11 @@ The dashboard is available on ESP32 builds that include `ESP32_DASHBOARD`. It ru
 
 - **Plugins card**: install from URL, upload a `.json`, or paste JSON directly when offline
 - **Plugin list**: inspect rules, enable or disable plugins, remove them, and spot overlaps with built-in firmware handlers
-- **Plugin Editor**: create plugins without hand-writing JSON, preview the result live, load an installed plugin back into the editor, and download the generated file
+- **Plugin Editor**: create plugins without hand-writing JSON, preview the result live, load an installed plugin back into the editor, download the generated file, and add a quick rule from shorthand such as `0x7FF mux=2 byte[5] = 0x4C`
 - **Rule Test**: generate a frame from one editor rule and send it repeatedly with a chosen count and interval before installing the plugin
 - Plugin-based overrides such as nag suppression and Summon unlock can live here instead of on the main Features card
 - Build-default behavior still applies for the compiled firmware features that are no longer exposed as dashboard toggles
+- Dashboard cards can be collapsed individually with `Hide` / `Show` to keep the page shorter on mobile
 
 ## Persistence Notes
 
