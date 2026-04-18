@@ -444,7 +444,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 
   <div id="plg-info" style="display:none;margin-bottom:12px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
     Plugins are JSON rules that modify CAN messages in real time. Install via URL, file upload or paste. A &#9888; marks conflicts with base firmware handlers &mdash; plugin rules then run <b>after</b> the original handler.
-    <div style="margin-top:6px"><a href="https://github.com/ev-open-can-tools/ev-open-can-tools/blob/main/docs/plugins.md" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">Documentation &amp; examples &rarr;</a></div>
+    <div style="margin-top:6px"><a href="https://ev-open-can-tools.github.io/ev-open-can-tools/docs/plugins.html" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">Documentation &amp; examples &rarr;</a></div>
   </div>
 
   <div style="margin-bottom:14px">

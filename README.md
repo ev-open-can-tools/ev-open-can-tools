@@ -1,42 +1,69 @@
 # EV Open Can Mod
 
-[Repository](.) | [Release Notes](CHANGELOG.md) | [Community Discord](https://discord.gg/ZTQKAUTd2F)
+[Live Docs](https://ev-open-can-tools.github.io/ev-open-can-tools/) | [Documentation](docs/index.md) | [Dashboard Guide](docs/dashboard.md) | [Build & Flash](docs/building.md) | [Plugin System](docs/plugins.md) | [Release Notes](CHANGELOG.md) | [Community Discord](https://discord.gg/ZTQKAUTd2F)
 
-An open-source general-purpose CAN bus modification tool for supported vehicles. The goal is to expose and control everything accessible via CAN — as a fully open project.
+An open-source CAN bus modification tool for supported vehicles and ESP32/Feather CAN hardware. The firmware sits on the vehicle CAN bus, watches the frames it cares about, modifies the required bits or bytes, and retransmits the result in real time.
+
+ESP32 dashboard builds add a local web interface for runtime feature control, CAN diagnostics, plugins, WiFi management, and OTA firmware updates.
 
 ## Disclaimer
 
-> [!WARNING]
-> **Modifying CAN bus messages can cause dangerous behavior or permanently damage your vehicle.** The CAN bus controls everything from braking and steering to airbags — a malformed message can have serious consequences. If you don't fully understand what you're doing, **do not install this on your car**.
+> **Warning:** Modifying CAN bus traffic can cause dangerous behavior or permanently damage a vehicle. The CAN bus touches safety-critical systems including steering, braking, airbags, and gateway functions. If you do not fully understand the frames you are changing, do not install or use this firmware on a vehicle.
+>
+> This project is for testing and educational use only. You are responsible for complying with local laws, safety requirements, and any warranty or road-use implications in your jurisdiction.
 
-This project is for testing and educational purposes only and for use on **private property**. The authors accept no responsibility for any damage to your vehicle, injury, or legal consequences resulting from the use of this software. This project may void your vehicle warranty and **may not comply with road safety regulations in your jurisdiction**.
+## Highlights
 
-For any use beyond private testing, you are responsible for complying with all applicable local laws and regulations. Always keep your hands on the wheel and stay attentive while driving.
+- **Vehicle-side features**: AD activation, nag suppression, Actually Smart Summon EU unlock, speed profile mapping, HW4 ISA speed chime suppression, HW4 emergency vehicle detection, optional TLSSC bypass, and a dedicated Autosteer nag-killer build
+- **ESP32 dashboard**: runtime hardware mode switching, live status, feature toggles, CAN sniffer, CAN recorder, controller stats, live log, stop/resume injection, and reboot control
+- **Connectivity and OTA**: configurable WiFi hotspot, hidden SSID support, WiFi STA with scan and optional static IP, GitHub release updates, beta channel, auto-update on boot, and manual `.bin` upload
+- **Plugin system**: install plugins by URL, file upload, or pasted JSON; inspect rules; detect firmware overlap; keep enable state across reboot; build plugins in the browser with the Plugin Editor; test generated frames before install
+- **Persistent settings**: WiFi hotspot, WiFi internet, CAN pins, update channel, auto-update, plugin enabled state, and other runtime settings are stored in NVS/SPIFFS where applicable
 
-## Features
+## Supported Environments
 
-- **Nag Suppression** — Clears the hands-on-wheel ECE R79 nag bit, suppressing the periodic "apply pressure to the steering wheel" warning
-- **Autosteer Nag Killer** — Suppresses the Autopilot "hands on wheel" alert by echoing modified EPAS steering torque frames on CAN bus 4
-- **Actually Smart Summon (ASS)** — Removes EU regulatory restrictions on Smart Summon (HW3/HW4)
-- **Speed Profiles** — Maps the follow-distance stalk setting to Auto driving aggressiveness profiles (Chill / Normal / Hurry / Max / Sloth)
-- **ISA Speed Chime Suppression** — Mutes the Intelligent Speed Assistance audible chime while keeping the visual indicator active (HW4, optional)
-- **Emergency Vehicle Detection** — Enables approaching emergency vehicle detection on Auto driving v14 (HW4, optional)
-- **Plugin System** — Install JSON-based CAN modification plugins via the web dashboard (URL, file upload, or paste). Includes a detail view to inspect rules and conflict detection when plugins overlap with base firmware
-- **Web Interface** — WiFi hotspot on ESP32 boards for real-time monitoring, runtime feature toggles, and over-the-air firmware updates
+| PlatformIO env | Board / target | CAN interface | Dashboard |
+| --- | --- | --- | --- |
+| `feather_rp2040_can` | Adafruit Feather RP2040 CAN | MCP2515 | No |
+| `feather_m4_can` | Adafruit Feather M4 CAN Express | Native CAN | No |
+| `esp32_twai` | Generic ESP32 dev board | TWAI | Yes |
+| `lilygo_tcan485_hw3` | LILYGO TCAN485 | TWAI | Yes |
+| `m5stack-atomic-can-base` | M5Stack Atom CAN Base | TWAI | Yes |
+| `m5stack-atoms3-mini-can-base` | M5Stack AtomS3 Mini CAN Base | TWAI | Yes |
+| `esp32_feather_v2_mcp2515` | Feather ESP32 V2 + external MCP2515 | SPI MCP2515 | Yes |
+| `esp32_ext_mcp2515` | ESP32-S3 + external MCP2515 | SPI MCP2515 | Yes |
+| `waveshare_ESP32_S3_RS485_CAN` | Waveshare ESP32-S3 RS485/CAN | TWAI | Yes |
 
-Feature details are maintained in this repository.
+ESP32 dashboard builds are the full-featured path: they include the web UI, plugin engine, WiFi, OTA, and persistent runtime settings. Non-dashboard builds keep the core CAN modification logic but do not expose the web management interface.
 
-## What It Does
+## Quick Start
 
-The firmware runs on multiple supported boards — Adafruit Feather RP2040 CAN, Feather M4 CAN Express, ESP32-based boards, and M5Stack Atomic CAN Base. It sits on the vehicle CAN bus, intercepts relevant frames, modifies the necessary bits, and re-transmits the modified frames — all in real time.
+1. Choose your target environment from `platformio.ini`.
+2. Set your board, vehicle mode, and initial dashboard credentials in `platformio_profile.h`.
+3. Build the firmware:
 
-Features are selected at compile time via `platformio_profile.h` and vary by hardware variant (Legacy / HW3 / HW4). ESP32 boards additionally expose a WiFi web interface for runtime control and OTA firmware updates.
+```bash
+pio run -e esp32_ext_mcp2515
+```
 
-## Installation
+4. Flash the board:
 
-The repository is PlatformIO-only. Select your board and vehicle variant in `platformio_profile.h`, then flash the firmware to your board.
+```bash
+pio run -e esp32_ext_mcp2515 -t upload
+```
 
-See the installation section below for the current flashing flow.
+5. For ESP32 dashboard builds, connect to the hotspot configured by `DASH_SSID` / `DASH_PASS` and open `http://192.168.4.1/`.
+6. After first boot, use the dashboard to adjust hotspot credentials, connect the device to WiFi internet, configure CAN pins when relevant, and manage plugins or OTA updates.
+
+For a fuller setup flow and board-specific notes, see [Build & Flash](docs/building.md).
+
+## Documentation
+
+- [Documentation index](docs/index.md)
+- [Dashboard guide](docs/dashboard.md)
+- [Build and flash guide](docs/building.md)
+- [Plugin system reference](docs/plugins.md)
+- [Release notes](CHANGELOG.md)
 
 ## Versioning
 
@@ -49,7 +76,7 @@ See the installation section below for the current flashing flow.
 This project depends on the following open-source libraries. Their full license texts are in [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
 
 | Library | License | Copyright |
-|---------|---------|-----------|
+| --- | --- | --- |
 | [autowp/arduino-mcp2515](https://github.com/autowp/arduino-mcp2515) | MIT | (c) 2013 Seeed Technology Inc., (c) 2016 Dmitry |
 | [adafruit/Adafruit_CAN](https://github.com/adafruit/Adafruit_CAN) | MIT | (c) 2017 Sandeep Mistry |
 | [espressif/esp-idf](https://github.com/espressif/esp-idf) (TWAI driver) | Apache 2.0 | (c) 2015-2025 Espressif Systems (Shanghai) CO LTD |

@@ -1,5 +1,7 @@
 # Plugin System
 
+[Project Home](../) | [Documentation](index.md) | [Dashboard Guide](dashboard.md) | [Build & Flash](building.md) | [Release Notes](../CHANGELOG.md)
+
 The plugin system allows you to create and share CAN frame modification rules as JSON files. Plugins are loaded at runtime on the ESP32 — no recompilation needed, and nothing has to be stored in this repository.
 
 ## How it works
@@ -8,6 +10,13 @@ The plugin system allows you to create and share CAN frame modification rules as
 2. You host it anywhere (GitHub, your own server, etc.)
 3. Users install it via the dashboard — either by entering the URL or uploading the file
 4. The ESP32 stores the plugin on SPIFFS and applies the rules to incoming CAN frames
+
+## Dashboard workflow
+
+- Use the **Plugins** card to install a plugin from URL, upload a `.json`, or paste JSON directly
+- Use the **Plugin Editor** to build a plugin from form fields instead of editing raw JSON by hand
+- Load an installed plugin back into the editor when you want to adjust an existing rule set and reinstall it
+- Use **Rule Test** to generate the resulting frame for one editor rule and send it a chosen number of times before installing the plugin
 
 ## Plugin JSON format
 
