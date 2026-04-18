@@ -1,15 +1,18 @@
 {
   "name": "Emergency Vehicle Detection HW4",
-  "version": "1.0.0",
+  "version": "1.1",
   "author": "ev-open-can-tools",
+  "description": [
+    "Frame 0x3FD (ID 1021), mux 0.",
+    "set_bit bit=59 val=1: sets UI_enableApproachingEmergencyVehicleDetection — enables detection of approaching emergency vehicles.",
+    "Bits 46 and 60 were removed from this plugin — anyone already running FSD has those bits active by default, so repeating them here is unnecessary."
+  ],
   "rules": [
     {
       "id": 1021,
       "mux": 0,
       "ops": [
-        { "type": "set_bit", "bit": 46, "val": 1 },
-        { "type": "set_bit", "bit": 59, "val": 1 },
-        { "type": "set_bit", "bit": 60, "val": 1 }
+        { "type": "set_bit", "bit": 59, "val": 1 }
       ]
     }
   ]

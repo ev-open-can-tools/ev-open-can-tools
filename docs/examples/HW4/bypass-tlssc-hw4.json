@@ -1,15 +1,20 @@
 {
   "name": "Bypass TLSSC HW4",
-  "version": "1.0.0",
+  "version": "1.1",
   "author": "ev-open-can-tools",
+  "description": [
+    "Frame 0x3FD (ID 1021), mux 0.",
+    "set_bit bit=38 val=1: sets UI_fsdStopsControlEnabled — bypasses the TLSSC hardware requirement check.",
+    "Bits 46 and 60 were removed from this plugin for two reasons: they duplicate AD Activation HW4, and more importantly they send FSD activation commands on the CAN bus which Tesla can see — the purpose of this plugin is only to restore TLSSC, not to activate FSD.",
+    "Tested: Tesla Model 3 Highland Performance 2024, FW 2026.8.6.",
+    "After DAS reset, TLSSC option appeared in UI, was toggleable and persisted ~15 min after device disconnected."
+  ],
   "rules": [
     {
       "id": 1021,
       "mux": 0,
       "ops": [
-        { "type": "set_bit", "bit": 38, "val": 1 },
-        { "type": "set_bit", "bit": 46, "val": 1 },
-        { "type": "set_bit", "bit": 60, "val": 1 }
+        { "type": "set_bit", "bit": 38, "val": 1 }
       ]
     }
   ]

@@ -1,14 +1,18 @@
 {
   "name": "Nag Suppression HW4",
-  "version": "1.0.0",
+  "version": "1.1",
   "author": "ev-open-can-tools",
+  "description": [
+    "Frame 0x3FD (ID 1021), mux 1.",
+    "set_bit bit=19 val=0: clears UI_applyEceR79 — disables enforcement of ECE R79, the European regulation that mandates hands-on-wheel detection and warning during autosteer.",
+    "ECE R79 also limits lateral acceleration during autosteer to 3 m/s² (~0.3g) — disabling it removes this cornering limit, so the car no longer slows down or shows 'Autopilot limited' on tighter bends."
+  ],
   "rules": [
     {
       "id": 1021,
       "mux": 1,
       "ops": [
-        { "type": "set_bit", "bit": 19, "val": 0 },
-        { "type": "set_bit", "bit": 47, "val": 1 }
+        { "type": "set_bit", "bit": 19, "val": 0 }
       ]
     }
   ]

@@ -1,0 +1,26 @@
+{
+  "name": "Country Spoof KR HW4",
+  "version": "1.0",
+  "author": "Christian / kp43h8",
+  "description": [
+    "Frame 0x238 (ID 568).",
+    "Spoofs UI_countryCode to Korea (410) — a 10-bit value split across two bytes:",
+    "set_byte byte=2 val=154 mask=255: sets byte[2] to 0x9A — lower 8 bits of country code 410.",
+    "set_byte byte=3 val=1 mask=3: sets bits[1:0] of byte[3] to 0b01 — upper 2 bits of country code 410.",
+    "checksum: byte[7] recalculated.",
+    "Observed behavior: if you signal first, EAP changes lanes automatically without confirmation.",
+    "If EAP initiates the overtake itself and turns on the indicator, you still need to confirm with the steering wheel.",
+    "If anyone finds a way to bypass the steering confirmation in that second case, please share.",
+    "Tested: Tesla Model 3 Highland Performance 2024, FW 2026.8.6."
+  ],
+  "rules": [
+    {
+      "id": 568,
+      "ops": [
+        { "type": "set_byte", "byte": 2, "val": 154, "mask": 255 },
+        { "type": "set_byte", "byte": 3, "val": 1,   "mask": 3   },
+        { "type": "checksum" }
+      ]
+    }
+  ]
+}
