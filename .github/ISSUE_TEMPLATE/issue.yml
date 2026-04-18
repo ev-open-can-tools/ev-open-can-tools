@@ -1,6 +1,5 @@
 name: General Issue
 description: Create a new issue
-title: ""
 body:
   - type: dropdown
     id: type
