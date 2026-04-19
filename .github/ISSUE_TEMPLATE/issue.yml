@@ -1,5 +1,5 @@
 name: General Issue
-description: 
+description: Create a new issue
 body:
   - type: dropdown
     id: type
