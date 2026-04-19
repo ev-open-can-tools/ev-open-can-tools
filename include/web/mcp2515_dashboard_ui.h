@@ -229,7 +229,6 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 <div class="stat-grid">
   <div class="stat"><div class="stat-lbl">CAN Bus</div><div class="stat-val" id="s-can">Offline</div></div>
   <div class="stat"><div class="stat-lbl">Injection</div><div class="stat-val v-dim" id="s-inj">—</div></div>
-  <div class="stat"><div class="stat-lbl">AD</div><div class="stat-val" id="s-AD">Inactive</div></div>
   <div class="stat"><div class="stat-lbl">Frame rate</div><div class="stat-val v-dim" id="s-fps">0.0 Hz</div></div>
   <div class="stat"><div class="stat-lbl">RX</div><div class="stat-val v-acc" id="s-rx">0</div></div>
   <div class="stat"><div class="stat-lbl">TX</div><div class="stat-val v-acc" id="s-tx">0</div></div>
@@ -238,6 +237,9 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   <div class="stat"><div class="stat-lbl">Profile</div><div class="stat-val v-dim" id="s-prof">—</div></div>
   <div class="stat"><div class="stat-lbl">Speed Offset</div><div class="stat-val v-dim" id="s-soff">0</div></div>
   <div class="stat"><div class="stat-lbl">Uptime</div><div class="stat-val v-dim" id="s-up">0s</div></div>
+  <button class="btn btn-stop" id="btn-stop" style="display:none" onclick="emergencyStop()">Stop Injecting</button>
+  <button class="btn" id="btn-resume" style="display:none;background:var(--accBg);color:var(--acc);border:1px solid var(--accBd)" onclick="resumeInj()">Resume Injection</button>
+  <button class="btn btn-reboot" onclick="reboot()">Reboot</button>
 </div>
 
 <div style="height:12px"></div>
@@ -263,11 +265,6 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
       <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
   </div>
 
-  <div class="btn-row">
-    <button class="btn btn-stop" id="btn-stop" style="display:none" onclick="emergencyStop()">Stop Injecting</button>
-    <button class="btn" id="btn-resume" style="display:none;background:var(--accBg);color:var(--acc);border:1px solid var(--accBd)" onclick="resumeInj()">Resume Injection</button>
-    <button class="btn btn-reboot" onclick="reboot()">Reboot</button>
-  </div>
 </div>
 
 <div class="card">
@@ -422,6 +419,8 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <button class="sniff-btn" onclick="pastePlugin()">Install from JSON</button>
   </div>
 
+  <div id="plg-conflicts" style="display:none;margin-bottom:10px"></div>
+
   <div style="padding-top:12px;border-top:1px solid var(--bd)" id="plg-list">
     <div style="font-size:12px;color:var(--tx3);text-align:center;padding:12px">No plugins installed</div>
   </div>
@@ -459,14 +458,13 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bd)">
     <div class="setting-name" style="margin-bottom:6px">Rule Test</div>
     <div style="font-size:11px;color:var(--tx3);line-height:1.5;margin-bottom:8px">
-      Choose one rule from the editor, enter the base 8-byte frame, then send the resulting modified frame on CAN. Count = how many times, interval = how fast.
+      Choose one rule from the editor. The dashboard waits for the next matching CAN frame, applies the rule to that live frame, then injects it with your count and interval.
     </div>
     <div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 110px;gap:6px;margin-bottom:6px">
       <select class="sniff-input" id="pe-test-rule" onchange="peUpdateTestPreview()"></select>
       <input class="sniff-input" id="pe-test-count" type="number" min="1" max="200" value="1" onchange="peUpdateTestPreview()">
       <input class="sniff-input" id="pe-test-interval" type="number" min="10" max="5000" value="100" onchange="peUpdateTestPreview()">
     </div>
-    <input class="sniff-input" id="pe-test-data" value="00 00 00 00 00 00 00 00" placeholder="Base data bytes: 00 00 00 00 00 00 00 00" oninput="peUpdateTestPreview()" style="width:100%;margin-bottom:6px">
     <pre id="pe-test-preview" style="min-height:54px;overflow:auto;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;padding:8px;font-size:11px;color:var(--tx2);white-space:pre-wrap;word-break:break-word">Add a rule to preview a test frame.</pre>
     <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
       <button class="sniff-btn" onclick="peStartTest()">Start Test</button>
@@ -600,6 +598,8 @@ const HW=['Legacy','HW3','HW4'];
 const SP3=['Chill','Normal','Hurry'];
 const SP4=['Chill','Normal','Hurry','Max','Sloth'];
 const $=id=>document.getElementById(id);
+const setText=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
+const setClass=(id,value)=>{const el=$(id);if(el)el.className=value;};
 function profileNamesForHw(hw){return hw===2?SP4:SP3;}
 let state={hw:1,can:true};
 let sniffPaused=false,sniffFrames=[];
@@ -615,6 +615,8 @@ let pluginDetailOpen={};
 let dashConfirmState=null;
 let dashboardPollTimers=[];
 let dashboardPollFailures=0;
+let dashboardStatusOk=false;
+let dashboardInitialLoaded=false;
 let dashboardPollStopped=false;
 let dashboardStaIp='';
 const pollLocks={};
@@ -633,23 +635,25 @@ function stopDashboardPolling(){
 }
 
 function noteDashboardPoll(ok){
-  if(ok){dashboardPollFailures=0;return;}
+  if(ok){dashboardPollFailures=0;dashboardStatusOk=true;return;}
   if(dashboardPollStopped)return;
+  dashboardStatusOk=false;
   dashboardPollFailures++;
-  if(dashboardPollFailures>=3)stopDashboardPolling();
+  $('dot').className='sdot dot-off';
+  $('hdr-desc').textContent='Dashboard reconnecting';
 }
 
-async function fetchPollJson(url,timeoutMs){
+async function fetchPollJson(url,timeoutMs,trackConnection){
   const ctrl=new AbortController();
   const timer=setTimeout(()=>ctrl.abort(),timeoutMs||2500);
   try{
     const r=await fetch(url,{signal:ctrl.signal});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const d=await r.json();
-    noteDashboardPoll(true);
+    if(trackConnection)noteDashboardPoll(true);
     return d;
   }catch(e){
-    noteDashboardPoll(false);
+    if(trackConnection)noteDashboardPoll(false);
     throw e;
   }finally{
     clearTimeout(timer);
@@ -773,8 +777,9 @@ function updSeg(el,v,cls){
 function setHW(v){state.hw=v;updSeg($('hw-seg'),v,'hw-btn');updateHW4(v);updateSniffIdToggle();renderSniffer();pushCfg();}
 
 function updateInjectButtons(active){
-  $('btn-stop').style.display=active?'':'none';
-  $('btn-resume').style.display=active?'none':'';
+  const stop=$('btn-stop'),resume=$('btn-resume');
+  if(stop)stop.style.display=active?'':'none';
+  if(resume)resume.style.display=active?'none':'';
 }
 
 function sniffBusPrefix(){return state.hw===0?0x0800:0x1000;}
@@ -803,6 +808,7 @@ async function pushCfg(){
 async function pushLogging(){
   const body='eprn='+($('tgl-eprn').checked?'1':'0');
   try{await fetch('/logging',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});}catch(e){}
+  if($('tgl-eprn').checked)pollLog();
   poll();
 }
 
@@ -905,8 +911,8 @@ function renderSniffer(){
 
 async function pollSniffer(){
   return runPoll('frames',async()=>{
-    if(sniffPaused)return;
-    try{const d=await fetchPollJson('/frames',1500);sniffFrames=d.frames||[];renderSniffer();}catch(e){}
+    if(sniffPaused||!dashboardStatusOk)return;
+    try{const d=await fetchPollJson('/frames',2500);sniffFrames=d.frames||[];renderSniffer();}catch(e){}
   });
 }
 
@@ -975,37 +981,42 @@ async function uploadFirmware(){
 async function poll(){
   return runPoll('status',async()=>{
     try{
-      const d=await fetchPollJson('/status',1500);
-    const on=d.can;
-    $('s-can').textContent=on?'Active':'Offline';
-    $('s-can').className='stat-val '+(on?'v-ok':'v-err');
-    $('s-inj').textContent=d.ci?'Active':'BLOCKED';
-    $('s-inj').className='stat-val '+(d.ci?'v-ok':'v-err');
-    $('s-AD').textContent=d.AD?'Active':'Inactive';
-    $('s-AD').className='stat-val '+(d.AD?'v-ok':'v-dim');
-    $('s-fps').textContent=d.fps.toFixed(1)+' Hz';
-    $('s-fps').className='stat-val '+(d.fps>5?'v-acc':'v-dim');
-    $('s-rx').textContent=d.rx;
-    $('s-tx').textContent=d.tx;
-    $('s-txerr').textContent=d.txerr;
-    $('s-txerr').className='stat-val '+(d.txerr>0?'v-warn':'v-dim');
-    $('s-fd').textContent=d.fd||'—';
-    $('s-prof').textContent=profileNamesForHw(d.hw)[d.sp]||'—';
-    $('s-soff').textContent=d.soff||'0';
-    $('s-up').textContent=fmtUp(d.up);
-    $('s-mcp-raw').textContent='EFLG: 0x'+toHex(d.eflg,2);
-    $('fps-fill').style.width=Math.min(d.fps/20*100,100)+'%';
-    $('hw-badge').textContent=HW[d.hw]||'?';
-    $('dot').className='sdot '+(d.txerr>5?'dot-warn':on?'dot-on':'dot-off');
-    $('hdr-desc').textContent=on?(d.AD?'AD active — injecting':'CAN active — monitoring'):'Waiting for CAN frames';
-    renderEflg(d.eflg);
-    renderWriteProbe(d.probe);
-    if(d.mux){for(let i=0;i<3;i++){$(('m'+i+'rx')).textContent=d.mux[i].rx;$(('m'+i+'tx')).textContent=d.mux[i].tx;const e=$(('m'+i+'err'));e.textContent=d.mux[i].err;e.style.color=d.mux[i].err>0?'var(--err)':'';}}
-    state.hw=d.hw;state.can=d.ci;
-    updateInjectButtons(d.ci);
+      const d=await fetchPollJson('/status',5000,true);
+    const on=!!d.can,injecting=!!d.ci,fpsVal=Number(d.fps||0);
+    state.hw=d.hw;state.can=injecting;
+    setClass('dot','sdot '+(d.txerr>5?'dot-warn':on?'dot-on':'dot-off'));
+    setText('hdr-desc',on?(d.AD?'AD active — injecting':'CAN active — monitoring'):'Waiting for CAN frames');
+    updateInjectButtons(injecting);
+
+    setText('s-can',on?'Active':'Offline');
+    setClass('s-can','stat-val '+(on?'v-ok':'v-err'));
+    setText('s-inj',injecting?'Active':'BLOCKED');
+    setClass('s-inj','stat-val '+(injecting?'v-ok':'v-err'));
+    setText('s-AD',d.AD?'Active':'Inactive');
+    setClass('s-AD','stat-val '+(d.AD?'v-ok':'v-dim'));
+    setText('s-fps',fpsVal.toFixed(1)+' Hz');
+    setClass('s-fps','stat-val '+(fpsVal>5?'v-acc':'v-dim'));
+    setText('s-rx',d.rx);
+    setText('s-tx',d.tx);
+    setText('s-txerr',d.txerr);
+    setClass('s-txerr','stat-val '+(d.txerr>0?'v-warn':'v-dim'));
+    setText('s-fd',d.fd||'—');
+    setText('s-prof',profileNamesForHw(d.hw)[d.sp]||'—');
+    setText('s-soff',d.soff||'0');
+    setText('s-up',fmtUp(d.up));
+    setText('s-mcp-raw','EFLG: 0x'+toHex(d.eflg,2));
+    const fpsFill=$('fps-fill');if(fpsFill)fpsFill.style.width=Math.min(fpsVal/20*100,100)+'%';
+    setText('hw-badge',HW[d.hw]||'?');
+    try{renderEflg(d.eflg);}catch(e){}
+    try{renderWriteProbe(d.probe);}catch(e){}
+    if(d.mux){for(let i=0;i<3;i++){setText('m'+i+'rx',d.mux[i].rx);setText('m'+i+'tx',d.mux[i].tx);const e=$('m'+i+'err');if(e){e.textContent=d.mux[i].err;e.style.color=d.mux[i].err>0?'var(--err)':'';}}}
     updateSniffIdToggle();
-    updSeg($('hw-seg'),d.hw,'hw-btn');updateHW4(d.hw);
-    if(typeof d.eprn!=='undefined')$('tgl-eprn').checked=d.eprn;
+    const hwSeg=$('hw-seg');if(hwSeg)updSeg(hwSeg,d.hw,'hw-btn');updateHW4(d.hw);
+    const eprn=$('tgl-eprn');if(eprn&&typeof d.eprn!=='undefined')eprn.checked=d.eprn;
+    if(!dashboardInitialLoaded){
+      dashboardInitialLoaded=true;
+      pollLog();pollSniffer();pollPlugins();loadWifiStatus();loadApStatus();loadUpdateInfo();loadCanPins();
+    }
     }catch(e){}
   });
 }
@@ -1021,6 +1032,7 @@ function colorLog(l){
 }
 async function pollLog(){
   return runPoll('log',async()=>{
+    if(!$('tgl-eprn').checked||!dashboardStatusOk)return;
     try{
       const d=await fetchPollJson('/log?since='+logSince,2000);
     if(d.seq)logSince=d.seq;
@@ -1091,6 +1103,7 @@ async function saveAP(){
 }
 async function loadApStatus(){
   return runPoll('ap_status',async()=>{
+    if(!dashboardStatusOk)return;
     try{const d=await fetchPollJson('/ap_status',2000);
     if(d.ssid)$('ap-ssid').value=d.ssid;
     $('ap-clients').textContent=d.clients+' client'+(d.clients!==1?'s':'');
@@ -1125,6 +1138,7 @@ function pickWifi(ssid){
 }
 async function loadWifiStatus(){
   return runPoll('wifi_status',async()=>{
+    if(!dashboardStatusOk)return;
     try{const d=await fetchPollJson('/wifi_status',2000);
     dashboardStaIp=d.connected&&d.ip?d.ip:'';
     if(d.ssid)$('wifi-ssid').value=d.ssid;
@@ -1165,11 +1179,11 @@ async function installPlugin(){
     await fetchJsonWithTimeout('/plugin_install',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'url='+encodeURIComponent(url)},20000);
     $('plg-url').value='';
     try{await refreshPluginsNow();}catch(e){await refreshPluginsAfterAction(beforeSig);}
-    $('plg-status').textContent='Installed!';$('plg-status').style.color='var(--ok)';
+    $('plg-status').textContent='Installed disabled';$('plg-status').style.color='var(--ok)';
   }catch(e){
     if(await refreshPluginsAfterAction(beforeSig)){
       $('plg-url').value='';
-      $('plg-status').textContent='Installed!';$('plg-status').style.color='var(--ok)';
+      $('plg-status').textContent='Installed disabled';$('plg-status').style.color='var(--ok)';
     }else{$('plg-status').textContent=actionErrorMessage(e,'Connection error');$('plg-status').style.color='var(--err)';}
   }
 }
@@ -1181,10 +1195,10 @@ async function uploadPlugin(file){
     const text=await file.text();
     await fetchJsonWithTimeout('/plugin_upload',{method:'POST',headers:{'Content-Type':'application/json'},body:text},5000);
     try{await refreshPluginsNow();}catch(e){await refreshPluginsAfterAction(beforeSig);}
-    $('plg-status').textContent='Installed!';$('plg-status').style.color='var(--ok)';
+    $('plg-status').textContent='Installed disabled';$('plg-status').style.color='var(--ok)';
   }catch(e){
     if(await refreshPluginsAfterAction(beforeSig)){
-      $('plg-status').textContent='Installed!';$('plg-status').style.color='var(--ok)';
+      $('plg-status').textContent='Installed disabled';$('plg-status').style.color='var(--ok)';
     }else{$('plg-status').textContent=actionErrorMessage(e,'Error');$('plg-status').style.color='var(--err)';}
   }
 }
@@ -1198,11 +1212,11 @@ async function pastePlugin(){
     await fetchJsonWithTimeout('/plugin_upload',{method:'POST',headers:{'Content-Type':'application/json'},body:text},5000);
     $('plg-paste').value='';
     try{await refreshPluginsNow();}catch(e){await refreshPluginsAfterAction(beforeSig);}
-    $('plg-status').textContent='Installed!';$('plg-status').style.color='var(--ok)';
+    $('plg-status').textContent='Installed disabled';$('plg-status').style.color='var(--ok)';
   }catch(e){
     if(await refreshPluginsAfterAction(beforeSig)){
       $('plg-paste').value='';
-      $('plg-status').textContent='Installed!';$('plg-status').style.color='var(--ok)';
+      $('plg-status').textContent='Installed disabled';$('plg-status').style.color='var(--ok)';
     }else{$('plg-status').textContent=actionErrorMessage(e,'Connection error');$('plg-status').style.color='var(--err)';}
   }
 }
@@ -1226,6 +1240,99 @@ async function removePlugin(idx){
     try{await refreshPluginsNow();}catch(e){await refreshPluginsAfterAction(beforeSig);}
   }catch(e){await refreshPluginsAfterAction(beforeSig);}
 }
+async function setPluginPriority(idx,value){
+  const to=parseInt(value,10)-1;
+  if(isNaN(to)||to===idx){renderPluginsState({plugins:installedPlugins,maxPlugins:pluginMax});return;}
+  const beforeSig=pluginStateSignature(installedPlugins);
+  try{
+    await fetchJsonWithTimeout('/plugin_priority',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'idx='+idx+'&priority='+to},4000);
+    try{await refreshPluginsNow();}catch(e){await refreshPluginsAfterAction(beforeSig);}
+  }catch(e){await refreshPluginsAfterAction(beforeSig);}
+}
+function pluginByteBits(byte,mask){
+  byte=parseInt(byte,10);mask=(parseInt(mask,10)||0)&255;
+  const bits=[];
+  if(isNaN(byte)||byte<0||byte>7)return bits;
+  for(let b=0;b<8;b++)if(mask&(1<<b))bits.push(byte*8+b);
+  return bits;
+}
+function pluginOpBits(o){
+  if(!o)return[];
+  if(o.type==='set_bit'){
+    const bit=parseInt(o.bit,10);
+    return !isNaN(bit)&&bit>=0&&bit<64?[bit]:[];
+  }
+  if(o.type==='set_byte')return pluginByteBits(o.byte,o.mask===undefined?255:o.mask);
+  if(o.type==='or_byte')return pluginByteBits(o.byte,o.val||0);
+  if(o.type==='and_byte')return pluginByteBits(o.byte,(~(o.val===undefined?255:o.val))&255);
+  if(o.type==='checksum')return pluginByteBits(7,255);
+  return[];
+}
+function pluginMuxesOverlap(a,b){return a<0||b<0||a===b;}
+function pluginFormatBits(bits){
+  bits=Array.from(new Set(bits)).sort((a,b)=>a-b);
+  if(bits.length>6)return bits.slice(0,6).join(', ')+', +'+(bits.length-6)+' more';
+  return bits.join(', ');
+}
+function pluginConflictGroups(conflicts){
+  const grouped={};
+  (conflicts||[]).forEach(c=>{
+    const key=c.winner+'|'+c.winnerPriority;
+    if(!grouped[key])grouped[key]={winner:c.winner,winnerPriority:c.winnerPriority,bits:[]};
+    grouped[key].bits.push(c.bit);
+  });
+  return Object.keys(grouped).map(k=>grouped[k]);
+}
+function pluginAnalyzePriority(list){
+  const owners=[];
+  (list||[]).forEach((p,i)=>{
+    p.priority=i+1;p.hasConflict=false;
+    (p.details||[]).forEach(r=>{r.pluginConflict=false;r.conflicts=[];});
+  });
+  (list||[]).forEach((p,i)=>{
+    if(!p.enabled)return;
+    (p.details||[]).forEach(r=>{
+      if(r.send===false)return;
+      const conflicts=[];
+      (r.ops||[]).forEach(o=>{
+        pluginOpBits(o).forEach(bit=>{
+          const owner=owners.find(x=>x.id===r.id&&pluginMuxesOverlap(x.mux,r.mux)&&x.bit===bit);
+          if(owner){
+            if(owner.plugin!==p.name)conflicts.push({bit:bit,winner:owner.plugin,winnerPriority:owner.priority});
+          }else owners.push({id:r.id,mux:r.mux,bit:bit,plugin:p.name,priority:i+1});
+        });
+      });
+      if(conflicts.length){r.pluginConflict=true;r.conflicts=conflicts;p.hasConflict=true;}
+    });
+  });
+}
+function renderPluginConflictPanel(list){
+  const el=$('plg-conflicts');
+  if(!el)return;
+  if(!list.length){el.style.display='none';el.innerHTML='';return;}
+  const first=(list||[]).find(p=>p.enabled);
+  const rows=[];
+  (list||[]).forEach(p=>(p.details||[]).forEach(r=>{
+    if(r.pluginConflict)pluginConflictGroups(r.conflicts).forEach(g=>{
+      rows.push('<div>CAN '+r.hex+(r.mux>=0?' mux '+r.mux:' any mux')+': '+p.name+' ignores bit '+pluginFormatBits(g.bits)+'; '+g.winner+' (#'+g.winnerPriority+') wins</div>');
+    });
+  }));
+  let h='<div style="padding:8px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:11px;color:var(--tx3);line-height:1.5">';
+  h+='<div style="color:var(--tx2);font-weight:600;margin-bottom:3px">Injection priority</div>';
+  h+=first?('#'+first.priority+' '+first.name+' is the first enabled plugin; one merged frame is injected after plugin bits are resolved.'):
+    'No enabled plugins are injecting frames.';
+  if(rows.length){
+    h+='<div style="margin-top:6px;color:var(--warn)">'+rows.slice(0,5).join('')+(rows.length>5?'<div>+'+(rows.length-5)+' more conflicts</div>':'')+'</div>';
+  }
+  el.innerHTML=h+'</div>';
+  el.style.display='block';
+}
+function pluginPrioritySelect(idx,total){
+  if(total<2)return'';
+  let h='<select class="sniff-input" title="Set injection priority" onchange="setPluginPriority('+idx+',this.value)" style="flex:0 0 58px;width:58px;margin-left:8px;padding:4px;font-size:10px">';
+  for(let i=1;i<=total;i++)h+='<option value="'+i+'" '+(i===idx+1?'selected':'')+'>#'+i+'</option>';
+  return h+'</select>';
+}
 function fmtOp(o){
   if(o.type==='set_bit') return 'set_bit('+o.bit+', '+(o.val?'true':'false')+')';
   if(o.type==='checksum') return 'checksum(byte 7)';
@@ -1239,10 +1346,14 @@ function renderPluginDetails(details){
     +details.map(r=>{
       let hdr='<div style="margin-bottom:4px"><b>CAN '+r.hex+' ('+r.id+')</b>';
       if(r.mux>=0) hdr+=' <span style="color:var(--acc)">mux='+r.mux+'</span>';
-      if(r.conflict) hdr+=' <span style="color:var(--err);font-weight:bold" title="This CAN ID is also handled by the base firmware">&#9888; Firmware overlap</span>';
+      if(r.pluginConflict) hdr+=' <span style="color:var(--warn);font-weight:bold" title="Lower priority bits are ignored">&#9888; Priority overlap</span>';
       hdr+='</div>';
       let ops=r.ops.map(o=>'<div style="padding-left:12px;color:var(--tx2)">'+fmtOp(o)+'</div>').join('');
-      return hdr+ops;
+      let notes='';
+      if(r.pluginConflict){
+        notes='<div style="margin-top:4px;padding-left:12px;color:var(--warn)">'+pluginConflictGroups(r.conflicts).map(g=>'bit '+pluginFormatBits(g.bits)+' ignored; '+g.winner+' (#'+g.winnerPriority+') wins').join('<br>')+'</div>';
+      }
+      return hdr+ops+notes;
     }).join('<div style="border-top:1px solid var(--bd);margin:4px 0"></div>')
     +'</div>';
 }
@@ -1264,6 +1375,7 @@ function pluginStateSignature(list){
 
 function renderPluginsState(d){
   installedPlugins=d.plugins||[];
+  pluginAnalyzePriority(installedPlugins);
   const nextOpen={};
   installedPlugins.forEach(p=>{if(p&&p.name&&pluginDetailOpen[p.name])nextOpen[p.name]=true;});
   pluginDetailOpen=nextOpen;
@@ -1277,17 +1389,20 @@ function renderPluginsState(d){
   }
   const el=$('plg-list');
   if(!installedPlugins.length){
+    renderPluginConflictPanel(installedPlugins);
     el.innerHTML='<div style="font-size:12px;color:var(--tx3);text-align:center;padding:12px">No plugins installed</div>';
     return;
   }
+  renderPluginConflictPanel(installedPlugins);
   el.innerHTML=installedPlugins.map((p,i)=>{
     let detailsOpen=!!pluginDetailOpen[p.name];
     let row='<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--bd)">';
     row+='<div class="setting-row"><div class="setting-info" style="cursor:pointer" onclick="toggleDetails('+i+')">';
     row+='<div class="setting-name">'+p.name+' <span style="color:var(--tx3);font-size:11px">v'+p.version+'</span>';
     row+='</div>';
-    row+='<div class="setting-desc">'+p.rules+' rule'+(p.rules!==1?'s':'')+(p.author?' &bull; '+p.author:'')+' &bull; <span style="color:var(--acc);cursor:pointer">details</span></div>';
+    row+='<div class="setting-desc">Priority #'+(i+1)+(i===0?' first':'')+' &bull; '+p.rules+' rule'+(p.rules!==1?'s':'')+(p.author?' &bull; '+p.author:'')+(p.hasConflict?' &bull; <span style="color:var(--warn)">overlap ignored</span>':'')+' &bull; <span style="color:var(--acc);cursor:pointer">details</span></div>';
     row+='</div>';
+    row+=pluginPrioritySelect(i,installedPlugins.length);
     row+='<label class="tgl"><input type="checkbox" '+(p.enabled?'checked':'')+' onchange="togglePlugin('+i+')"><div class="tgl-track"><div class="tgl-thumb"></div></div></label>';
     row+='<button onclick="peLoadInstalledPlugin('+i+')" style="margin-left:8px;padding:4px 8px;border:1px solid var(--bd);border-radius:5px;background:transparent;color:var(--acc);cursor:pointer;font-size:10px;font-family:inherit">Edit</button>';
     row+='<button onclick="removePlugin('+i+')" style="margin-left:8px;padding:4px 8px;border:1px solid var(--errBd);border-radius:5px;background:transparent;color:var(--err);cursor:pointer;font-size:10px;font-family:inherit">X</button></div>';
@@ -1320,6 +1435,7 @@ async function refreshPluginsAfterAction(beforeSig){
 
 async function pollPlugins(){
   return runPoll('plugins',async()=>{
+    if(!dashboardStatusOk)return;
     try{renderPluginsState(await fetchPollJson('/plugins',2000));}catch(e){}
   });
 }
@@ -1567,66 +1683,29 @@ function peBuildObj(){
   return obj;
 }
 function peRenderPreview(){$('pe-preview').textContent=JSON.stringify(peBuildObj(),null,2);}
-function parseDataBytes(raw){
-  const parts=raw?raw.split(/[\s,]+/).filter(Boolean):[];
-  if(parts.length>8)return{error:'Base data supports max 8 bytes'};
-  const bytes=[];
-  for(const part of parts){
-    const value=peParseInt(part,NaN);
-    if(isNaN(value)||value<0||value>255)return{error:'Base data must contain bytes 0-255'};
-    bytes.push(value&255);
-  }
-  while(bytes.length<8)bytes.push(0);
-  return{bytes};
-}
-function peParseTestBytes(){return parseDataBytes(($('pe-test-data').value||'').trim());}
-function peComputeChecksum(id,data){
-  let sum=(id&0xFF)+((id>>8)&0xFF);
-  for(let i=0;i<8;i++){if(i!==7)sum+=data[i]&255;}
-  return sum&255;
-}
-function peApplyRuleToBytes(rule,baseBytes){
-  const data=(baseBytes||[]).slice(0,8);
-  while(data.length<8)data.push(0);
-  if(rule.mux>=0)data[0]=(data[0]&0xF8)|(rule.mux&0x07);
-  (rule.ops||[]).forEach(op=>{
-    if(op.type==='set_bit'){
-      const byte=Math.floor((op.bit||0)/8),bit=(op.bit||0)%8,mask=1<<bit;
-      if(byte>=0&&byte<8)data[byte]=op.val?(data[byte]|mask):((data[byte]&(~mask))&255);
-    }else if(op.type==='set_byte'){
-      const byte=op.byte|0,mask=((typeof op.mask==='number'?op.mask:255)&255),val=(op.val||0)&255;
-      if(byte>=0&&byte<8)data[byte]=((data[byte]&((~mask)&255))|(val&mask))&255;
-    }else if(op.type==='or_byte'){
-      const byte=op.byte|0;if(byte>=0&&byte<8)data[byte]=(data[byte]|((op.val||0)&255))&255;
-    }else if(op.type==='and_byte'){
-      const byte=op.byte|0;if(byte>=0&&byte<8)data[byte]=(data[byte]&((op.val||0)&255))&255;
-    }else if(op.type==='checksum'){
-      data[7]=peComputeChecksum(rule.id|0,data);
-    }
-  });
-  return data;
-}
 function peFormatBytes(bytes){return(bytes||[]).slice(0,8).map(b=>toHex((b||0)&255,2)).join(' ');}
 function peUpdateTestPreview(){
   const el=$('pe-test-preview');if(!el)return;
   if(!peState.rules.length){el.textContent='Add a rule to preview a test frame.';peSetTestStatus('Idle','');return;}
   const idx=parseInt($('pe-test-rule').value,10);
   if(isNaN(idx)||idx<0||idx>=peState.rules.length){el.textContent='Select a rule to test.';return;}
-  const parsed=peParseTestBytes();
-  if(parsed.error){el.textContent=parsed.error;return;}
   const count=parseInt($('pe-test-count').value,10),interval=parseInt($('pe-test-interval').value,10);
   if(isNaN(count)||count<1||count>200){el.textContent='Count must be 1-200.';return;}
   if(isNaN(interval)||interval<10||interval>5000){el.textContent='Interval must be 10-5000 ms.';return;}
-  const rule=peState.rules[idx],out=peApplyRuleToBytes(rule,parsed.bytes);
-  el.textContent='Preview '+peRuleLabel(rule,idx)+'\nFrame: '+peFormatBytes(out)+'\nSend '+count+'x every '+interval+' ms';
+  const rule=peState.rules[idx];
+  el.textContent='Preview '+peRuleLabel(rule,idx)+'\nWait for next matching bus frame, then apply this rule.\nInject '+count+'x every '+interval+' ms';
 }
 function peStopTestPoll(){if(peTestPollTimer){clearInterval(peTestPollTimer);peTestPollTimer=null;}}
 async function pePollTestStatus(){
   try{
     const r=await fetch('/plugin_test_status');const d=await r.json();
-    if(d.id||d.data){$('pe-test-preview').textContent='Test CAN 0x'+toHex((d.id||0)&0x7FF,3)+'\nFrame: '+peFormatBytes(d.data||[])+(d.total?'\nProgress: '+d.sent+'/'+d.total:'');}
+    if(d.waiting){
+      $('pe-test-preview').textContent='Waiting for CAN 0x'+toHex((d.targetId||d.id||0)&0x7FF,3)+'\nThe next matching bus frame will be modified and injected.\nProgress: 0/'+(d.total||0);
+    }else if(d.id||d.data){
+      $('pe-test-preview').textContent='Test CAN 0x'+toHex((d.id||0)&0x7FF,3)+'\nFrame: '+peFormatBytes(d.data||[])+(d.total?'\nProgress: '+d.sent+'/'+d.total:'');
+    }
     if(d.active){
-      peSetTestStatus('Running '+d.sent+'/'+d.total+' · every '+d.interval+' ms','acc');
+      peSetTestStatus(d.waiting?('Waiting for CAN 0x'+toHex((d.targetId||d.id||0)&0x7FF,3)):('Running '+d.sent+'/'+d.total+' · every '+d.interval+' ms'),'acc');
     }else{
       peSetTestStatus(d.total?(d.sent<d.total?'Stopped '+d.sent+'/'+d.total:'Done '+d.sent+'/'+d.total):'Idle',d.total&&d.sent>=d.total?'ok':'');
       peStopTestPoll();
@@ -1677,11 +1756,11 @@ async function peInstall(){
     await fetchJsonWithTimeout('/plugin_upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)},5000);
     peLoadedPluginName=obj.name;
     try{await refreshPluginsNow();}catch(e){await refreshPluginsAfterAction(beforeSig);}
-    peSetStatus('Installed!','ok');
+    peSetStatus('Installed disabled','ok');
   }catch(e){
     if(await refreshPluginsAfterAction(beforeSig)){
       peLoadedPluginName=obj.name;
-      peSetStatus('Installed!','ok');
+      peSetStatus('Installed disabled','ok');
     }else{peSetStatus(actionErrorMessage(e,'Connection error'),'err');}
   }
 }
@@ -1689,18 +1768,16 @@ async function peStartTest(){
   if(!peState.rules.length){peSetTestStatus('Add a rule first','err');return;}
   const idx=parseInt($('pe-test-rule').value,10);
   if(isNaN(idx)||idx<0||idx>=peState.rules.length){peSetTestStatus('Select a valid rule','err');return;}
-  const parsed=peParseTestBytes();
-  if(parsed.error){peSetTestStatus(parsed.error,'err');return;}
   const count=parseInt($('pe-test-count').value,10),interval=parseInt($('pe-test-interval').value,10);
   if(isNaN(count)||count<1||count>200){peSetTestStatus('Count must be 1-200','err');return;}
   if(isNaN(interval)||interval<10||interval>5000){peSetTestStatus('Interval must be 10-5000 ms','err');return;}
   peSetTestStatus('Starting...','acc');
   try{
-    const r=await fetch('/plugin_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plugin:peBuildObj(),rule:idx,data:parsed.bytes,count:count,interval:interval})});
+    const r=await fetch('/plugin_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plugin:peBuildObj(),rule:idx,count:count,interval:interval})});
     const d=await r.json();
     if(d.ok){
-      $('pe-test-preview').textContent='Test CAN 0x'+toHex((d.id||0)&0x7FF,3)+'\nFrame: '+peFormatBytes(d.data||[])+'\nProgress: '+(d.sent||0)+'/'+(d.total||0);
-      peSetTestStatus(d.active?('Running '+(d.sent||0)+'/'+(d.total||0)+' · every '+(d.interval||interval)+' ms'):'Done','acc');
+      $('pe-test-preview').textContent='Waiting for CAN 0x'+toHex((d.targetId||d.id||0)&0x7FF,3)+'\nThe next matching bus frame will be modified and injected.\nProgress: 0/'+(d.total||0);
+      peSetTestStatus(d.active?('Waiting for CAN 0x'+toHex((d.targetId||d.id||0)&0x7FF,3)):'Done','acc');
       peStopTestPoll();peTestPollTimer=setInterval(pePollTestStatus,500);pePollTestStatus();
     }else{
       peSetTestStatus(d.error||'Test failed','err');
@@ -1730,8 +1807,8 @@ async function peReset(){
   peRender();peSetStatus('','');peSetTestStatus('Idle','');
 }
 
-dashboardPollTimers.push(setInterval(poll,2000));dashboardPollTimers.push(setInterval(pollLog,3000));dashboardPollTimers.push(setInterval(pollSniffer,1000));dashboardPollTimers.push(setInterval(pollPlugins,10000));dashboardPollTimers.push(setInterval(loadWifiStatus,10000));dashboardPollTimers.push(setInterval(loadApStatus,10000));
-initCardMinimizers();updateHW4(1);updateSniffIdToggle();poll();pollLog();pollSniffer();pollRec();pollPlugins();loadWifiStatus();loadApStatus();loadUpdateInfo();loadCanPins();peRender();
+dashboardPollTimers.push(setInterval(poll,2000));dashboardPollTimers.push(setInterval(pollLog,5000));dashboardPollTimers.push(setInterval(pollSniffer,1000));dashboardPollTimers.push(setInterval(pollPlugins,10000));dashboardPollTimers.push(setInterval(loadWifiStatus,10000));dashboardPollTimers.push(setInterval(loadApStatus,10000));
+initCardMinimizers();updateHW4(1);updateSniffIdToggle();poll();pollRec();peRender();
 </script>
 </body>
 </html>

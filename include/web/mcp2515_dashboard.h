@@ -150,7 +150,9 @@ static int sniffCount = 0;
 struct PluginTestState
 {
     bool active = false;
+    bool waitingForFrame = false;
     CanFrame frame = {};
+    PluginRule rule = {};
     uint16_t total = 0;
     uint16_t sent = 0;
     uint16_t intervalMs = 100;
@@ -541,16 +543,9 @@ static void dashPluginStateKey(const char *filename, char *key, size_t keySize)
     snprintf(key, keySize, "plg_%08lx", (unsigned long)dashPluginStateHash(filename));
 }
 
-static void dashSavePluginState(const PluginData &plugin)
+static void dashPluginOrderKey(const char *filename, char *key, size_t keySize)
 {
-    Preferences pluginPrefs;
-    if (!pluginPrefs.begin(PREFS_NS, false))
-        return;
-
-    char key[13];
-    dashPluginStateKey(plugin.filename, key, sizeof(key));
-    pluginPrefs.putBool(key, plugin.enabled);
-    pluginPrefs.end();
+    snprintf(key, keySize, "plo_%08lx", (unsigned long)dashPluginStateHash(filename));
 }
 
 static void dashSaveAllPluginStates()
@@ -564,6 +559,8 @@ static void dashSaveAllPluginStates()
         char key[13];
         dashPluginStateKey(pluginStore[i].filename, key, sizeof(key));
         pluginPrefs.putBool(key, pluginStore[i].enabled);
+        dashPluginOrderKey(pluginStore[i].filename, key, sizeof(key));
+        pluginPrefs.putUChar(key, i);
     }
     pluginPrefs.end();
 }
@@ -577,6 +574,8 @@ static void dashClearPluginState(const PluginData &plugin)
     char key[13];
     dashPluginStateKey(plugin.filename, key, sizeof(key));
     pluginPrefs.remove(key);
+    dashPluginOrderKey(plugin.filename, key, sizeof(key));
+    pluginPrefs.remove(key);
     pluginPrefs.end();
 }
 
@@ -586,13 +585,27 @@ static void dashRestorePluginStates()
     if (!pluginPrefs.begin(PREFS_NS, false))
         return;
 
+    bool missingOrder = false;
     for (uint8_t i = 0; i < pluginCount; i++)
     {
         char key[13];
         dashPluginStateKey(pluginStore[i].filename, key, sizeof(key));
         pluginStore[i].enabled = pluginPrefs.getBool(key, pluginStore[i].enabled);
+
+        dashPluginOrderKey(pluginStore[i].filename, key, sizeof(key));
+        if (pluginPrefs.isKey(key))
+            pluginStore[i].priority = pluginPrefs.getUChar(key, i);
+        else
+        {
+            pluginStore[i].priority = i;
+            missingOrder = true;
+        }
     }
     pluginPrefs.end();
+
+    pluginSortByPriority();
+    if (missingOrder)
+        dashSaveAllPluginStates();
 }
 
 static void dashSchedulePluginStateSave(unsigned long delayMs)
@@ -1039,6 +1052,20 @@ static void dashReapplyFiltersWithPlugins()
     for (uint8_t i = 0; i < hCount && count < 32; i++)
         mergedIds[count++] = hIds[i];
     count += pluginGetFilterIds(mergedIds + count, 32 - count);
+    if (pluginTestState.active && pluginTestState.waitingForFrame && count < 32)
+    {
+        bool found = false;
+        for (uint8_t i = 0; i < count; i++)
+        {
+            if (mergedIds[i] == pluginTestState.rule.canId)
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            mergedIds[count++] = pluginTestState.rule.canId;
+    }
     dashDriver->setFilters(mergedIds, count);
 }
 
@@ -1101,48 +1128,33 @@ static String dashPluginTestStatusJson()
     j += ",\"remaining\":" + String(remaining);
     j += ",\"interval\":" + String(pluginTestState.intervalMs);
     j += ",\"id\":" + String(pluginTestState.frame.id);
+    j += ",\"targetId\":" + String(pluginTestState.rule.canId);
+    j += ",\"waiting\":" + String(pluginTestState.waitingForFrame ? "true" : "false");
     j += ",\"data\":" + dashFrameDataJson(pluginTestState.frame);
     j += "}";
     return j;
 }
 
-static bool dashBuildPluginTestFrame(const PluginRule &rule, JsonArrayConst data, CanFrame &frame, String &error)
+static bool dashPluginTestRuleMatches(const PluginRule &rule, const CanFrame &frame)
 {
-    if (data.isNull())
+    if (rule.canId != frame.id)
+        return false;
+    if (rule.mux < 0)
+        return true;
+    if (frame.dlc == 0)
+        return false;
+    return (frame.data[0] & 0x07) == (uint8_t)rule.mux;
+}
+
+static bool dashBuildPluginTestFrame(const PluginRule &rule, const CanFrame &base, CanFrame &frame, String &error)
+{
+    if (!dashPluginTestRuleMatches(rule, base))
     {
-        error = "missing base data";
+        error = "base frame does not match rule";
         return false;
     }
-    if (data.size() > 8)
-    {
-        error = "base data max 8 bytes";
-        return false;
-    }
 
-    frame.id = rule.canId;
-    frame.dlc = 8;
-    memset(frame.data, 0, sizeof(frame.data));
-
-    uint8_t idx = 0;
-    for (JsonVariantConst item : data)
-    {
-        if (!item.is<int>())
-        {
-            error = "base data must be numbers";
-            return false;
-        }
-        int value = item.as<int>();
-        if (value < 0 || value > 255)
-        {
-            error = "base data bytes must be 0-255";
-            return false;
-        }
-        frame.data[idx++] = (uint8_t)value;
-    }
-
-    if (rule.mux >= 0)
-        frame.data[0] = (frame.data[0] & 0xF8) | ((uint8_t)rule.mux & 0x07);
-
+    frame = base;
     for (uint8_t o = 0; o < rule.opCount; o++)
         pluginApplyOp(frame, rule.ops[o]);
 
@@ -1160,6 +1172,7 @@ static void handlePluginList()
         j += ",\"version\":\"" + jsonEscape(pluginStore[i].version) + "\"";
         j += ",\"author\":\"" + jsonEscape(pluginStore[i].author) + "\"";
         j += ",\"rules\":" + String(pluginStore[i].ruleCount);
+        j += ",\"priority\":" + String(i + 1);
         j += ",\"enabled\":" + String(pluginStore[i].enabled ? "true" : "false");
 
         // Rule details
@@ -1216,11 +1229,12 @@ static bool pluginInstallJson(const String &json, const String &url)
     if (existing < 0 && pluginCount >= PLUGIN_MAX)
         return false;
 
-    bool preserveEnabled = true;
+    uint8_t insertIndex = pluginCount;
+    String oldFilename;
     if (existing >= 0)
     {
-        preserveEnabled = pluginStore[existing].enabled;
-        pluginRemove(existing);
+        insertIndex = (uint8_t)existing;
+        oldFilename = pluginStore[existing].filename;
     }
 
     // Generate filename from name
@@ -1230,14 +1244,28 @@ static bool pluginInstallJson(const String &json, const String &url)
     fname += ".json";
     strlcpy(temp.filename, fname.c_str(), sizeof(temp.filename));
     strlcpy(temp.sourceUrl, url.c_str(), sizeof(temp.sourceUrl));
-    temp.enabled = preserveEnabled;
+    temp.enabled = false;
+    temp.priority = insertIndex;
 
     if (!pluginSaveToSpiffs(json, temp.filename))
         return false;
 
-    pluginStore[pluginCount] = temp;
-    pluginCount++;
-    dashSavePluginState(pluginStore[pluginCount - 1]);
+    if (existing >= 0)
+    {
+        if (oldFilename.length() > 0 && oldFilename != temp.filename)
+            SPIFFS.remove(pluginFilePath(oldFilename.c_str()));
+        pluginsLocked = true;
+        pluginStore[insertIndex] = temp;
+        pluginNormalizePriorities();
+        pluginsLocked = false;
+    }
+    else if (!pluginInsert(pluginCount, temp))
+    {
+        SPIFFS.remove(pluginFilePath(temp.filename));
+        return false;
+    }
+
+    dashSaveAllPluginStates();
 
     dashReapplyFiltersWithPlugins();
     dashLog("[PLG] Installed: " + String(temp.name) + " (" + String(temp.ruleCount) + " rules)");
@@ -1332,10 +1360,39 @@ static void handlePluginRemove()
         String name = pluginStore[idx].name;
         dashClearPluginState(pluginStore[idx]);
         pluginRemove(idx);
+        dashSaveAllPluginStates();
         dashReapplyFiltersWithPlugins();
         dashLog("[PLG] Removed: " + name);
     }
     server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handlePluginPriority()
+{
+    if (!server.hasArg("idx") || !server.hasArg("priority"))
+    {
+        server.send(400, "application/json", "{\"ok\":false}");
+        return;
+    }
+
+    int idx = server.arg("idx").toInt();
+    int priority = server.arg("priority").toInt();
+    if (idx < 0 || idx >= pluginCount || priority < 0 || priority >= pluginCount)
+    {
+        server.send(400, "application/json", "{\"ok\":false}");
+        return;
+    }
+
+    if (pluginMove((uint8_t)idx, (uint8_t)priority))
+    {
+        dashSaveAllPluginStates();
+        dashReapplyFiltersWithPlugins();
+        dashLog("[PLG] Priority: " + String(pluginStore[priority].name) + " #" + String(priority + 1));
+        server.send(200, "application/json", "{\"ok\":true}");
+        return;
+    }
+
+    server.send(400, "application/json", "{\"ok\":false}");
 }
 
 static void handlePluginTest()
@@ -1403,26 +1460,25 @@ static void handlePluginTest()
         return;
     }
 
-    CanFrame frame;
-    String buildError;
-    if (!dashBuildPluginTestFrame(temp.rules[ruleIndex], doc["data"].as<JsonArrayConst>(), frame, buildError))
-    {
-        server.send(400, "application/json", "{\"ok\":false,\"error\":\"" + jsonEscape(buildError) + "\"}");
-        return;
-    }
-
     if (pluginTestState.active)
         dashLog("[PLGTEST] Replaced previous test");
 
-    pluginTestState.active = true;
-    pluginTestState.frame = frame;
+    const PluginRule &rule = temp.rules[ruleIndex];
+    pluginTestState.active = false;
+    pluginTestState.waitingForFrame = true;
+    pluginTestState.rule = rule;
+    pluginTestState.frame = {};
+    pluginTestState.frame.id = rule.canId;
+    pluginTestState.frame.dlc = 8;
     pluginTestState.total = (uint16_t)count;
     pluginTestState.sent = 0;
     pluginTestState.intervalMs = (uint16_t)intervalMs;
-    pluginTestState.nextSendAt = millis();
+    pluginTestState.nextSendAt = 0;
+    pluginTestState.active = true;
+    dashReapplyFiltersWithPlugins();
 
-    dashLog("[PLGTEST] Queued CAN 0x" + String(frame.id, HEX) + " x" + String(count) +
-            " @ " + String(intervalMs) + "ms [" + dashFrameDataHex(frame) + "]");
+    dashLog("[PLGTEST] Waiting for CAN 0x" + String(rule.canId, HEX) + " x" + String(count) +
+            " @ " + String(intervalMs) + "ms");
     server.send(200, "application/json", dashPluginTestStatusJson());
 }
 
@@ -1435,6 +1491,8 @@ static void handlePluginTestStop()
 {
     bool wasActive = pluginTestState.active;
     pluginTestState.active = false;
+    pluginTestState.waitingForFrame = false;
+    dashReapplyFiltersWithPlugins();
     if (wasActive)
         dashLog("[PLGTEST] Stopped after " + String(pluginTestState.sent) + "/" + String(pluginTestState.total) + " sends");
     server.send(200, "application/json", dashPluginTestStatusJson());
@@ -2265,10 +2323,38 @@ static void handleUpdateBeta()
 
 // ── Plugin frame callback wrapper ───────────────────────────────
 
+static void dashPluginTestCapture(const CanFrame &frame)
+{
+    if (!pluginTestState.active || !pluginTestState.waitingForFrame)
+        return;
+    if (!dashPluginTestRuleMatches(pluginTestState.rule, frame))
+        return;
+
+    CanFrame testFrame;
+    String buildError;
+    if (!dashBuildPluginTestFrame(pluginTestState.rule, frame, testFrame, buildError))
+    {
+        pluginTestState.active = false;
+        pluginTestState.waitingForFrame = false;
+        dashReapplyFiltersWithPlugins();
+        dashLog("[PLGTEST] Stopped: " + buildError);
+        return;
+    }
+
+    pluginTestState.frame = testFrame;
+    pluginTestState.sent = 0;
+    pluginTestState.nextSendAt = millis();
+    pluginTestState.waitingForFrame = false;
+    dashReapplyFiltersWithPlugins();
+    dashLog("[PLGTEST] Captured CAN 0x" + String(testFrame.id, HEX) +
+            " [" + dashFrameDataHex(testFrame) + "]");
+}
+
 static void dashPluginProcess(const CanFrame &frame, CanDriver &driver)
 {
     if (!canActive)
         return;
+    dashPluginTestCapture(frame);
     pluginProcessFrame(frame, driver);
 }
 
@@ -2279,15 +2365,21 @@ static void dashPluginTestTick()
     if (!canActive)
     {
         pluginTestState.active = false;
+        pluginTestState.waitingForFrame = false;
+        dashReapplyFiltersWithPlugins();
         dashLog("[PLGTEST] Stopped: injection disabled");
         return;
     }
     if (!dashDriver)
     {
         pluginTestState.active = false;
+        pluginTestState.waitingForFrame = false;
+        dashReapplyFiltersWithPlugins();
         dashLog("[PLGTEST] Stopped: CAN driver unavailable");
         return;
     }
+    if (pluginTestState.waitingForFrame)
+        return;
 
     unsigned long now = millis();
     if ((long)(now - pluginTestState.nextSendAt) < 0)
@@ -2299,6 +2391,8 @@ static void dashPluginTestTick()
     if (pluginTestState.sent >= pluginTestState.total)
     {
         pluginTestState.active = false;
+        pluginTestState.waitingForFrame = false;
+        dashReapplyFiltersWithPlugins();
         dashLog("[PLGTEST] Done CAN 0x" + String(pluginTestState.frame.id, HEX) +
                 " x" + String(pluginTestState.total));
         return;
@@ -2413,7 +2507,7 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
         dashLog("[WIFI] AP SSID is hidden");
     Serial.printf("[WIFI] AP: %s  IP: %s\n", apSSID, WiFi.softAPIP().toString().c_str());
 
-    xTaskCreatePinnedToCore(webTask, "web", 8192, nullptr, 1, nullptr, 0);
+    xTaskCreatePinnedToCore(webTask, "web", 8192, nullptr, 2, nullptr, 0);
 
     ArduinoOTA.setHostname("ev-open-can-tools");
     ArduinoOTA.setPassword(DASH_OTA_PASS);
@@ -2444,6 +2538,7 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     server.on("/plugin_install", HTTP_POST, handlePluginInstallFromUrl);
     server.on("/plugin_toggle", HTTP_POST, handlePluginToggle);
     server.on("/plugin_remove", HTTP_POST, handlePluginRemove);
+    server.on("/plugin_priority", HTTP_POST, handlePluginPriority);
     server.on("/plugin_test", HTTP_POST, handlePluginTest);
     server.on("/plugin_test_status", HTTP_GET, handlePluginTestStatus);
     server.on("/plugin_test_stop", HTTP_POST, handlePluginTestStop);

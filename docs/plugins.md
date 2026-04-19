@@ -14,9 +14,10 @@ The plugin system allows you to create and share CAN frame modification rules as
 ## Dashboard workflow
 
 - Use the **Plugins** card to install a plugin from URL, upload a `.json`, or paste JSON directly
+- New installs start disabled so you can review conflicts and priority before enabling them
 - Use the **Plugin Editor** to build a plugin from form fields instead of editing raw JSON by hand
 - Load an installed plugin back into the editor when you want to adjust an existing rule set and reinstall it
-- Use **Rule Test** to generate the resulting frame for one editor rule and send it a chosen number of times before installing the plugin
+- Use **Rule Test** to wait for the next matching live CAN frame, apply one editor rule to that frame, and send the result a chosen number of times
 
 ## Plugin JSON format
 
@@ -50,18 +51,20 @@ The plugin system allows you to create and share CAN frame modification rules as
 
 ### Rule object
 
-Each rule matches incoming CAN frames by ID (and optionally mux index), applies a sequence of operations, and optionally sends the modified frame back on the bus.
+Each rule matches incoming CAN frames by ID (and optionally mux index), applies a sequence of operations, and optionally includes the result in the composed frame sent back on the bus.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `id` | integer | yes | CAN frame ID to match (decimal, e.g. `921` = `0x399`). |
 | `mux` | integer | no | Mux index to match (bits 0-2 of byte 0). `-1` or omit to match any mux. |
 | `ops` | array | yes | Array of operations to apply (see below). |
-| `send` | boolean | no | Send the modified frame on the CAN bus. Defaults to `true`. |
+| `send` | boolean | no | Include this rule in the composed frame sent on the CAN bus. Defaults to `true`. |
 
 ### Operations
 
-Operations are applied in order on a **copy** of the original frame. The built-in handler processes frames first — plugin rules run after.
+Operations are applied in priority order on a **copy** of the original frame. The built-in handler processes frames first — plugin rules run after.
+
+When multiple enabled plugin rules match the same incoming CAN ID and mux, the firmware composes one output frame and sends it once. Plugin priority decides overlapping writes: the highest-priority plugin owns a bit first, and lower-priority plugins cannot overwrite that same bit in the same frame cycle.
 
 #### `set_bit` — Set or clear a single bit
 
@@ -279,9 +282,10 @@ The JSON is validated client-side before sending. If the JSON is invalid, an err
 ### Managing plugins
 
 - **Enable/Disable**: Toggle the switch next to each plugin
+- **Priority**: Use the priority selector next to each plugin to choose which plugin wins overlapping bit writes. `#1` is evaluated first.
 - **Remove**: Click the **X** button
 - Plugins persist across reboots (stored on SPIFFS)
-- Enabled/disabled state is preserved
+- Enabled/disabled state and priority order are preserved
 
 ## Hosting plugins
 
@@ -312,9 +316,13 @@ When a plugin targets a CAN ID that is also handled by the base firmware (e.g. 1
 
 This does not prevent the plugin from working. It is an informational warning so you understand that both the firmware and the plugin will independently modify and send frames for the same CAN ID.
 
+When two enabled plugins target the same bit on the same CAN ID and mux, the dashboard shows a **Priority overlap** warning. The lower-priority plugin's overlapping bit is ignored at runtime, and the detail view shows which higher-priority plugin wins.
+
 ## Important notes
 
-- Plugin rules run **after** the built-in handler. If both a plugin and the handler modify the same CAN ID, both modifications are sent.
+- Plugin rules run **after** the built-in handler.
+- Enabled plugin rules for the same CAN ID and mux are merged into one injected frame per incoming frame.
+- If two plugins write the same bit, the lower-priority plugin's write is ignored for that bit. Default priority is install order, with the first installed plugin at `#1`.
 - Avoid creating plugin rules for CAN IDs that the built-in handler already manages (1016, 1021, 787, 880, 921, 2047) unless you understand the interaction.
 - Plugin-required CAN IDs are automatically added to the hardware filter list.
 - The ESP32 must be connected to the CAN bus for plugin rules to take effect.

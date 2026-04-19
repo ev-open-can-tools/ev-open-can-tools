@@ -3,6 +3,8 @@
 #include "../can_frame_types.h"
 #include "can_driver.h"
 #include <driver/twai.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 class TWAIDriver : public CanDriver
 {
@@ -14,6 +16,11 @@ public:
 
     bool init() override
     {
+        if (!mutex_)
+            mutex_ = xSemaphoreCreateMutex();
+        if (!mutex_)
+            return false;
+
         g_config_ = TWAI_GENERAL_CONFIG_DEFAULT(txPin_, rxPin_, TWAI_MODE_NORMAL);
         g_config_.rx_queue_len = 32;
         g_config_.tx_queue_len = 16;
@@ -21,12 +28,10 @@ public:
         t_config_ = TWAI_TIMING_CONFIG_500KBITS();
         f_config_ = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
-        if (twai_driver_install(&g_config_, &t_config_, &f_config_) != ESP_OK)
-            return false;
-        if (twai_start() != ESP_OK)
-            return false;
-        driverOK_ = true;
-        return true;
+        lock();
+        driverOK_ = installAndStartLocked();
+        unlock();
+        return driverOK_;
     }
 
     void setFilters(const uint32_t *ids, uint8_t count) override
@@ -41,48 +46,66 @@ public:
         }
 
         uint32_t base = ids[0] & ~differ;
-        f_config_.acceptance_code = base << 21;
-        f_config_.acceptance_mask = (differ << 21) | 0x001FFFFF;
-        f_config_.single_filter = true;
+        twai_filter_config_t nextFilter = f_config_;
+        nextFilter.acceptance_code = base << 21;
+        nextFilter.acceptance_mask = (differ << 21) | 0x001FFFFF;
+        nextFilter.single_filter = true;
 
-        // twai_stop() disables the TWAI ISR before uninstall
-        twai_stop();
-        twai_driver_uninstall();
-        if (twai_driver_install(&g_config_, &t_config_, &f_config_) != ESP_OK ||
-            twai_start() != ESP_OK)
-        {
-            driverOK_ = false;
-        }
+        lock();
+        // TWAI only has a mask filter; sparse ID sets can pass false positives.
+        exactFilterCount_ = (count < kMaxExactFilters) ? count : kMaxExactFilters;
+        for (uint8_t i = 0; i < exactFilterCount_; i++)
+            exactFilterIds_[i] = ids[i];
+        f_config_ = nextFilter;
+        stopAndUninstallLocked();
+        driverOK_ = installAndStartLocked();
+        unlock();
     }
 
     bool enableInterrupt(void (* /*onReady*/)()) override { return false; }
 
     bool read(CanFrame &frame) override
     {
-        if (!driverOK_)
+        for (uint8_t attempt = 0; attempt < kReadDrainBudget; attempt++)
         {
-            tryRecover();
-            return false;
+            lock();
+            if (!driverOK_)
+            {
+                tryRecover();
+                unlock();
+                return false;
+            }
+
+            twai_message_t msg;
+            if (twai_receive(&msg, 0) != ESP_OK)
+            {
+                if (isBusOff())
+                    recoverWithCooldown();
+                unlock();
+                return false;
+            }
+            bool accepted = exactFilterMatchesLocked(msg.identifier);
+            unlock();
+
+            if (!accepted)
+                continue;
+
+            frame.id = msg.identifier;
+            frame.dlc = (msg.data_length_code <= 8) ? msg.data_length_code : 8;
+            memset(frame.data, 0, 8);
+            memcpy(frame.data, msg.data, frame.dlc);
+            return true;
         }
 
-        twai_message_t msg;
-        if (twai_receive(&msg, 0) != ESP_OK)
-        {
-            if (isBusOff())
-                recoverWithCooldown();
-            return false;
-        }
-        frame.id = msg.identifier;
-        frame.dlc = (msg.data_length_code <= 8) ? msg.data_length_code : 8;
-        memset(frame.data, 0, 8);
-        memcpy(frame.data, msg.data, frame.dlc);
-        return true;
+        return false;
     }
 
     bool send(const CanFrame &frame) override
     {
+        lock();
         if (!driverOK_)
         {
+            unlock();
             if (onSendFrame)
                 onSendFrame(frame, false);
             return false;
@@ -103,16 +126,33 @@ public:
             if (isBusOff())
                 recoverWithCooldown();
         }
+        unlock();
         if (onSendFrame)
             onSendFrame(frame, ok);
         return ok;
     }
 
 private:
+    static constexpr uint8_t kMaxExactFilters = 32;
+    static constexpr uint8_t kReadDrainBudget = 8;
     static constexpr uint32_t BUSOFF_COOLDOWN_MS = 1000;
+
+    bool exactFilterMatchesLocked(uint32_t id) const
+    {
+        if (exactFilterCount_ == 0)
+            return true;
+        for (uint8_t i = 0; i < exactFilterCount_; i++)
+        {
+            if (exactFilterIds_[i] == id)
+                return true;
+        }
+        return false;
+    }
 
     bool isBusOff()
     {
+        if (!driverInstalled_)
+            return false;
         twai_status_info_t status;
         if (twai_get_status_info(&status) != ESP_OK)
             return false;
@@ -126,13 +166,8 @@ private:
             return;
         lastRecovery_ = now;
 
-        twai_stop();
-        twai_driver_uninstall();
-        if (twai_driver_install(&g_config_, &t_config_, &f_config_) != ESP_OK ||
-            twai_start() != ESP_OK)
-        {
-            driverOK_ = false;
-        }
+        stopAndUninstallLocked();
+        driverOK_ = installAndStartLocked();
     }
 
     void tryRecover()
@@ -142,11 +177,47 @@ private:
             return;
         lastRecovery_ = now;
 
-        if (twai_driver_install(&g_config_, &t_config_, &f_config_) == ESP_OK &&
-            twai_start() == ESP_OK)
+        stopAndUninstallLocked();
+        driverOK_ = installAndStartLocked();
+    }
+
+    void lock()
+    {
+        if (mutex_)
+            xSemaphoreTake(mutex_, portMAX_DELAY);
+    }
+
+    void unlock()
+    {
+        if (mutex_)
+            xSemaphoreGive(mutex_);
+    }
+
+    bool installAndStartLocked()
+    {
+        if (twai_driver_install(&g_config_, &t_config_, &f_config_) != ESP_OK)
         {
-            driverOK_ = true;
+            driverInstalled_ = false;
+            return false;
         }
+        driverInstalled_ = true;
+        if (twai_start() != ESP_OK)
+        {
+            twai_driver_uninstall();
+            driverInstalled_ = false;
+            return false;
+        }
+        return true;
+    }
+
+    void stopAndUninstallLocked()
+    {
+        if (!driverInstalled_)
+            return;
+        twai_stop();
+        twai_driver_uninstall();
+        driverInstalled_ = false;
+        driverOK_ = false;
     }
 
     gpio_num_t txPin_;
@@ -154,6 +225,10 @@ private:
     twai_general_config_t g_config_;
     twai_timing_config_t t_config_;
     twai_filter_config_t f_config_;
+    SemaphoreHandle_t mutex_ = nullptr;
+    bool driverInstalled_ = false;
     bool driverOK_ = false;
     uint32_t lastRecovery_ = 0;
+    uint32_t exactFilterIds_[kMaxExactFilters] = {};
+    uint8_t exactFilterCount_ = 0;
 };

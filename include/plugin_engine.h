@@ -46,6 +46,7 @@ struct PluginData
     char filename[32];
     char sourceUrl[200];
     bool enabled;
+    uint8_t priority;
     PluginRule rules[PLUGIN_RULES_MAX];
     uint8_t ruleCount;
     uint32_t filterIds[PLUGIN_RULES_MAX];
@@ -68,7 +69,10 @@ static bool pluginParseJson(const String &json, PluginData &out)
     strlcpy(out.name, doc["name"] | "Unknown", sizeof(out.name));
     strlcpy(out.version, doc["version"] | "1.0", sizeof(out.version));
     strlcpy(out.author, doc["author"] | "", sizeof(out.author));
+    out.filename[0] = '\0';
+    out.sourceUrl[0] = '\0';
     out.enabled = true;
+    out.priority = 0;
     out.ruleCount = 0;
     out.filterIdCount = 0;
 
@@ -94,6 +98,9 @@ static bool pluginParseJson(const String &json, PluginData &out)
                 if (r.opCount >= PLUGIN_OPS_MAX)
                     break;
                 PluginOp &o = r.ops[r.opCount];
+                o.index = 0;
+                o.value = 0;
+                o.mask = 0xFF;
                 const char *type = op["type"] | "";
                 if (strcmp(type, "set_bit") == 0)
                 {
@@ -197,6 +204,7 @@ static void pluginLoadAll()
                 // Store just the user-facing filename (without /p_ prefix)
                 String userFilename = name.substring(2); // remove "p_"
                 strlcpy(p.filename, userFilename.c_str(), sizeof(p.filename));
+                p.priority = pluginCount;
                 pluginCount++;
             }
         }
@@ -215,9 +223,76 @@ static bool pluginRemove(uint8_t index)
     SPIFFS.remove(pluginFilePath(pluginStore[index].filename));
 
     for (uint8_t i = index; i < pluginCount - 1; i++)
+    {
         pluginStore[i] = pluginStore[i + 1];
+        pluginStore[i].priority = i;
+    }
     pluginCount--;
 
+    pluginsLocked = false;
+    return true;
+}
+
+static void pluginNormalizePriorities()
+{
+    for (uint8_t i = 0; i < pluginCount; i++)
+        pluginStore[i].priority = i;
+}
+
+static void pluginSortByPriority()
+{
+    pluginsLocked = true;
+    for (uint8_t i = 1; i < pluginCount; i++)
+    {
+        PluginData current = pluginStore[i];
+        uint8_t j = i;
+        while (j > 0 && pluginStore[j - 1].priority > current.priority)
+        {
+            pluginStore[j] = pluginStore[j - 1];
+            j--;
+        }
+        pluginStore[j] = current;
+    }
+    pluginNormalizePriorities();
+    pluginsLocked = false;
+}
+
+static bool pluginInsert(uint8_t index, const PluginData &plugin)
+{
+    if (pluginCount >= PLUGIN_MAX)
+        return false;
+    if (index > pluginCount)
+        index = pluginCount;
+
+    pluginsLocked = true;
+    for (uint8_t i = pluginCount; i > index; i--)
+        pluginStore[i] = pluginStore[i - 1];
+    pluginStore[index] = plugin;
+    pluginCount++;
+    pluginNormalizePriorities();
+    pluginsLocked = false;
+    return true;
+}
+
+static bool pluginMove(uint8_t from, uint8_t to)
+{
+    if (from >= pluginCount || to >= pluginCount || from == to)
+        return from < pluginCount && to < pluginCount;
+
+    pluginsLocked = true;
+    PluginData moving = pluginStore[from];
+    if (from < to)
+    {
+        for (uint8_t i = from; i < to; i++)
+            pluginStore[i] = pluginStore[i + 1];
+    }
+    else
+    {
+        for (uint8_t i = from; i > to; i--)
+            pluginStore[i] = pluginStore[i - 1];
+    }
+    pluginStore[to] = moving;
+    pluginNormalizePriorities();
     pluginsLocked = false;
     return true;
 }
@@ -259,16 +334,109 @@ static void pluginApplyOp(CanFrame &frame, const PluginOp &op)
     }
 }
 
+static uint64_t pluginOpWriteMask(const PluginOp &op)
+{
+    switch (op.type)
+    {
+    case OP_SET_BIT:
+        if (op.index < 64)
+            return 1ULL << op.index;
+        return 0;
+    case OP_SET_BYTE:
+        if (op.index < 8)
+            return static_cast<uint64_t>(op.mask) << (op.index * 8);
+        return 0;
+    case OP_OR_BYTE:
+        if (op.index < 8)
+            return static_cast<uint64_t>(op.value) << (op.index * 8);
+        return 0;
+    case OP_AND_BYTE:
+        if (op.index < 8)
+            return static_cast<uint64_t>(static_cast<uint8_t>(~op.value)) << (op.index * 8);
+        return 0;
+    case OP_CHECKSUM:
+        return 0xFFULL << 56;
+    }
+    return 0;
+}
+
+static bool pluginApplyOpMasked(CanFrame &frame, const PluginOp &op, uint64_t allowedMask)
+{
+    switch (op.type)
+    {
+    case OP_SET_BIT:
+        if ((allowedMask & pluginOpWriteMask(op)) != 0)
+        {
+            setBit(frame, op.index, op.value);
+            return true;
+        }
+        return false;
+    case OP_SET_BYTE:
+        if (op.index < 8)
+        {
+            uint8_t allowed = static_cast<uint8_t>((allowedMask >> (op.index * 8)) & 0xFF);
+            if (allowed == 0)
+                return false;
+            frame.data[op.index] = (frame.data[op.index] & ~allowed) | (op.value & allowed);
+            return true;
+        }
+        return false;
+    case OP_OR_BYTE:
+        if (op.index < 8)
+        {
+            uint8_t allowed = static_cast<uint8_t>((allowedMask >> (op.index * 8)) & 0xFF);
+            if (allowed == 0)
+                return false;
+            frame.data[op.index] |= allowed;
+            return true;
+        }
+        return false;
+    case OP_AND_BYTE:
+        if (op.index < 8)
+        {
+            uint8_t allowed = static_cast<uint8_t>((allowedMask >> (op.index * 8)) & 0xFF);
+            if (allowed == 0)
+                return false;
+            frame.data[op.index] &= static_cast<uint8_t>(~allowed);
+            return true;
+        }
+        return false;
+    case OP_CHECKSUM:
+        return allowedMask == pluginOpWriteMask(op);
+    }
+    return false;
+}
+
+static bool pluginFrameChanged(const CanFrame &a, const CanFrame &b)
+{
+    if (a.id != b.id || a.dlc != b.dlc)
+        return true;
+
+    uint8_t dlc = (a.dlc <= 8) ? a.dlc : 8;
+    for (uint8_t i = 0; i < dlc; i++)
+    {
+        if (a.data[i] != b.data[i])
+            return true;
+    }
+    return false;
+}
+
 static bool pluginProcessFrame(const CanFrame &original, CanDriver &driver)
 {
     if (pluginsLocked || pluginCount == 0)
         return false;
 
     bool processed = false;
+    bool sendRequested = false;
+    bool checksumPending = false;
+    uint64_t claimed = 0;
+    CanFrame modified = original;
+
     for (uint8_t p = 0; p < pluginCount; p++)
     {
         if (!pluginStore[p].enabled)
             continue;
+        uint64_t pluginTouched = 0;
         for (uint8_t r = 0; r < pluginStore[p].ruleCount; r++)
         {
             const PluginRule &rule = pluginStore[p].rules[r];
@@ -282,16 +450,41 @@ static bool pluginProcessFrame(const CanFrame &original, CanDriver &driver)
                     continue;
             }
 
-            CanFrame modified = original;
-            for (uint8_t o = 0; o < rule.opCount; o++)
-                pluginApplyOp(modified, rule.ops[o]);
-
-            if (rule.sendAfter)
-                driver.send(modified);
-
             processed = true;
+            if (!rule.sendAfter)
+                continue;
+
+            sendRequested = true;
+            for (uint8_t o = 0; o < rule.opCount; o++)
+            {
+                const PluginOp &op = rule.ops[o];
+                uint64_t opMask = pluginOpWriteMask(op);
+                uint64_t allowedMask = opMask & ~claimed;
+                if (op.type == OP_CHECKSUM)
+                {
+                    if (allowedMask == opMask && pluginApplyOpMasked(modified, op, allowedMask))
+                    {
+                        pluginTouched |= opMask;
+                        checksumPending = true;
+                    }
+                    continue;
+                }
+
+                if (allowedMask != 0 && pluginApplyOpMasked(modified, op, allowedMask))
+                    pluginTouched |= allowedMask;
+            }
         }
+        claimed |= pluginTouched;
     }
+
+    if (sendRequested)
+    {
+        if (checksumPending)
+            modified.data[7] = computeVehicleChecksum(modified);
+        if (pluginFrameChanged(original, modified))
+            driver.send(modified);
+    }
+
     return processed;
 }
 

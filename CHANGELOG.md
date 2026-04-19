@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2-beta.3] - 2026-04-19
+
+### Added
+- Dashboard plugin priority controls now let users choose which enabled plugin wins overlapping bit writes
+- Dashboard plugin conflict warnings now show firmware overlaps, plugin priority overlaps, and the first enabled injection priority
+
+### Changed
+- Plugin installs now start disabled so users can review priority and conflicts before enabling them
+- Rule Test now waits for the next matching live CAN frame, applies the selected rule to that frame, and injects the captured result with the chosen count and interval
+- Dashboard polling now keeps `/status` as the connection gate and backs off non-critical polls during reconnects
+
+### Fixed
+- Plugin rules targeting the same CAN ID and mux are merged into one injected frame per incoming frame, preventing contradictory duplicate plugin sends in the same cycle
+- TWAI dashboard filtering now drops sparse-mask false positives in software, reducing dashboard load when plugin CAN IDs widen the hardware mask
+- Dashboard status rendering no longer breaks when optional status-grid elements are removed or rearranged
+- Dashboard remains responsive under heavier CAN/plugin load by limiting per-loop frame draining and giving the web task more scheduling priority
+
 ## [2.3.2-beta.2] - 2026-04-18
 
 ### Changed
