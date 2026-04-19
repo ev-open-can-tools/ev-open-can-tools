@@ -443,6 +443,7 @@ static void dashLoadPrefs()
 
     updateBetaChannel = prefs.getBool("update_beta", false);
     autoUpdateEnabled = prefs.getBool("auto_upd", false);
+    bridgeLoadPrefs(); // loads bridge/DNS prefs while namespace is still open
     prefs.end();
 
     if (migratedHw)
@@ -1400,9 +1401,13 @@ static void dashCheckWifi()
             // Schedule auto-update check 15 s after STA comes up (grace period for other boot work)
             if (autoUpdateEnabled && !autoUpdateDone)
                 autoUpdateEligibleAt = millis() + 15000;
+            bridgeApplyState();
         }
         else
+        {
             dashLog("[WIFI] Disconnected from " + String(staSSID));
+            bridgeApplyState();
+        }
     }
 
     // Fire one-shot auto-update check once eligible
@@ -1498,6 +1503,9 @@ static void handleWifiStatus()
     j += "}";
     server.send(200, "application/json", j);
 }
+
+// ── WiFi Bridge + DNS filtering ─────────────────────────────────
+#include "web/wifi_bridge.h"
 
 // ── AP Config (hotspot name/password) ───────────────────────────
 
@@ -1623,6 +1631,22 @@ static void handleSettingsExport()
     j += ",\"mask\":\"" + jsonEscape(wMask) + "\",\"dns\":\"" + jsonEscape(wDns) + "\"}";
     j += ",\"can\":{\"tx\":" + String(canTx) + ",\"rx\":" + String(canRx) + "}";
     j += ",\"beta\":" + String(beta ? "true" : "false");
+    // Bridge / DNS settings
+    {
+        Preferences bp;
+        if (bp.begin(PREFS_NS, true))
+        {
+            bool   brEn  = bp.getBool("bridge_en",  false);
+            bool   dnsEn = bp.getBool("dns_flt_en", false);
+            uint8_t dnsM = bp.getUChar("dns_mode",  0);
+            String dnsR  = bp.isKey("dns_rules") ? bp.getString("dns_rules", "[]") : "[]";
+            bp.end();
+            j += ",\"bridge\":{\"bridge_en\":" + String(brEn  ? "true" : "false");
+            j += ",\"dns_flt_en\":"            + String(dnsEn ? "true" : "false");
+            j += ",\"dns_mode\":"              + String(dnsM);
+            j += ",\"dns_rules\":"             + dnsR + "}"; // raw JSON array
+        }
+    }
     j += "}";
 
     server.sendHeader("Content-Disposition", "attachment; filename=\"evtools-backup.json\"");
@@ -1678,6 +1702,23 @@ static void handleSettingsImport()
     }
     if (doc["beta"].is<bool>())
         p.putBool("upd_beta", doc["beta"].as<bool>());
+    if (doc["bridge"].is<JsonObject>())
+    {
+        auto br = doc["bridge"];
+        if (br["bridge_en"].is<bool>())
+            p.putBool("bridge_en",   br["bridge_en"].as<bool>());
+        if (br["dns_flt_en"].is<bool>())
+            p.putBool("dns_flt_en",  br["dns_flt_en"].as<bool>());
+        if (br["dns_mode"].is<int>())
+            p.putUChar("dns_mode",   (uint8_t)br["dns_mode"].as<int>());
+        if (br["dns_rules"].is<JsonArray>())
+        {
+            String rulesOut;
+            serializeJson(br["dns_rules"], rulesOut);
+            if (rulesOut.length() <= 3800)
+                p.putString("dns_rules", rulesOut);
+        }
+    }
     p.end();
 
     if (doc["can"].is<JsonObject>())
@@ -2315,6 +2356,11 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     const int apChannel = 1;
     const int apHiddenFlag = apHidden ? 1 : 0;
     const int apMaxConn = 4;
+    // Explicit AP config so DHCP advertises 192.168.4.1 as the DNS server
+    // (required for the DNS proxy to receive queries from AP clients).
+    WiFi.softAPConfig(IPAddress(192, 168, 4, 1),
+                      IPAddress(192, 168, 4, 1),
+                      IPAddress(255, 255, 255, 0));
     if (strlen(staSSID) > 0)
     {
         WiFi.mode(WIFI_AP_STA);
@@ -2374,6 +2420,8 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     server.on("/wifi_scan", HTTP_GET, handleWifiScan);
     server.on("/wifi_config", HTTP_POST, handleWifiConfig);
     server.on("/wifi_status", HTTP_GET, handleWifiStatus);
+    server.on("/bridge_status", HTTP_GET, handleBridgeStatus);
+    server.on("/bridge_config", HTTP_POST, handleBridgeConfig);
     server.on("/update_check", HTTP_GET, handleUpdateCheck);
     server.on("/update_install", HTTP_POST, handleUpdateInstall);
     server.on("/update_beta", HTTP_POST, handleUpdateBeta);

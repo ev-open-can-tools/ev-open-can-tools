@@ -376,6 +376,62 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 
 <div class="card">
   <div class="card-hdr">
+    <div class="card-title">Network Bridge <span onclick="toggleInfo('bridge-info')" style="color:var(--tx3);cursor:pointer;font-size:12px;margin-left:4px" title="About Network Bridge">&#9432;</span></div>
+    <div class="card-meta" id="bridge-meta">Disabled</div>
+  </div>
+
+  <div id="bridge-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+    When the device is connected to an upstream WiFi hotspot (phone / router) <b>and</b> running its own AP, bridge mode forwards traffic between them via NAT &mdash; devices on the EV-tools AP get internet access. DNS Filter intercepts DNS queries from AP clients so you can allow or block specific domains.
+  </div>
+
+  <div class="feat-row">
+    <div class="feat-info">
+      <div class="feat-name">Bridge (NAT forwarding)</div>
+      <div class="feat-desc">Forward AP client traffic through the upstream WiFi connection</div>
+    </div>
+    <label class="tgl">
+      <input type="checkbox" id="bridge-en-tgl" onchange="saveBridgeConfig()">
+      <div class="tgl-track"><div class="tgl-thumb"></div></div>
+    </label>
+  </div>
+
+  <div class="feat-row">
+    <div class="feat-info">
+      <div class="feat-name">DNS Filter</div>
+      <div class="feat-desc">Intercept DNS queries from AP clients (allow or block domains)</div>
+    </div>
+    <label class="tgl">
+      <input type="checkbox" id="dns-flt-tgl" onchange="saveBridgeConfig()">
+      <div class="tgl-track"><div class="tgl-thumb"></div></div>
+    </label>
+  </div>
+
+  <div id="dns-filter-settings" style="display:none;margin-top:8px;border-top:1px solid var(--bd);padding-top:10px">
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--tx2)">Mode:</span>
+      <label style="font-size:12px;color:var(--tx2);display:flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="radio" name="dns-mode" value="0" onchange="saveBridgeConfig()"> Blocklist
+      </label>
+      <label style="font-size:12px;color:var(--tx2);display:flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="radio" name="dns-mode" value="1" onchange="saveBridgeConfig()"> Allowlist
+      </label>
+    </div>
+    <textarea class="sniff-input" id="dns-rules" rows="5"
+      placeholder="One domain per line&#10;ads.example.com&#10;*.tracker.net"
+      style="width:100%;box-sizing:border-box;font-family:monospace;font-size:11px;resize:vertical"
+      onblur="saveBridgeConfig()"></textarea>
+    <div style="font-size:10px;color:var(--tx3);margin-top:4px">
+      Wildcards supported: <code style="color:var(--acc)">*.example.com</code> &mdash; max 50 entries
+    </div>
+  </div>
+
+  <div style="margin-top:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:11px;color:var(--tx3);line-height:1.7" id="bridge-stats">
+    Loading&hellip;
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-hdr">
     <div class="card-title">Plugins <span onclick="toggleInfo('plg-info')" style="color:var(--tx3);cursor:pointer;font-size:12px;margin-left:4px" title="What are plugins?">&#9432;</span></div>
     <div class="card-meta" id="plg-count">0 installed</div>
   </div>
@@ -1628,8 +1684,51 @@ async function peReset(){
   peRender();peSetStatus('','');peSetTestStatus('Idle','');
 }
 
-dashboardPollTimers.push(setInterval(poll,2000));dashboardPollTimers.push(setInterval(pollLog,3000));dashboardPollTimers.push(setInterval(pollSniffer,1000));dashboardPollTimers.push(setInterval(pollPlugins,10000));dashboardPollTimers.push(setInterval(loadWifiStatus,10000));dashboardPollTimers.push(setInterval(loadApStatus,10000));
-updateHW4(1);buildPills();updateSniffIdToggle();poll();pollLog();pollSniffer();pollRec();pollPlugins();loadWifiStatus();loadApStatus();loadUpdateInfo();loadCanPins();peRender();
+// ── Network Bridge ───────────────────────────────────────────────
+function dnsRulesArrayToText(arr){return Array.isArray(arr)?arr.join('\n'):'';}
+function dnsRulesTextToArray(txt){return txt.split('\n').map(s=>s.trim().toLowerCase()).filter(s=>s.length>0).slice(0,50);}
+
+async function saveBridgeConfig(){
+  const brEn=$('bridge-en-tgl').checked?'1':'0';
+  const dnsEn=$('dns-flt-tgl').checked?'1':'0';
+  $('dns-filter-settings').style.display=$('dns-flt-tgl').checked?'block':'none';
+  const mode=(document.querySelector('input[name="dns-mode"]:checked')||{value:'0'}).value;
+  const rules=JSON.stringify(dnsRulesTextToArray($('dns-rules').value));
+  try{
+    await fetch('/bridge_config',{method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'bridge_en='+brEn+'&dns_flt_en='+dnsEn+'&dns_mode='+mode+'&dns_rules='+encodeURIComponent(rules)});
+  }catch(e){}
+}
+
+async function loadBridgeStatus(){
+  return runPoll('bridge_status',async()=>{
+    try{
+      const d=await fetchPollJson('/bridge_status',2000);
+      $('bridge-en-tgl').checked=!!d.bridge_en;
+      $('dns-flt-tgl').checked=!!d.dns_flt_en;
+      $('dns-filter-settings').style.display=d.dns_flt_en?'block':'none';
+      const mv=String(d.dns_mode||0);
+      document.querySelectorAll('input[name="dns-mode"]').forEach(r=>{r.checked=r.value===mv;});
+      // Update textarea only if not focused (populate from server-side array)
+      const ta=$('dns-rules');
+      if(document.activeElement!==ta&&Array.isArray(d.dns_rules))
+        ta.value=dnsRulesArrayToText(d.dns_rules);
+      let meta='Disabled';
+      if(d.bridge_en&&d.napt_active)meta='Active \u2014 '+d.sta_ssid;
+      else if(d.bridge_en&&!d.napt_active)meta='Waiting for uplink';
+      $('bridge-meta').textContent=meta;
+      let stats='';
+      if(d.sta_connected)stats+='Upstream: '+d.sta_ssid+(d.sta_ip?' ('+d.sta_ip+')':'')+'<br>';
+      stats+='AP clients: '+d.ap_clients+' &bull; AP IP: '+d.ap_ip+'<br>';
+      if(d.dns_flt_en)stats+='DNS queries: '+d.dns_total+' &bull; Blocked: '+d.dns_blocked;
+      $('bridge-stats').innerHTML=stats||'Bridge inactive';
+    }catch(e){}
+  });
+}
+
+dashboardPollTimers.push(setInterval(poll,2000));dashboardPollTimers.push(setInterval(pollLog,3000));dashboardPollTimers.push(setInterval(pollSniffer,1000));dashboardPollTimers.push(setInterval(pollPlugins,10000));dashboardPollTimers.push(setInterval(loadWifiStatus,10000));dashboardPollTimers.push(setInterval(loadApStatus,10000));dashboardPollTimers.push(setInterval(loadBridgeStatus,5000));
+updateHW4(1);buildPills();updateSniffIdToggle();poll();pollLog();pollSniffer();pollRec();pollPlugins();loadWifiStatus();loadApStatus();loadUpdateInfo();loadCanPins();peRender();loadBridgeStatus();
 </script>
 </body>
 </html>
