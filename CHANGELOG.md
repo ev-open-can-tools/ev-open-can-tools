@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2-beta.3] - 2026-04-19
+
+### Added
+- ESP32 WiFi bridge mode: NAT forwarding between the upstream hotspot (STA) and the local access point (AP), so devices connected to the ESP32 AP get internet access through the upstream connection
+- DNS filtering: optional DNS proxy on the AP interface with allowlist and blocklist modes, wildcard domain support (`*.example.com`), and per-domain rule editing from the web UI
+- Network Bridge card in the web dashboard: toggles for bridge and DNS filter, mode selector, domain textarea with wildcard hints, and a live status/stats block
+- `/bridge_status` and `/bridge_config` API endpoints for runtime configuration
+- Bridge and DNS settings persisted in NVS and included in the settings backup/restore JSON (`bridge` key)
+- Safe fallback: local AP and dashboard remain reachable when the upstream connection is unavailable; NAT and DNS proxy disable automatically on STA disconnect
+- Feature is ESP32-only (gated behind `ESP32_DASHBOARD`) and does not affect RP2040 or ATSAME51 targets
+
 ## [2.3.1] - 2026-04-18
 
 ### Fixed
