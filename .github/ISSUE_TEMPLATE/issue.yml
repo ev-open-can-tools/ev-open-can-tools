@@ -1,4 +1,5 @@
 name: General Issue
+description: 
 body:
   - type: dropdown
     id: type
