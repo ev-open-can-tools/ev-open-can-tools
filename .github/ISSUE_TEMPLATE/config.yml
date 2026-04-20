@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Plugin repo
+    url: https://github.com/ev-open-can-tools/ev-open-can-tools-plugins
+    about: Here you can find the repo for plugins to active for esp32 builds
   - name: 📚 Read the documentation
     url: https://ev-open-can-tools.github.io/ev-open-can-tools/docs/
     about: Please read the documentation before opening an issue.
