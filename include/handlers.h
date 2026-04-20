@@ -75,23 +75,19 @@ struct LegacyHandler : public CarManagerBase
                 ADEnabled = isADSelectedInUI(frame) && (!checkAD || checkAD());
             if (index == 0 && ADEnabled && (!checkAD || checkAD()))
             {
-#if !defined(ESP32_DASHBOARD)
                 setBit(frame, 46, true);
                 framesSent++;
                 driver.send(frame);
                 if (onSend)
                     onSend(0, true);
-#endif
             }
             if (index == 1 && (!checkNag || checkNag()))
             {
-#if !defined(ESP32_DASHBOARD)
                 setBit(frame, 19, false);
                 framesSent++;
                 driver.send(frame);
                 if (onSend)
                     onSend(1, true);
-#endif
             }
             if (index == 0 && enablePrint)
             {
@@ -117,15 +113,25 @@ struct HW3Handler : public CarManagerBase
 {
     const uint32_t *filterIds() const override
     {
-        static constexpr uint32_t ids[] = {1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {787, 1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 3; }
+    uint8_t filterIdCount() const override { return 4; }
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
         if (onFrame)
             onFrame(frame);
+        if (frame.id == 787)
+        {
+            if (frame.dlc < 8)
+                return;
+            setTrackModeRequest(frame, kTrackModeRequestOn);
+            frame.data[7] = computeVehicleChecksum(frame);
+            framesSent++;
+            driver.send(frame);
+            return;
+        }
         if (frame.id == 1016)
         {
             if (frame.dlc < 6)
@@ -186,13 +192,11 @@ struct HW3Handler : public CarManagerBase
             if (index == 0 && ADEnabled && (!checkAD || checkAD()))
             {
                 speedOffset = std::max(std::min(((uint8_t)((frame.data[3] >> 1) & 0x3F) - 30) * 5, 100), 0);
-#if !defined(ESP32_DASHBOARD)
                 setBit(frame, 46, true);
                 framesSent++;
                 driver.send(frame);
                 if (onSend)
                     onSend(0, true);
-#endif
             }
             if (index == 1)
             {
@@ -428,7 +432,6 @@ struct HW4Handler : public CarManagerBase
                 ADEnabled = isADSelectedInUI(frame) && (!checkAD || checkAD());
             if (index == 0 && ADEnabled && (!checkAD || checkAD()))
             {
-#if !defined(ESP32_DASHBOARD)
                 setBit(frame, 46, true);
                 setBit(frame, 60, true);
 #if defined(EMERGENCY_VEHICLE_DETECTION) && !defined(ESP32_DASHBOARD)
@@ -439,7 +442,6 @@ struct HW4Handler : public CarManagerBase
                 driver.send(frame);
                 if (onSend)
                     onSend(0, true);
-#endif
             }
             if (index == 1)
             {

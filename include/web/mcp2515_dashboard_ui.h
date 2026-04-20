@@ -36,13 +36,10 @@ body{background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSyst
 /* Header */
 .hdr{padding:20px 16px 0;display:flex;flex-direction:column;gap:4px}
 .hdr-top{display:flex;align-items:center;justify-content:space-between}
-.hdr-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.hdr-left{display:flex;align-items:center;gap:10px}
 .hdr-title{font-size:20px;font-weight:700;color:var(--tx)}
 .hw-badge{padding:3px 8px;border-radius:5px;font-size:11px;font-weight:600;
   background:var(--accBg);border:1px solid var(--accBd);color:var(--acc)}
-.gtw-badge{padding:3px 8px;border-radius:5px;font-size:11px;font-weight:600;
-  background:var(--card);border:1px solid var(--bd2);color:var(--tx2)}
-.gtw-badge.known{color:var(--ok);border-color:rgba(61,186,114,.25);background:var(--okBg)}
 .theme-btn{padding:6px 10px;border:1px solid var(--bd2);border-radius:8px;
   background:var(--card);color:var(--tx2);font-size:12px;cursor:pointer;
   display:flex;align-items:center;gap:4px;transition:all .2s}
@@ -236,7 +233,6 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <div class="hdr-left">
       <div class="hdr-title">ev-open-can-tools</div>
       <span class="hw-badge" id="hw-badge">HW3</span>
-      <span class="gtw-badge" id="gtw-badge" title="GTW_autopilot">GTW &mdash;</span>
     </div>
     <button class="theme-btn" onclick="toggleTheme()" id="theme-btn">&#9788; Light</button>
   </div>
@@ -682,22 +678,6 @@ const $=id=>document.getElementById(id);
 const setText=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
 const setClass=(id,value)=>{const el=$(id);if(el)el.className=value;};
 function profileNamesForHw(hw){return hw===2?SP4:SP3;}
-function gtwAutopilotName(v){
-  return ['NONE','HIGHWAY','ENHANCED','SELF_DRIVING','BASIC'][v]||'UNKNOWN';
-}
-function gtwAutopilotBadge(v){
-  if(v<0)return 'GTW —';
-  if(v===3)return 'GTW SELF';
-  return 'GTW '+gtwAutopilotName(v);
-}
-function updateGtwBadge(v){
-  const el=$('gtw-badge');if(!el)return;
-  v=Number(v);
-  const known=!isNaN(v)&&v>=0;
-  el.textContent=gtwAutopilotBadge(known?v:-1);
-  el.className='gtw-badge '+(known?'known':'');
-  el.title=known?('GTW_autopilot: '+gtwAutopilotName(v)+' ('+v+')'):'GTW_autopilot: not seen yet';
-}
 let state={hw:1,can:true,sp:0};
 let sniffPaused=false,sniffFrames=[];
 let sniffShowDbcIds=localStorage.getItem('sniffIdMode')==='dbc';
@@ -1162,7 +1142,6 @@ async function poll(){
     setText('s-mcp-raw','EFLG: 0x'+toHex(d.eflg,2));
     const fpsFill=$('fps-fill');if(fpsFill)fpsFill.style.width=Math.min(fpsVal/20*100,100)+'%';
     setText('hw-badge',HW[d.hw]||'?');
-    updateGtwBadge(d.gtwap);
     try{renderEflg(d.eflg);}catch(e){}
     try{renderWriteProbe(d.probe);}catch(e){}
     if(d.mux){for(let i=0;i<3;i++){setText('m'+i+'rx',d.mux[i].rx);setText('m'+i+'tx',d.mux[i].tx);const e=$('m'+i+'err');if(e){e.textContent=d.mux[i].err;e.style.color=d.mux[i].err>0?'var(--err)':'';}}}
