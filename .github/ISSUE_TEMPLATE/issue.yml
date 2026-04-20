@@ -1,0 +1,96 @@
+name: General Issue
+description: Create a new issue
+body:
+  - type: dropdown
+    id: type
+    attributes:
+      label: Issue Type
+      description: What type of issue is this?
+      options:
+        - Bug
+        - Feature Request
+        - Task
+        - Documentation
+    validations:
+      required: true
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: Short description of the issue
+      placeholder: Briefly describe the issue
+    validations:
+      required: true
+
+  - type: dropdown
+    id: hw_version
+    attributes:
+      label: Vehicle Hardware Version
+      description: Which Tesla hardware generation does your car have?
+      options:
+        - Legacy (HW3 retrofit)
+        - HW3
+        - HW4
+        - Other / Unknown
+    validations:
+      required: true
+
+  - type: input
+    id: sw_version
+    attributes:
+      label: Vehicle Software Version
+      description: Which Tesla software version are you running in your car?
+      placeholder: v2026.8.3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: board
+    attributes:
+      label: Board / Hardware
+      description: Which board are you using?
+      options:
+        - Adafruit Feather RP2040 CAN
+        - Adafruit Feather M4 CAN Express
+        - Generic ESP32 dev board
+        - LILYGO TCAN485
+        - M5Stack Atom CAN Base
+        - M5Stack AtomS3 Mini CAN Base
+        - Feather ESP32 V2 + external MCP2515
+        - ESP32-S3 + external MCP2515
+        - Waveshare ESP32-S3 RS485/CAN
+        - Other
+    validations:
+      required: false
+
+  - type: textarea
+    id: profile
+    attributes:
+      label: platformio_profile.h
+      description: Paste the contents of your `platformio_profile.h` file (omit WiFi passwords if you like)
+      placeholder: |
+        #pragma once
+
+        // #define DRIVER_MCP2515
+        // #define HW3
+        // ...
+      render: cpp
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce (if applicable)
+      description: How can this be reproduced?
+      placeholder: |
+        1. Go to...
+        2. Click on...
+        3. See error...
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Logs, screenshots, or anything else
