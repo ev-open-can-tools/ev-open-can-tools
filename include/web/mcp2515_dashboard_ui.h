@@ -11,7 +11,7 @@ static const char DASH_HTML[] PROGMEM = R"HTML(
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 [data-theme="dark"]{
-  --bg:#0d0d0d;--card:#161616;--card2:#1e1e1e;
+  --bg:#0d0d0d;--bg2:var(--bg);--card:#161616;--card2:#1e1e1e;
   --bd:#2a2a2a;--bd2:#333;
   --tx:#f0f0f0;--tx2:#999;--tx3:#555;
   --acc:#5b8fff;--accBg:rgba(91,143,255,.1);--accBd:rgba(91,143,255,.25);
@@ -20,7 +20,7 @@ static const char DASH_HTML[] PROGMEM = R"HTML(
   --warn:#f5a623;
 }
 [data-theme="light"]{
-  --bg:#f5f5f5;--card:#fff;--card2:#f0f0f0;
+  --bg:#f5f5f5;--bg2:var(--bg);--card:#fff;--card2:#f0f0f0;
   --bd:#e0e0e0;--bd2:#ccc;
   --tx:#111;--tx2:#555;--tx3:#999;
   --acc:#2563eb;--accBg:rgba(37,99,235,.08);--accBd:rgba(37,99,235,.2);
@@ -80,7 +80,10 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 .subsec-title{font-size:13px;font-weight:600;color:var(--tx);min-width:0}
 .title-help{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-left:6px;border:1px solid var(--bd2);border-radius:50%;font-size:10px;font-weight:700;color:var(--tx3);cursor:pointer;vertical-align:middle;line-height:1;background:transparent}
 .title-help:hover{border-color:var(--accBd);color:var(--acc);background:var(--accBg)}
-.inline-help-panel{display:none;margin:8px 0 0;padding:10px;background:var(--card2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5}
+.info-box{margin-bottom:10px;padding:10px 12px;background:var(--bg2);border:1px solid var(--bd);border-radius:9px;font-size:12px;color:var(--tx3);line-height:1.6}
+.info-box a{color:var(--acc);text-decoration:none}
+.inline-help-panel{display:none;margin:8px 0 0;padding:10px 12px;background:var(--bg2);border:1px solid var(--bd);border-radius:9px;font-size:12px;color:var(--tx3);line-height:1.6}
+.inline-help-panel.show{display:block}
 .subsec-meta{font-size:11px;color:var(--tx3);justify-self:end;text-align:right;min-width:0}
 .subsec-btn{padding:4px 8px;font-size:10px;justify-self:end}
 .subsec.collapsed .subsec-head{margin-bottom:0}
@@ -260,87 +263,12 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 <div style="height:12px"></div>
 
 <div class="card">
-  <div class="card-hdr"><div class="card-title">CAN <span class="title-help" onclick="return toggleHelp(this,event)" title="Live CAN tools for sniffing, recording, controller status and checking the last injected write.">?</span></div><div class="card-meta">Sniffer, recorder and bus status</div></div>
-
-  <div class="subsec" data-subkey="can-sniffer">
-    <div class="subsec-head">
-      <div class="subsec-title">CAN Sniffer <span class="title-help" onclick="return toggleHelp(this,event)" title="Shows recent CAN frames live. You can filter by ID or name, switch between wire IDs and DBC IDs, and pause the live view.">?</span></div>
-      <div class="subsec-meta" id="sniff-count">0 frames</div>
-    </div>
-    <div class="subsec-body">
-      <div class="sniff-ctrl">
-        <input class="sniff-input" id="sniff-filter" placeholder="Filter by ID or name" oninput="renderSniffer()">
-        <button class="sniff-btn" id="sniff-id-btn" onclick="toggleSniffIdMode()">Wire IDs</button>
-        <button class="sniff-btn" id="sniff-pause-btn" onclick="togglePause()">Pause</button>
-      </div>
-      <div class="sniff-box" id="sniffer">
-        <div style="padding:20px;color:var(--tx3);text-align:center;font-size:12px">Waiting for CAN frames</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="subsec" data-subkey="can-recorder">
-    <div class="subsec-head">
-      <div class="subsec-title">CAN Recorder <span class="title-help" onclick="return toggleHelp(this,event)" title="Records live CAN traffic up to the frame limit and lets you download it as a CSV file.">?</span></div>
-      <div class="subsec-meta" id="rec-meta">Idle</div>
-    </div>
-    <div class="subsec-body">
-      <div class="rec-bar"><div class="rec-fill" id="rec-fill"></div></div>
-      <div class="rec-info">
-        <span id="rec-count">0 / 2000 frames</span>
-        <span id="rec-status">Ready</span>
-      </div>
-      <div class="btn-row">
-        <button class="btn" id="rec-btn" onclick="toggleRec()">Start Recording</button>
-        <a class="btn" id="rec-dl" href="/rec_download" download="can_recording.csv" style="display:none;text-align:center;text-decoration:none;padding:10px;border:1px solid var(--bd2);color:var(--tx2)">Download CSV</a>
-      </div>
-    </div>
-  </div>
-
-  <div class="subsec" data-subkey="can-controller">
-    <div class="subsec-head">
-      <div class="subsec-title">CAN Controller <span class="title-help" onclick="return toggleHelp(this,event)" title="Shows CAN controller health, error flags and the RX, TX and error counters per mux.">?</span></div>
-      <div class="subsec-meta" style="display:flex;align-items:center;gap:8px">
-        <button onclick="resetStats()" style="font-size:10px;padding:2px 8px;border:1px solid var(--bd2);border-radius:5px;background:transparent;color:var(--tx3);cursor:pointer;font-family:inherit">Reset</button>
-      </div>
-    </div>
-    <div class="subsec-body">
-      <div class="eflg-row" id="eflg-row"><span class="eflg-pill eflg-ok">OK</span></div>
-      <table class="mux-tbl">
-        <tr><th>Mux</th><th>RX</th><th>TX</th><th>Errors</th></tr>
-        <tr><td>0</td><td id="m0rx">0</td><td id="m0tx">0</td><td id="m0err">0</td></tr>
-        <tr><td>1</td><td id="m1rx">0</td><td id="m1tx">0</td><td id="m1err">0</td></tr>
-        <tr><td>2</td><td id="m2rx">0</td><td id="m2tx">0</td><td id="m2err">0</td></tr>
-      </table>
-    </div>
-  </div>
-
-  <div class="subsec" data-subkey="can-last-write-check">
-    <div class="subsec-head">
-      <div class="subsec-title">Last Write Check <span class="title-help" onclick="return toggleHelp(this,event)" title="Compares the last injected frame with the latest bus frame that has the same CAN ID and mux. Helpful to spot overwrites, but not proof that a module accepted the change.">?</span></div>
-    </div>
-    <div class="subsec-body">
-      <div class="probe-status v-dim" id="probe-status">No injected frame yet</div>
-      <div class="probe-block">
-        <div class="probe-label">Sent</div>
-        <div class="probe-meta" id="probe-tx-meta">—</div>
-        <div class="probe-hex" id="probe-tx">—</div>
-      </div>
-      <div class="probe-block">
-        <div class="probe-label">Bus</div>
-        <div class="probe-meta" id="probe-rx-meta">—</div>
-        <div class="probe-hex" id="probe-rx">—</div>
-      </div>
-    </div>
-  </div>
-</div>
-<div class="card">
   <div class="card-hdr">
     <div class="card-title">Plugins <span class="title-help" onclick="return toggleHelp(this,event)" data-help-target="plg-info" title="Install and manage JSON plugins that modify CAN messages in real time.">?</span></div>
     <div class="card-meta" id="plg-count">0 installed</div>
   </div>
 
-  <div id="plg-info" style="display:none;margin-bottom:12px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+  <div id="plg-info" class="info-box" style="display:none;margin-bottom:12px">
     Plugins are JSON rules that modify CAN messages in real time. Install via URL, file upload or paste.
     <div style="margin-top:6px"><a href="https://ev-open-can-tools.github.io/ev-open-can-tools/docs/plugins.html" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">Documentation &amp; examples &rarr;</a></div>
   </div>
@@ -374,7 +302,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <div class="card-title">Plugin Editor <span class="title-help" onclick="return toggleHelp(this,event)" data-help-target="pe-info" title="Build, edit and test plugin rules without writing JSON by hand.">?</span></div>
     <div class="card-meta" id="pe-count">0 rules</div>
   </div>
-  <div id="pe-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+  <div id="pe-info" class="info-box" style="display:none">
     Build or edit a plugin via form &mdash; no JSON writing needed. Load an installed plugin into the editor, change rules, then reinstall it. You can also send a temporary test frame for one rule before installing.
   </div>
   <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 90px;gap:6px;margin-bottom:10px">
@@ -388,7 +316,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
       <div class="subsec-meta">Fast builder</div>
     </div>
     <div class="subsec-body">
-      <div style="padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px">
+      <div class="info-box">
         <div style="font-size:11px;color:var(--tx3);line-height:1.5;margin-bottom:8px">
           Paste a shorthand line like <span style="font-family:monospace">0x7FF mux=2 byte[5] = 0x4C</span> to create one rule directly.
         </div>
@@ -483,7 +411,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
       <div class="subsec-meta"><span id="ap-stored" style="margin-right:8px"></span><span id="ap-clients">0 clients</span></div>
     </div>
     <div class="subsec-body">
-      <div id="ap-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+      <div id="ap-info" class="info-box" style="display:none">
         Stored in NVS (non-volatile storage). The SSID and password survive firmware updates and reboots. Only a full factory erase via USB clears them.
       </div>
       <div class="setting-desc" style="margin-bottom:8px">Change the WiFi hotspot name and password</div>
@@ -547,7 +475,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
       <div class="subsec-meta" id="can-pins-status">default</div>
     </div>
     <div class="subsec-body">
-      <div id="can-pins-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+      <div id="can-pins-info" class="info-box">
         GPIO pins for the CAN transceiver (TWAI). Persisted in NVS so they survive OTA updates. Leave empty to use the firmware&#39;s compile-time defaults. <b>Wrong pins disable CAN</b> &mdash; recovery needs a USB re-flash. On most ESP32 boards GPIO 6&ndash;11 remain reserved for SPI flash.
       </div>
       <div style="display:flex;gap:6px;align-items:center">
@@ -559,15 +487,24 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     </div>
   </div>
 
-  <div class="setting-row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--bd)">
-    <div class="setting-info">
-      <div class="setting-name">Enable Logging <span class="title-help" onclick="return toggleHelp(this,event)" title="Turns serial and dashboard logging on or off.">?</span></div>
-      <div class="setting-desc">Toggle serial and dashboard log output</div>
+  <div class="subsec" data-subkey="config-dashboard-log" style="margin-top:14px">
+    <div class="subsec-head">
+      <div class="subsec-title">Dashboard Log <span class="title-help" onclick="return toggleHelp(this,event)" title="Shows recent dashboard and firmware log lines. This is the dashboard logging output, not the CAN sniffer.">?</span></div>
+      <div class="subsec-meta">Recent dashboard output</div>
     </div>
-    <label class="tgl"><input type="checkbox" id="tgl-eprn" checked onchange="pushLogging()">
-      <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
+    <div class="subsec-body">
+      <div class="setting-row" style="padding-top:0">
+        <div class="setting-info">
+          <div class="setting-name">Dashboard Logging <span class="title-help" onclick="return toggleHelp(this,event)" title="Turns dashboard log output on or off.">?</span></div>
+          <div class="setting-desc">Toggle dashboard log output</div>
+        </div>
+        <label class="tgl"><input type="checkbox" id="tgl-eprn" checked onchange="pushLogging()">
+          <div class="tgl-track"><div class="tgl-thumb"></div></div></label>
+      </div>
+      <div class="log-box" id="log">Waiting...</div>
+    </div>
   </div>
-  <div class="setting-row">
+  <div class="setting-row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--bd)">
     <div class="setting-info">
       <div class="setting-name">Settings Backup <span class="title-help" onclick="return toggleHelp(this,event)" data-help-target="backup-info" title="Export or restore saved device settings as JSON.">?</span></div>
       <div class="setting-desc">Export and import device settings</div>
@@ -576,7 +513,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <button class="sniff-btn" onclick="document.getElementById('backup-file').click()">Upload &amp; Restore</button>
     <input type="file" id="backup-file" accept=".json,application/json" style="display:none" onchange="importSettings(event)">
   </div>
-  <div id="backup-info" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:12px;color:var(--tx3);line-height:1.5">
+  <div id="backup-info" class="info-box" style="display:none">
     Exports AP credentials, WiFi Internet, CAN pins and beta channel as JSON. Useful before a full re-flash or when migrating to another device. <b>Passwords are included in clear text</b> &mdash; keep the file safe.
   </div>
 </div>
@@ -606,7 +543,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <button class="sniff-btn" onclick="checkUpdate()" id="upd-check-btn">Check for Updates</button>
     <span style="font-size:11px;color:var(--tx3)" id="upd-status"></span>
   </div>
-  <div id="upd-info" style="display:none;margin-top:10px;padding:10px;background:var(--bg2);border-radius:6px">
+  <div id="upd-info" class="info-box" style="display:none;margin-top:10px">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div>
         <div style="font-size:13px;font-weight:600" id="upd-ver"></div>
@@ -638,8 +575,79 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   </details>
 </div>
 <div class="card">
-  <div class="card-hdr"><div class="card-title">Live Log <span class="title-help" onclick="return toggleHelp(this,event)" title="Shows recent device log lines from the dashboard and firmware.">?</span></div><div class="card-meta">Recent device output</div></div>
-  <div class="log-box" id="log">Waiting...</div>
+  <div class="card-hdr"><div class="card-title">CAN <span class="title-help" onclick="return toggleHelp(this,event)" title="Live CAN tools for sniffing, recording, controller status and checking the last injected write.">?</span></div><div class="card-meta">Sniffer, recorder and bus status</div></div>
+
+  <div class="subsec" data-subkey="can-sniffer">
+    <div class="subsec-head">
+      <div class="subsec-title">CAN Sniffer <span class="title-help" onclick="return toggleHelp(this,event)" title="Shows the latest 30 CAN frames live. You can filter by ID or name, switch between wire IDs and DBC IDs, and pause the view.">?</span></div>
+      <div class="subsec-meta" id="sniff-count">0 frames</div>
+    </div>
+    <div class="subsec-body">
+      <div class="sniff-ctrl">
+        <input class="sniff-input" id="sniff-filter" placeholder="Filter by ID or name" oninput="renderSniffer()">
+        <button class="sniff-btn" id="sniff-id-btn" onclick="toggleSniffIdMode()">Wire IDs</button>
+        <button class="sniff-btn" id="sniff-pause-btn" onclick="togglePause()">Pause</button>
+      </div>
+      <div class="sniff-box" id="sniffer">
+        <div style="padding:20px;color:var(--tx3);text-align:center;font-size:12px">Waiting for CAN frames</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="subsec" data-subkey="can-recorder">
+    <div class="subsec-head">
+      <div class="subsec-title">CAN Recorder <span class="title-help" onclick="return toggleHelp(this,event)" title="Records live CAN traffic up to the frame limit and lets you download it as a CSV file.">?</span></div>
+      <div class="subsec-meta" id="rec-meta">Idle</div>
+    </div>
+    <div class="subsec-body">
+      <div class="rec-bar"><div class="rec-fill" id="rec-fill"></div></div>
+      <div class="rec-info">
+        <span id="rec-count">0 / 2000 frames</span>
+        <span id="rec-status">Ready</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="rec-btn" onclick="toggleRec()">Start Recording</button>
+        <a class="btn" id="rec-dl" href="/rec_download" download="can_recording.csv" style="display:none;text-align:center;text-decoration:none;padding:10px;border:1px solid var(--bd2);color:var(--tx2)">Download CSV</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="subsec" data-subkey="can-controller">
+    <div class="subsec-head">
+      <div class="subsec-title">CAN Controller <span class="title-help" onclick="return toggleHelp(this,event)" title="Shows CAN controller health, error flags and the RX, TX and error counters per mux.">?</span></div>
+      <div class="subsec-meta" style="display:flex;align-items:center;gap:8px">
+        <button onclick="resetStats()" style="font-size:10px;padding:2px 8px;border:1px solid var(--bd2);border-radius:5px;background:transparent;color:var(--tx3);cursor:pointer;font-family:inherit">Reset</button>
+      </div>
+    </div>
+    <div class="subsec-body">
+      <div class="eflg-row" id="eflg-row"><span class="eflg-pill eflg-ok">OK</span></div>
+      <table class="mux-tbl">
+        <tr><th>Mux</th><th>RX</th><th>TX</th><th>Errors</th></tr>
+        <tr><td>0</td><td id="m0rx">0</td><td id="m0tx">0</td><td id="m0err">0</td></tr>
+        <tr><td>1</td><td id="m1rx">0</td><td id="m1tx">0</td><td id="m1err">0</td></tr>
+        <tr><td>2</td><td id="m2rx">0</td><td id="m2tx">0</td><td id="m2err">0</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="subsec" data-subkey="can-last-write-check">
+    <div class="subsec-head">
+      <div class="subsec-title">Last Write Check <span class="title-help" onclick="return toggleHelp(this,event)" title="Compares the last injected frame with the latest bus frame that has the same CAN ID and mux. Helpful to spot overwrites, but not proof that a module accepted the change.">?</span></div>
+    </div>
+    <div class="subsec-body">
+      <div class="probe-status v-dim" id="probe-status">No injected frame yet</div>
+      <div class="probe-block">
+        <div class="probe-label">Sent</div>
+        <div class="probe-meta" id="probe-tx-meta">—</div>
+        <div class="probe-hex" id="probe-tx">—</div>
+      </div>
+      <div class="probe-block">
+        <div class="probe-label">Bus</div>
+        <div class="probe-meta" id="probe-rx-meta">—</div>
+        <div class="probe-hex" id="probe-rx">—</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="warn-bar">CAN bus writes affect vehicle behavior. Remove device immediately if unexpected behavior occurs. Not affiliated with any vehicle manufacturer.</div>
@@ -839,7 +847,15 @@ function dashConfirm(message,title,okText,cancelText){
 }
 
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'&&dashConfirmState)dashConfirmResolve(false);
+  if(e.key==='Escape'){
+    if(dashConfirmState)dashConfirmResolve(false);
+    closeHelpPanels(document);
+  }
+});
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.title-help')&&!e.target.closest('.inline-help-panel')){
+    closeHelpPanels(document);
+  }
 });
 
 function toggleTheme(){
@@ -1488,26 +1504,48 @@ function toggleInfo(id){
   if(el)el.style.display=el.style.display==='none'?'block':'none';
 }
 
+function openHelpParent(btn){
+  var sec=btn.closest('.subsec');
+  if(sec&&sec.classList.contains('collapsed')){
+    sec.classList.remove('collapsed');
+    if(sec.dataset.collapseKey)localStorage.setItem(sec.dataset.collapseKey,'0');
+    var secBtn=sec.querySelector('.subsec-btn');
+    if(secBtn)secBtn.textContent='Hide';
+  }
+  var card=btn.closest('.card');
+  if(card&&card.classList.contains('collapsed')){
+    card.classList.remove('collapsed');
+    if(card.dataset.collapseKey)localStorage.setItem(card.dataset.collapseKey,'0');
+    var cardBtn=card.querySelector('.card-min-btn');
+    if(cardBtn)cardBtn.textContent='Hide';
+  }
+}
+
+function closeHelpPanels(scope,exceptId){
+  (scope||document).querySelectorAll('.inline-help-panel').forEach(function(panel){
+    if(!exceptId||panel.id!==exceptId)panel.classList.remove('show');
+  });
+}
+
 function toggleHelp(btn,ev){
   if(ev){
     ev.preventDefault();
     ev.stopPropagation();
   }
+
+  openHelpParent(btn);
+
   var targetId=btn.getAttribute('data-help-target');
-  if(targetId){
-    toggleInfo(targetId);
-    return false;
-  }
-  var text=btn.getAttribute('data-help')||btn.getAttribute('title')||'More information is not available yet.';
   var panelId=btn.getAttribute('data-inline-help-id');
   var panel=panelId?document.getElementById(panelId):null;
+
   if(!panel){
     panel=document.createElement('div');
     panel.className='inline-help-panel';
-    panel.textContent=text;
     panelId='inline-help-'+Math.random().toString(36).slice(2,10);
     panel.id=panelId;
     btn.setAttribute('data-inline-help-id',panelId);
+
     var anchor=btn.closest('.subsec-head, .card-hdr, .setting-name, summary');
     if(anchor&&anchor.parentNode){
       anchor.insertAdjacentElement('afterend',panel);
@@ -1515,7 +1553,18 @@ function toggleHelp(btn,ev){
       btn.parentNode.insertAdjacentElement('afterend',panel);
     }
   }
-  panel.style.display=panel.style.display==='block'?'none':'block';
+
+  if(targetId){
+    var target=document.getElementById(targetId);
+    panel.innerHTML=target?target.innerHTML:'More information is not available yet.';
+  }else{
+    panel.textContent=btn.getAttribute('data-help')||btn.getAttribute('title')||'More information is not available yet.';
+  }
+
+  var scope=btn.closest('.subsec, .card')||document;
+  var willShow=!panel.classList.contains('show');
+  closeHelpPanels(scope,panelId);
+  panel.classList.toggle('show',willShow);
   return false;
 }
 
