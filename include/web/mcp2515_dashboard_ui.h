@@ -339,17 +339,23 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   </details>
   <div class="subsec" data-subkey="plugin-editor-rule-test">
     <div class="subsec-head">
-      <div class="subsec-title">Rule Test <span class="title-help" onclick="return toggleHelp(this,event)" title="Waits for a live matching frame, applies one editor rule and injects the result for testing.">?</span></div>
-      <div class="subsec-meta">Single rule preview</div>
+      <div class="subsec-title">Rule Test <span class="title-help" onclick="return toggleHelp(this,event)" title="Preview one rule on a live CAN frame, then inject the modified frame.">?</span></div>
+      <div class="subsec-meta">Live frame preview</div>
     </div>
     <div class="subsec-body">
       <div style="font-size:11px;color:var(--tx3);line-height:1.5;margin-bottom:8px">
-        Choose one rule from the editor. The dashboard waits for the next matching CAN frame, applies the rule to that live frame, then injects it with your count and interval.
+        Choose one rule from the editor. The dashboard waits for the next matching CAN frame, applies that rule to the live frame, then injects it the number of times you set below, spaced by the delay in milliseconds.
       </div>
-      <div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 110px;gap:6px;margin-bottom:6px">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 130px 120px;gap:6px;margin-bottom:6px;align-items:end">
         <select class="sniff-input" id="pe-test-rule" onchange="peUpdateTestPreview()"></select>
-        <input class="sniff-input" id="pe-test-count" type="number" min="1" max="200" value="1" onchange="peUpdateTestPreview()">
-        <input class="sniff-input" id="pe-test-interval" type="number" min="10" max="5000" value="100" onchange="peUpdateTestPreview()">
+        <label style="display:block">
+          <div style="font-size:11px;color:var(--tx2);font-weight:600;margin:0 0 4px 2px">Amount of times</div>
+          <input class="sniff-input" id="pe-test-count" type="number" min="1" max="200" placeholder="1" title="Amount of times to inject" onchange="peUpdateTestPreview()">
+        </label>
+        <label style="display:block">
+          <div style="font-size:11px;color:var(--tx2);font-weight:600;margin:0 0 4px 2px">Interval (ms)</div>
+          <input class="sniff-input" id="pe-test-interval" type="number" min="10" max="5000" placeholder="100" title="Milliseconds between injected frames" onchange="peUpdateTestPreview()">
+        </label>
       </div>
       <pre id="pe-test-preview" style="min-height:54px;overflow:auto;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;padding:8px;font-size:11px;color:var(--tx2);white-space:pre-wrap;word-break:break-word">Add a rule to preview a test frame.</pre>
       <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
@@ -731,7 +737,7 @@ let peLoadedPluginName='';
 let peTestPollTimer=null;
 let pluginDetailOpen={};
 let dashConfirmState=null;
-let supportIssueUrl='https://github.com/ev-open-can-tools/ev-open-can-tools/issues/new';
+let supportIssueUrl='https://github.com/ev-open-can-tools/ev-open-can-tools/issues/new?template=issue.yml';
 let supportBodyText='';
 let dashboardPollTimers=[];
 let dashboardPollFailures=0;
@@ -947,7 +953,7 @@ function openSupport(){
   const el=$('support-body');
   if(el)el.value=buildSupportBody();
   const st=$('support-status');
-  if(st){st.textContent='Copy this text, then open a GitHub issue.';st.style.color='var(--tx3)';}
+  if(st){st.textContent='Copy this text, then open the GitHub issue form.';st.style.color='var(--tx3)';}
   $('support-modal').style.display='flex';
   document.body.style.overflow='hidden';
   setTimeout(()=>{if(el)el.focus();el&&el.setSelectionRange(0,0);},0);
@@ -958,23 +964,37 @@ function closeSupport(){
   document.body.style.overflow='';
 }
 
-async function copySupport(){
+function copySupportText(text,el){
+  if(el){
+    el.focus();
+    el.select();
+    el.setSelectionRange(0,text.length);
+    if(document.execCommand&&document.execCommand('copy'))return true;
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).catch(()=>{});
+    return true;
+  }
+  return false;
+}
+
+function copySupport(){
   const el=$('support-body');
   const text=el?el.value:buildSupportBody();
-  try{
-    await navigator.clipboard.writeText(text);
+  if(copySupportText(text,el)){
     const st=$('support-status');if(st){st.textContent='Copied to clipboard';st.style.color='var(--ok)';}
-  }catch(e){
-    const st=$('support-status');if(st){st.textContent='Copy failed';st.style.color='var(--err)';}
+    return true;
   }
+  const st=$('support-status');if(st){st.textContent='Copy failed';st.style.color='var(--err)';}
+  return false;
 }
 
 function openSupportIssue(){
-  const body=buildSupportBody();
-  const title='Support request: ';
-  const url='https://github.com/ev-open-can-tools/ev-open-can-tools/issues/new?title='+encodeURIComponent(title)+'&body='+encodeURIComponent(body);
+  const url='https://github.com/ev-open-can-tools/ev-open-can-tools/issues/new?template=issue.yml';
+  const copied=copySupport();
   supportIssueUrl=url;
-  window.location.assign(url);
+  window.open(url,'_blank','noopener');
+  const st=$('support-status');if(st&&copied){st.textContent='Copied support details. Paste them into the support question.';st.style.color='var(--ok)';}
   closeSupport();
 }
 
@@ -2021,7 +2041,7 @@ function peUpdateTestPreview(){
   if(!peState.rules.length){el.textContent='Add a rule to preview a test frame.';peSetTestStatus('Idle','');return;}
   const idx=parseInt($('pe-test-rule').value,10);
   if(isNaN(idx)||idx<0||idx>=peState.rules.length){el.textContent='Select a rule to test.';return;}
-  const count=parseInt($('pe-test-count').value,10),interval=parseInt($('pe-test-interval').value,10);
+  const count=peParseInt($('pe-test-count').value,1),interval=peParseInt($('pe-test-interval').value,100);
   if(isNaN(count)||count<1||count>200){el.textContent='Count must be 1-200.';return;}
   if(isNaN(interval)||interval<10||interval>5000){el.textContent='Interval must be 10-5000 ms.';return;}
   const rule=peState.rules[idx];
@@ -2100,7 +2120,7 @@ async function peStartTest(){
   if(!peState.rules.length){peSetTestStatus('Add a rule first','err');return;}
   const idx=parseInt($('pe-test-rule').value,10);
   if(isNaN(idx)||idx<0||idx>=peState.rules.length){peSetTestStatus('Select a valid rule','err');return;}
-  const count=parseInt($('pe-test-count').value,10),interval=parseInt($('pe-test-interval').value,10);
+  const count=peParseInt($('pe-test-count').value,1),interval=peParseInt($('pe-test-interval').value,100);
   if(isNaN(count)||count<1||count>200){peSetTestStatus('Count must be 1-200','err');return;}
   if(isNaN(interval)||interval<10||interval>5000){peSetTestStatus('Interval must be 10-5000 ms','err');return;}
   peSetTestStatus('Starting...','acc');
