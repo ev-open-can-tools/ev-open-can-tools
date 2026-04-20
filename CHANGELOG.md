@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1-beta.2] - 2026-04-20
+
+### Changed
+- Rule Test count and interval controls now use visible labels with `1` and `100` as placeholders, while empty fields still default to one injection every 100 ms.
+- Support issue flow now copies the dashboard support report to the clipboard and opens the General Issue form without prefilled title or body text.
+
 ## [2.4.1-beta.1] - 2026-04-20
 
 ### Added
