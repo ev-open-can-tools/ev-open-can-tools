@@ -18,7 +18,7 @@ If you are completely new, start with these:
 
 - Read the [Documentation](https://ev-open-can-tools.github.io/ev-open-can-tools/)
 - Join the [Community Discord](https://discord.gg/ZTQKAUTd2F)
-- Look at the [Build and Flash Guide](docs/building.md)
+- Look at the [Build and Flash Guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html)
 - Use an ESP32 dashboard build if your hardware supports it
 
 ## Safety Warning
@@ -55,11 +55,11 @@ Depending on your hardware and build, the project can provide:
 If you are not sure where to begin, use this path:
 
 1. Pick a supported **ESP32 dashboard** board.
-2. Follow the [Build and Flash Guide](docs/building.md).
+2. Follow the [Build and Flash Guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html).
 3. Connect to the device hotspot after first boot.
 4. Open the dashboard at `http://192.168.4.1/`.
 5. Use the dashboard to configure WiFi, CAN pins if needed, updates, and plugins.
-6. Read the [Dashboard Guide](docs/dashboard.md) before changing anything important.
+6. Read the [Dashboard Guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/dashboard.html) before changing anything important.
 
 This is the easiest and most user-friendly setup path in the project.
 
@@ -98,14 +98,14 @@ pio run -e esp32_ext_mcp2515
 pio run -e esp32_ext_mcp2515 -t upload
 ```
 
-For a fuller setup flow and board-specific notes, see [Build & Flash](docs/building.md).
+For a fuller setup flow and board-specific notes, see [Build & Flash](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html).
 
 ## Documentation
 
-- [Documentation index](docs/index.md)
-- [Dashboard guide](docs/dashboard.md)
-- [Build and flash guide](docs/building.md)
-- [Plugin system reference](docs/plugins.md)
+- [Documentation index](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/index.html)
+- [Dashboard guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/dashboard.html)
+- [Build and flash guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html)
+- [Plugin system reference](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/plugins.html)
 - [Release notes](CHANGELOG.md)
 
 ## Community
