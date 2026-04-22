@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-04-22
+
+### Added
+- Dashboard header now shows the latest observed `GTW_autopilot` state next to the selected hardware mode.
+- Native dashboard regression tests now assert that dashboard handlers do not send frames, increment `framesSent`, or fire `onSend`.
+- README and dashboard footer now include the support and gift information from `main`.
+
+### Changed
+- Dashboard builds no longer compile automatic CAN injection paths from Legacy, HW3, or HW4 handlers; enabled plugins are the automatic injection path.
+- HW3 no longer listens for or injects Track Mode request frames.
+- ESP32 dashboard builds now use a 4MB OTA partition layout with larger app slots while preserving SPIFFS storage.
+- Plugin documentation now describes the dashboard's plugin-only automatic injection behavior instead of firmware overlap warnings.
+- Rule Test count and interval controls now use visible labels with `1` and `100` as placeholders, while empty fields still default to one injection every 100 ms.
+- Support issue flow now copies the dashboard support report to the clipboard and opens the General Issue form without prefilled title or body text.
+
+### Fixed
+- ESP32 dashboard hotspot startup is more reliable by starting the AP earlier, disabling WiFi sleep, validating saved AP/STA credentials, and falling back to AP-only mode when STA connection attempts time out.
+
 ## [2.4.1-beta.3] - 2026-04-22
 
 ### Fixed
