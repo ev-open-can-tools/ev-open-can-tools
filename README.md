@@ -57,6 +57,16 @@ pio run -e esp32_ext_mcp2515 -t upload
 
 For a fuller setup flow and board-specific notes, see [Build & Flash](docs/building.md).
 
+## Support & Gift
+
+If you find this project valuable, consider sending a gift with Monero to support its development:
+
+```
+46CJEjnN74N83AZHHYKX3mD9kkV6UJYVjN58PTWvQ6VU8Vvn3tmyExkaC2kq9asD6SZY9weaZqx5o9nf1MxkKbmTKWLUeRD
+```
+
+Gifts help sustain the project and fund further development.
+
 ## Documentation
 
 - [Documentation index](docs/index.md)
