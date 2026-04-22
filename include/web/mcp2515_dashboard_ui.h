@@ -700,6 +700,10 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   &bull;
   <a href="https://discord.gg/ZTQKAUTd2F" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">Discord</a>
 </div>
+<div class="foot" style="margin-top:8px;font-size:10px">
+  <div style="margin-bottom:4px">Gift with Monero</div>
+  <div style="word-break:break-all;color:var(--tx2)">46CJEjnN74N83AZHHYKX3mD9kkV6UJYVjN58PTWvQ6VU8Vvn3tmyExkaC2kq9asD6SZY9weaZqx5o9nf1MxkKbmTKWLUeRD</div>
+</div>
 
 <script>
 const HW=['Legacy','HW3','HW4'];
