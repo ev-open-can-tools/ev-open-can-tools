@@ -1,34 +1,67 @@
 # EV Open Can Mod
 
-[Live Docs](https://ev-open-can-tools.github.io/ev-open-can-tools/) | [Documentation](docs/index.md) | [Dashboard Guide](docs/dashboard.md) | [Build & Flash](docs/building.md) | [Plugin System](docs/plugins.md) | [Release Notes](CHANGELOG.md) | [Community Discord](https://discord.gg/ZTQKAUTd2F)
+[Documentation](https://ev-open-can-tools.github.io/ev-open-can-tools/) | [Plugin repo](https://github.com/ev-open-can-tools/ev-open-can-tools-plugins) | [Community Discord](https://discord.gg/ZTQKAUTd2F)
 
-An open-source CAN bus modification tool for supported vehicles and ESP32/Feather CAN hardware. The firmware sits on the vehicle CAN bus, watches the frames it cares about, modifies the required bits or bytes, and retransmits the result in real time.
+EV Open Can Mod is an open-source project for supported vehicles and ESP32 or Feather CAN hardware.
 
-ESP32 dashboard builds add a local web interface for runtime dashboard control, CAN diagnostics, plugins, WiFi management, and OTA firmware updates.
+At a basic level, the firmware sits on the vehicle CAN bus, watches selected frames, and can apply real-time changes based on the selected build or installed plugins.
 
-## Support & Gift
+For most people, the easiest way to use this project is with an ESP32 dashboard build. That gives you a local web interface for setup, WiFi, plugins, updates, diagnostics, and basic runtime control.
 
-If you find this project valuable, consider sending a gift with Monero to support its development:
+## Before You Start
 
-```
-46CJEjnN74N83AZHHYKX3mD9kkV6UJYVjN58PTWvQ6VU8Vvn3tmyExkaC2kq9asD6SZY9weaZqx5o9nf1MxkKbmTKWLUeRD
-```
+This project is **not** plug and play.
 
-Gifts help sustain the project and fund further development.
+It is meant for people who want to learn, test, and experiment carefully. You do **not** need to be a developer to explore the project, read the docs, use the dashboard, or join the community. But you **do** need to be comfortable following instructions, checking your hardware, and understanding that mistakes on a vehicle CAN bus can be serious.
 
-## Disclaimer
+If you are completely new, start with these:
 
-> **Warning:** Modifying CAN bus traffic can cause dangerous behavior or permanently damage a vehicle. The CAN bus touches safety-critical systems including steering, braking, airbags, and gateway functions. If you do not fully understand the frames you are changing, do not install or use this firmware on a vehicle.
->
+- Read the [Documentation](https://ev-open-can-tools.github.io/ev-open-can-tools/)
+- Join the [Community Discord](https://discord.gg/ZTQKAUTd2F)
+- Look at the [Build and Flash Guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html)
+- Use an ESP32 dashboard build if your hardware supports it
+
+## Safety Warning
+
+> **Warning:** Modifying CAN bus traffic can cause dangerous behavior or permanently damage a vehicle.
+> 
+> The CAN bus touches safety-critical systems including steering, braking, airbags, and gateway functions. If you do not fully understand the frames you are changing, do not install or use this firmware on a vehicle.
+> 
 > This project is for testing and educational use only. You are responsible for complying with local laws, safety requirements, and any warranty or road-use implications in your jurisdiction.
 
-## Highlights
+## Who This Project Is For
 
-- **Vehicle-side features**: AD activation, nag suppression, Actually Smart Summon EU unlock, speed profile mapping, HW4 ISA speed chime suppression, HW4 emergency vehicle detection, optional TLSSC bypass, and a dedicated Autosteer nag-killer build
-- **ESP32 dashboard**: runtime hardware mode switching, live status, CAN sniffer, CAN recorder, controller stats, live log, stop/resume injection, and reboot control
-- **Connectivity and OTA**: configurable WiFi hotspot, hidden SSID support, WiFi STA with scan and optional static IP, GitHub release updates, beta channel, auto-update on boot, and manual `.bin` upload
-- **Plugin system**: install plugins by URL, file upload, or pasted JSON; inspect rules; keep enable state across reboot; build plugins in the browser with the Plugin Editor; test generated frames before install
-- **Persistent settings**: WiFi hotspot, WiFi internet, CAN pins, update channel, auto-update, plugin enabled state, and other runtime settings are stored in NVS/SPIFFS where applicable
+This project can be useful for different kinds of people:
+
+- **Curious users** who want to understand what the tool does and follow development
+- **Hardware users** who want to flash a supported board and use the dashboard
+- **Testers** who want to try builds, compare behavior, and report findings
+- **Advanced users** who want to inspect CAN traffic, create plugins, or contribute code and documentation
+
+Not everyone needs to write code to be useful here. Testing, documenting, sharing recordings, and reporting clear findings are valuable contributions too.
+
+## What You Can Do
+
+Depending on your hardware and build, the project can provide:
+
+- Vehicle-side features such as AD activation, nag suppression, Actually Smart Summon EU unlock, speed profile mapping, HW4 ISA speed chime suppression, HW4 emergency vehicle detection, optional TLSSC bypass, and a dedicated Autosteer nag-killer build
+- A local ESP32 dashboard with runtime hardware mode switching, live status, CAN sniffer, CAN recorder, controller stats, live log, stop or resume injection, and reboot control
+- WiFi and OTA features including hotspot mode, WiFi internet, GitHub release updates, beta channel support, auto-update on boot, and manual `.bin` upload
+- A plugin system that supports install by URL, file upload, or pasted JSON, plus a browser-based Plugin Editor and rule testing tools
+- Persistent runtime settings for dashboard-related configuration
+
+## Best Starting Point
+
+If you are not sure where to begin, use this path:
+
+1. Pick a supported **ESP32 dashboard** board.
+2. Follow the [Build and Flash Guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html).
+3. Connect to the device hotspot after first boot.
+4. Open the dashboard at `http://192.168.4.1/`.
+5. Use the dashboard to configure WiFi, CAN pins if needed, updates, and plugins.
+6. Read the [Dashboard Guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/dashboard.html) before changing anything important.
+
+This is the easiest and most user-friendly setup path in the project.
 
 ## Supported Environments
 
@@ -44,42 +77,67 @@ Gifts help sustain the project and fund further development.
 | `esp32_ext_mcp2515` | ESP32-S3 + external MCP2515 | SPI MCP2515 | Yes |
 | `waveshare_ESP32_S3_RS485_CAN` | Waveshare ESP32-S3 RS485/CAN | TWAI | Yes |
 
-ESP32 dashboard builds are the full-featured path: they include the web UI, plugin engine, WiFi, OTA, and persistent runtime settings. Non-dashboard builds keep the core CAN modification logic but do not expose the web management interface.
+ESP32 dashboard builds are the full-featured path. They include the web UI, plugin engine, WiFi, OTA, and persistent runtime settings.
 
-## Quick Start
+Non-dashboard builds keep the core CAN modification logic but do not provide the web management interface.
 
-1. Choose your target environment from `platformio.ini`.
-2. Set your board, vehicle mode, and initial dashboard credentials in `platformio_profile.h`.
-3. Build the firmware:
+## Quick Start For More Technical Users
+
+If you already know what you are doing, the basic flow is:
+
+1. Choose your target environment from `platformio.ini`
+2. Set your board, vehicle mode, and initial dashboard credentials in `platformio_profile.h`
+3. Build the firmware
+4. Flash the board
+5. Connect to the dashboard if your target supports it
+
+Example:
 
 ```bash
 pio run -e esp32_ext_mcp2515
-```
-
-4. Flash the board:
-
-```bash
 pio run -e esp32_ext_mcp2515 -t upload
 ```
 
-5. For ESP32 dashboard builds, connect to the hotspot configured by `DASH_SSID` / `DASH_PASS` and open `http://192.168.4.1/`.
-6. After first boot, use the dashboard to adjust hotspot credentials, connect the device to WiFi internet, configure CAN pins when relevant, and manage plugins or OTA updates.
-
-For a fuller setup flow and board-specific notes, see [Build & Flash](docs/building.md).
+For a fuller setup flow and board-specific notes, see [Build & Flash](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html).
 
 ## Documentation
 
-- [Documentation index](docs/index.md)
-- [Dashboard guide](docs/dashboard.md)
-- [Build and flash guide](docs/building.md)
-- [Plugin system reference](docs/plugins.md)
+- [Documentation index](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/index.html)
+- [Dashboard guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/dashboard.html)
+- [Build and flash guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html)
+- [Plugin system reference](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/plugins.html)
 - [Release notes](CHANGELOG.md)
+
+## Community
+
+The Discord is not only for developers.
+
+It is also a place for:
+
+- setup help
+- hardware questions
+- testing feedback
+- CAN recordings and observations
+- plugin testing
+- documentation feedback
+
+If you are learning, testing, or comparing results, you are welcome there too.
+
+## Support & Gift
+
+If you find this project valuable, consider sending a gift with Monero to support its development:
+
+```
+46CJEjnN74N83AZHHYKX3mD9kkV6UJYVjN58PTWvQ6VU8Vvn3tmyExkaC2kq9asD6SZY9weaZqx5o9nf1MxkKbmTKWLUeRD
+```
+
+Gifts help sustain the project and fund further development.
 
 ## Versioning
 
-- The project version is tracked in [`VERSION`](VERSION) using Semantic Versioning.
-- Release notes are tracked in [`CHANGELOG.md`](CHANGELOG.md).
-- Ongoing work should be added to the `Unreleased` section before merge.
+- The project version is tracked in [`VERSION`](VERSION) using Semantic Versioning
+- Release notes are tracked in [`CHANGELOG.md`](CHANGELOG.md)
+- Ongoing work should be added to the `Unreleased` section before merge
 
 ## Third-Party Libraries
 
@@ -94,4 +152,4 @@ This project depends on the following open-source libraries. Their full license 
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0** — see the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.html) for details.
+This project is licensed under the **GNU General Public License v3.0**. See the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.html) for details.
