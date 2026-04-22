@@ -6,6 +6,16 @@ An open-source CAN bus modification tool for supported vehicles and ESP32/Feathe
 
 ESP32 dashboard builds add a local web interface for runtime dashboard control, CAN diagnostics, plugins, WiFi management, and OTA firmware updates.
 
+## Support & Gift
+
+If you find this project valuable, consider sending a gift with Monero to support its development:
+
+```
+46CJEjnN74N83AZHHYKX3mD9kkV6UJYVjN58PTWvQ6VU8Vvn3tmyExkaC2kq9asD6SZY9weaZqx5o9nf1MxkKbmTKWLUeRD
+```
+
+Gifts help sustain the project and fund further development.
+
 ## Disclaimer
 
 > **Warning:** Modifying CAN bus traffic can cause dangerous behavior or permanently damage a vehicle. The CAN bus touches safety-critical systems including steering, braking, airbags, and gateway functions. If you do not fully understand the frames you are changing, do not install or use this firmware on a vehicle.
@@ -56,16 +66,6 @@ pio run -e esp32_ext_mcp2515 -t upload
 6. After first boot, use the dashboard to adjust hotspot credentials, connect the device to WiFi internet, configure CAN pins when relevant, and manage plugins or OTA updates.
 
 For a fuller setup flow and board-specific notes, see [Build & Flash](docs/building.md).
-
-## Support & Gift
-
-If you find this project valuable, consider sending a gift with Monero to support its development:
-
-```
-46CJEjnN74N83AZHHYKX3mD9kkV6UJYVjN58PTWvQ6VU8Vvn3tmyExkaC2kq9asD6SZY9weaZqx5o9nf1MxkKbmTKWLUeRD
-```
-
-Gifts help sustain the project and fund further development.
 
 ## Documentation
 
