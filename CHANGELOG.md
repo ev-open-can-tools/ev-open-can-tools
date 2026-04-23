@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.2-beta.1] - 2026-04-23
+
+### Fixed
+- Legacy speed profile selection is now written back into outgoing CAN ID `1006` mux `0` frames so the selected profile actually takes effect on vehicle behavior instead of only changing the observed internal state.
+- Added a native Legacy regression test that verifies the selected speed profile bits are injected into the transmitted mux `0` frame.
+
 ## [2.4.1] - 2026-04-22
 
 ### Added

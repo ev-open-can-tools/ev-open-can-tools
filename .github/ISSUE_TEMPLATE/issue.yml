@@ -89,7 +89,6 @@ body:
         // #define DRIVER_MCP2515
         // #define HW3
         // ...
-    render: cpp
     validations:
       required: false
 

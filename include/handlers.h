@@ -75,6 +75,7 @@ struct LegacyHandler : public CarManagerBase
                 ADEnabled = isADSelectedInUI(frame) && (!checkAD || checkAD());
             if (index == 0 && ADEnabled && (!checkAD || checkAD()))
             {
+                setSpeedProfileV12V13(frame, speedProfile);
 #if !defined(ESP32_DASHBOARD)
                 setBit(frame, 46, true);
                 framesSent++;
