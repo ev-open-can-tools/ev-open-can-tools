@@ -33,6 +33,9 @@
 #error "Define -DDASH_OTA_USER in build_flags"
 #endif
 
+static_assert(sizeof(DASH_SSID) > 1 && sizeof(DASH_SSID) <= 33, "DASH_SSID must be 1-32 bytes");
+static_assert(sizeof(DASH_PASS) >= 9 && sizeof(DASH_PASS) <= 65, "DASH_PASS must be 8-64 bytes");
+
 #ifndef DASH_DEFAULT_HW
 #define DASH_DEFAULT_HW 1
 #endif
@@ -96,16 +99,27 @@ static bool canActive = kDashInjectionDefaultEnabled;
 static char apSSID[33] = "";
 static char apPass[65] = "";
 static bool apHidden = false; // when true, SSID is not broadcast (hidden AP)
+static constexpr size_t kDashMaxSsidLen = 32;
+static constexpr size_t kDashMinApPassLen = 8;
+static constexpr size_t kDashMaxPassLen = 64;
+static constexpr int kDashApChannel = 1;
+static constexpr int kDashApMaxConn = 4;
 
 // WiFi STA (client) mode for internet access
 static char staSSID[33] = "";
 static char staPass[65] = "";
 static bool staConnected = false;
+static bool staConnectAttemptActive = false;
 static bool staStaticIP = false;
 static bool updateBetaChannel = false;
 static bool autoUpdateEnabled = false;
 static bool autoUpdateDone = false;            // one-shot per boot
 static unsigned long autoUpdateEligibleAt = 0; // millis() at which auto-check may fire
+static unsigned long staConnectStartedAt = 0;
+static unsigned long staRetryAt = 0;
+static constexpr unsigned long kDashStaBootDelayMs = 5000;
+static constexpr unsigned long kDashStaConnectTimeoutMs = 25000;
+static constexpr unsigned long kDashStaRetryMs = 120000;
 static IPAddress staIP(0, 0, 0, 0);
 static IPAddress staGW(0, 0, 0, 0);
 static IPAddress staMask(255, 255, 255, 0);
@@ -431,6 +445,30 @@ static void dashToggleCanActive(const char *reason = nullptr)
     dashSetCanActive(!canActive, reason);
 }
 
+static bool dashApPasswordLengthValid(size_t len)
+{
+    return len >= kDashMinApPassLen && len <= kDashMaxPassLen;
+}
+
+static bool dashApConfigValid(const char *ssid, const char *pass)
+{
+    size_t ssidLen = strlen(ssid);
+    size_t passLen = strlen(pass);
+    return ssidLen > 0 && ssidLen <= kDashMaxSsidLen && dashApPasswordLengthValid(passLen);
+}
+
+static void dashUseDefaultApConfig()
+{
+    strlcpy(apSSID, DASH_SSID, sizeof(apSSID));
+    strlcpy(apPass, DASH_PASS, sizeof(apPass));
+    apHidden = false;
+}
+
+static bool dashStaConfigLengthValid(const String &ssid, const String &pass)
+{
+    return ssid.length() <= kDashMaxSsidLen && pass.length() <= kDashMaxPassLen;
+}
+
 static void dashClearLegacyOptionPrefs()
 {
     static const char *const keys[] = {
@@ -492,6 +530,9 @@ static void dashLoadPrefs()
     // Load WiFi AP overrides (hotspot name/password)
     String apSsidPref = prefs.isKey("ap_ssid") ? prefs.getString("ap_ssid", "") : "";
     String apPassPref = prefs.isKey("ap_pass") ? prefs.getString("ap_pass", "") : "";
+    bool hasApOverride = apSsidPref.length() > 0 || apPassPref.length() > 0 || prefs.isKey("ap_hidden");
+    bool invalidApOverride = apSsidPref.length() > kDashMaxSsidLen ||
+                             (apPassPref.length() > 0 && !dashApPasswordLengthValid(apPassPref.length()));
     if (apSsidPref.length() > 0)
         strlcpy(apSSID, apSsidPref.c_str(), sizeof(apSSID));
     else
@@ -501,10 +542,29 @@ static void dashLoadPrefs()
     else
         strlcpy(apPass, DASH_PASS, sizeof(apPass));
     apHidden = prefs.getBool("ap_hidden", false);
+    if (invalidApOverride || !dashApConfigValid(apSSID, apPass))
+    {
+        if (hasApOverride)
+        {
+            prefs.remove("ap_ssid");
+            prefs.remove("ap_pass");
+            prefs.remove("ap_hidden");
+            dashLog("[WIFI] Invalid saved AP config ignored");
+        }
+        dashUseDefaultApConfig();
+    }
 
     // Load WiFi STA credentials
     String wifiSsid = prefs.isKey("wifi_ssid") ? prefs.getString("wifi_ssid", "") : "";
     String wifiPass = prefs.isKey("wifi_pass") ? prefs.getString("wifi_pass", "") : "";
+    if (!dashStaConfigLengthValid(wifiSsid, wifiPass))
+    {
+        prefs.remove("wifi_ssid");
+        prefs.remove("wifi_pass");
+        wifiSsid = "";
+        wifiPass = "";
+        dashLog("[WIFI] Invalid saved STA config ignored");
+    }
     strlcpy(staSSID, wifiSsid.c_str(), sizeof(staSSID));
     strlcpy(staPass, wifiPass.c_str(), sizeof(staPass));
     staStaticIP = prefs.getBool("wifi_static", false);
@@ -1506,12 +1566,35 @@ static void handlePluginTestStop()
 
 // ── WIFI STA ────────────────────────────────────────────────────
 
-static void dashConnectSTA()
+static bool dashStartAccessPoint(bool withSta)
+{
+    WiFi.persistent(false);
+    WiFi.mode(withSta ? WIFI_AP_STA : WIFI_AP);
+    WiFi.setSleep(false);
+
+    IPAddress apIp(192, 168, 4, 1);
+    IPAddress apMask(255, 255, 255, 0);
+    WiFi.softAPConfig(apIp, apIp, apMask);
+
+    if (!dashApConfigValid(apSSID, apPass))
+        dashUseDefaultApConfig();
+
+    bool ok = WiFi.softAP(apSSID, apPass, kDashApChannel, apHidden ? 1 : 0, kDashApMaxConn);
+    if (!ok)
+    {
+        dashUseDefaultApConfig();
+        ok = WiFi.softAP(apSSID, apPass, kDashApChannel, 0, kDashApMaxConn);
+    }
+    if (!ok)
+        dashLog("[WIFI] AP start failed");
+    return ok;
+}
+
+static void dashBeginSTA()
 {
     if (strlen(staSSID) == 0)
         return;
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(apSSID, apPass, 1, apHidden ? 1 : 0, 4);
+
     if (staStaticIP && (uint32_t)staIP != 0)
     {
         WiFi.config(staIP, staGW, staMask, staDNS);
@@ -1522,7 +1605,26 @@ static void dashConnectSTA()
         WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
     }
     WiFi.begin(staSSID, staPass);
+    staConnectAttemptActive = true;
+    staConnectStartedAt = millis();
+    staRetryAt = 0;
     dashLog("[WIFI] Connecting to " + String(staSSID) + "...");
+}
+
+static void dashConnectSTA()
+{
+    if (strlen(staSSID) == 0)
+        return;
+    dashStartAccessPoint(true);
+    dashBeginSTA();
+}
+
+static void dashScheduleSTAConnect(unsigned long delayMs)
+{
+    if (strlen(staSSID) == 0)
+        return;
+    staConnectAttemptActive = false;
+    staRetryAt = millis() + delayMs;
 }
 
 static void performAutoUpdate(); // forward decl, defined below
@@ -1532,9 +1634,16 @@ static void dashCheckWifi()
     static unsigned long lastCheck = 0;
     if (strlen(staSSID) == 0)
         return;
-    if (millis() - lastCheck < 5000)
+    unsigned long now = millis();
+    if (!staConnected && !staConnectAttemptActive && staRetryAt > 0 && (long)(now - staRetryAt) >= 0)
+    {
+        staRetryAt = 0;
+        dashConnectSTA();
+    }
+
+    if (now - lastCheck < 5000)
         return;
-    lastCheck = millis();
+    lastCheck = now;
 
     bool connected = WiFi.status() == WL_CONNECTED;
     if (connected != staConnected)
@@ -1542,13 +1651,28 @@ static void dashCheckWifi()
         staConnected = connected;
         if (connected)
         {
+            staConnectAttemptActive = false;
+            staRetryAt = 0;
             dashLog("[WIFI] Connected to " + String(staSSID) + " IP: " + WiFi.localIP().toString());
             // Schedule auto-update check 15 s after STA comes up (grace period for other boot work)
             if (autoUpdateEnabled && !autoUpdateDone)
                 autoUpdateEligibleAt = millis() + 15000;
         }
         else
+        {
             dashLog("[WIFI] Disconnected from " + String(staSSID));
+            staConnectAttemptActive = false;
+            staRetryAt = now + kDashStaRetryMs;
+        }
+    }
+
+    if (!connected && staConnectAttemptActive && now - staConnectStartedAt >= kDashStaConnectTimeoutMs)
+    {
+        staConnectAttemptActive = false;
+        WiFi.disconnect(false, false);
+        dashStartAccessPoint(false);
+        staRetryAt = now + kDashStaRetryMs;
+        dashLog("[WIFI] STA connect timed out; keeping AP-only mode");
     }
 
     // Fire one-shot auto-update check once eligible
@@ -1584,6 +1708,11 @@ static void handleWifiConfig()
     {
         String ssid = server.arg("ssid");
         String pass = server.arg("pass");
+        if (!dashStaConfigLengthValid(ssid, pass))
+        {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"SSID max 32 bytes, password max 64 bytes\"}");
+            return;
+        }
         strlcpy(staSSID, ssid.c_str(), sizeof(staSSID));
         strlcpy(staPass, pass.c_str(), sizeof(staPass));
 
@@ -1803,9 +1932,11 @@ static void handleSettingsImport()
     {
         const char *s = doc["ap"]["ssid"] | "";
         const char *pw = doc["ap"]["pass"] | "";
-        if (strlen(s) > 0)
+        size_t ssidLen = strlen(s);
+        size_t passLen = strlen(pw);
+        if (ssidLen > 0 && ssidLen <= kDashMaxSsidLen)
             p.putString("ap_ssid", s);
-        if (strlen(pw) >= 8)
+        if (dashApPasswordLengthValid(passLen))
             p.putString("ap_pass", pw);
         if (doc["ap"]["hidden"].is<bool>())
             p.putBool("ap_hidden", doc["ap"]["hidden"].as<bool>());
@@ -1814,8 +1945,11 @@ static void handleSettingsImport()
     {
         const char *s = doc["wifi"]["ssid"] | "";
         const char *pw = doc["wifi"]["pass"] | "";
-        p.putString("wifi_ssid", s);
-        p.putString("wifi_pass", pw);
+        if (strlen(s) <= kDashMaxSsidLen && strlen(pw) <= kDashMaxPassLen)
+        {
+            p.putString("wifi_ssid", s);
+            p.putString("wifi_pass", pw);
+        }
         p.putBool("wifi_static", doc["wifi"]["static"] | false);
         p.putString("wifi_ip", (const char *)(doc["wifi"]["ip"] | ""));
         p.putString("wifi_gw", (const char *)(doc["wifi"]["gw"] | ""));
@@ -1859,9 +1993,14 @@ static void handleApConfig()
         server.send(400, "application/json", "{\"ok\":false,\"error\":\"SSID required\"}");
         return;
     }
-    if (newPass.length() > 0 && newPass.length() < 8)
+    if (newSsid.length() > kDashMaxSsidLen)
     {
-        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Password must be at least 8 characters\"}");
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"SSID must be 32 bytes or less\"}");
+        return;
+    }
+    if (newPass.length() > 0 && !dashApPasswordLengthValid(newPass.length()))
+    {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Password must be 8-64 characters\"}");
         return;
     }
 
@@ -2476,6 +2615,11 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
         dashLog("[WARN] SPIFFS mount failed");
 
     dashLoadPrefs();
+    dashStartAccessPoint(false);
+    if (apHidden)
+        dashLog("[WIFI] AP SSID is hidden");
+    Serial.printf("[WIFI] AP: %s  IP: %s\n", apSSID, WiFi.softAPIP().toString().c_str());
+
     dashInitHandlers();
     dashSwapHandler(hwMode);
     dashApplyFilters();
@@ -2491,29 +2635,6 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
 
     // Set plugin processing hook
     appPluginProcess = dashPluginProcess;
-
-    // WiFi setup: AP+STA if STA credentials configured, AP-only otherwise.
-    // WiFi.softAP(ssid, pass, channel=1, hidden=0, max_connection=4)
-    const int apChannel = 1;
-    const int apHiddenFlag = apHidden ? 1 : 0;
-    const int apMaxConn = 4;
-    if (strlen(staSSID) > 0)
-    {
-        WiFi.mode(WIFI_AP_STA);
-        WiFi.softAP(apSSID, apPass, apChannel, apHiddenFlag, apMaxConn);
-        WiFi.begin(staSSID, staPass);
-        dashLog("[WIFI] AP+STA mode, connecting to " + String(staSSID));
-    }
-    else
-    {
-        WiFi.mode(WIFI_AP);
-        WiFi.softAP(apSSID, apPass, apChannel, apHiddenFlag, apMaxConn);
-    }
-    if (apHidden)
-        dashLog("[WIFI] AP SSID is hidden");
-    Serial.printf("[WIFI] AP: %s  IP: %s\n", apSSID, WiFi.softAPIP().toString().c_str());
-
-    xTaskCreatePinnedToCore(webTask, "web", 8192, nullptr, 2, nullptr, 0);
 
     ArduinoOTA.setHostname("ev-open-can-tools");
     ArduinoOTA.setPassword(DASH_OTA_PASS);
@@ -2564,6 +2685,9 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     server.on("/auto_update", HTTP_POST, handleAutoUpdate);
 
     server.begin();
+    if (strlen(staSSID) > 0)
+        dashScheduleSTAConnect(kDashStaBootDelayMs);
+    xTaskCreatePinnedToCore(webTask, "web", 8192, nullptr, 2, nullptr, 0);
     Serial.println("[WEB] Dashboard: http://" + WiFi.softAPIP().toString());
     dashLog("[BOOT] ev-open-can-tools ready");
 }

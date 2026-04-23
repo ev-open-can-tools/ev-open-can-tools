@@ -151,22 +151,6 @@ void test_hw3_mux1_sets_track_labels_bit46()
     TEST_ASSERT_EQUAL_HEX8(0x40, mock.sent[0].data[5] & 0x40); // bit 46
 }
 
-// --- Track mode request (CAN ID 787) ---
-
-void test_hw3_track_mode_request_forces_on_and_updates_checksum()
-{
-    CanFrame f = {.id = 787, .dlc = 8};
-    f.data[0] = 0xFE;
-    f.data[1] = 0x10;
-    f.data[2] = 0x20;
-    f.data[3] = 0x04;
-    f.data[6] = 0xA0;
-    handler.handleMessage(f, mock);
-    TEST_ASSERT_EQUAL(1, mock.sent.size());
-    TEST_ASSERT_EQUAL_HEX8(0xFD, mock.sent[0].data[0]);
-    TEST_ASSERT_EQUAL_HEX8(0xE7, mock.sent[0].data[7]);
-}
-
 // --- No sends on unrelated CAN IDs ---
 
 void test_hw3_ignores_unrelated_can_id()
@@ -209,16 +193,15 @@ void test_hw3_mux1_sends_exactly_1()
 
 void test_hw3_filter_ids_count()
 {
-    TEST_ASSERT_EQUAL_UINT8(4, handler.filterIdCount());
+    TEST_ASSERT_EQUAL_UINT8(3, handler.filterIdCount());
 }
 
 void test_hw3_filter_ids_values()
 {
     const uint32_t *ids = handler.filterIds();
-    TEST_ASSERT_EQUAL_UINT32(787, ids[0]);
-    TEST_ASSERT_EQUAL_UINT32(1016, ids[1]);
-    TEST_ASSERT_EQUAL_UINT32(1021, ids[2]);
-    TEST_ASSERT_EQUAL_UINT32(2047, ids[3]);
+    TEST_ASSERT_EQUAL_UINT32(1016, ids[0]);
+    TEST_ASSERT_EQUAL_UINT32(1021, ids[1]);
+    TEST_ASSERT_EQUAL_UINT32(2047, ids[2]);
 }
 
 int main()
@@ -241,7 +224,6 @@ int main()
     RUN_TEST(test_hw3_nag_suppression_clears_bit19_on_mux1);
     RUN_TEST(test_hw3_nag_suppression_skips_mux1_changes_when_eap_runtime_disabled);
     RUN_TEST(test_hw3_mux1_sets_track_labels_bit46);
-    RUN_TEST(test_hw3_track_mode_request_forces_on_and_updates_checksum);
     RUN_TEST(test_hw3_ignores_unrelated_can_id);
     RUN_TEST(test_hw3_gw_autopilot_mux2_updates_state_without_send);
 

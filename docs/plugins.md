@@ -62,7 +62,7 @@ Each rule matches incoming CAN frames by ID (and optionally mux index), applies 
 
 ### Operations
 
-Operations are applied in priority order on a **copy** of the original frame. The built-in handler processes frames first — plugin rules run after.
+Operations are applied in priority order on a **copy** of the original frame. In dashboard builds, automatic CAN writes are limited to enabled plugin rules with `send: true`; built-in handlers only observe frames for dashboard status.
 
 When multiple enabled plugin rules match the same incoming CAN ID and mux, the firmware composes one output frame and sends it once. Plugin priority decides overlapping writes: the highest-priority plugin owns a bit first, and lower-priority plugins cannot overwrite that same bit in the same frame cycle.
 
@@ -196,23 +196,15 @@ This lets you inspect exactly what a plugin does before enabling it.
 
 ## Conflict detection
 
-When a plugin targets a CAN ID that is also handled by the base firmware (e.g. 1021, 787, 880), the dashboard shows:
-
-- A **warning icon** (⚠) next to the plugin name
-- Per-rule **"Firmware overlap"** labels in the detail view
-- An explanation box: plugin rules run **after** the original handler — both will send modified frames on the bus
-
-This does not prevent the plugin from working. It is an informational warning so you understand that both the firmware and the plugin will independently modify and send frames for the same CAN ID.
-
 When two enabled plugins target the same bit on the same CAN ID and mux, the dashboard shows a **Priority overlap** warning. The lower-priority plugin's overlapping bit is ignored at runtime, and the detail view shows which higher-priority plugin wins.
 
 ## Important notes
 
-- Plugin rules run **after** the built-in handler.
+- Dashboard builds do not inject CAN frames from built-in handlers; enabled plugins are the automatic injection path.
 - Enabled plugin rules for the same CAN ID and mux are merged into one injected frame per incoming frame.
 - If two plugins write the same bit, the lower-priority plugin's write is ignored for that bit. Default priority is install order, with the first installed plugin at `#1`.
-- Avoid creating plugin rules for CAN IDs that the built-in handler already manages (1016, 1021, 787, 880, 921, 2047) unless you understand the interaction.
 - Plugin-required CAN IDs are automatically added to the hardware filter list.
+- Rule Test is a manual dashboard action that sends the preview frame only when you start it.
 - The ESP32 must be connected to the CAN bus for plugin rules to take effect.
 - Incorrect CAN modifications can cause dangerous vehicle behavior. Test plugins carefully on a bench setup before using them in a vehicle.
 

@@ -33,7 +33,6 @@ void setup()
 #ifdef DRIVER_MCP2515
     appSetup<MCP2515Driver>(std::make_unique<MCP2515Driver>(PIN_CAN_CS), "MCP25625 ready @ 500k");
 #ifdef ESP32_DASHBOARD
-    delay(2000);
     mcpDashboardSetup(appHandler.get(), appDriver.get());
 #endif
 #elif defined(DRIVER_ESP32_EXT_MCP2515)
@@ -66,7 +65,6 @@ void setup()
     }
     appSetup<TWAIDriver>(std::make_unique<TWAIDriver>(twaiTx, twaiRx), "ESP32 TWAI ready @ 500k");
 #ifdef ESP32_DASHBOARD
-    delay(2000);
     mcpDashboardSetup(appHandler.get(), appDriver.get());
 #endif
 #endif

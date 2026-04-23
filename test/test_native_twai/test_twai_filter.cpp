@@ -51,44 +51,37 @@ void test_twai_filter_legacy_accepts_id_1006()
     TEST_ASSERT_TRUE(filterAccepts(f, 1006));
 }
 
-// --- HW3 filter (Track Mode + Autopilot IDs) ---
-
-void test_twai_filter_hw3_accepts_id_787()
-{
-    uint32_t ids[] = {787, 1016, 1021, 2047};
-    auto f = computeTwaiFilter(ids, 4);
-    TEST_ASSERT_TRUE(filterAccepts(f, 787));
-}
+// --- HW3 filter (Autopilot IDs) ---
 
 void test_twai_filter_hw3_accepts_id_1016()
 {
-    uint32_t ids[] = {787, 1016, 1021, 2047};
-    auto f = computeTwaiFilter(ids, 4);
+    uint32_t ids[] = {1016, 1021, 2047};
+    auto f = computeTwaiFilter(ids, 3);
     TEST_ASSERT_TRUE(filterAccepts(f, 1016));
 }
 
 void test_twai_filter_hw3_accepts_id_1021()
 {
-    uint32_t ids[] = {787, 1016, 1021, 2047};
-    auto f = computeTwaiFilter(ids, 4);
+    uint32_t ids[] = {1016, 1021, 2047};
+    auto f = computeTwaiFilter(ids, 3);
     TEST_ASSERT_TRUE(filterAccepts(f, 1021));
 }
 
 void test_twai_filter_hw3_accepts_id_2047()
 {
-    uint32_t ids[] = {787, 1016, 1021, 2047};
-    auto f = computeTwaiFilter(ids, 4);
+    uint32_t ids[] = {1016, 1021, 2047};
+    auto f = computeTwaiFilter(ids, 3);
     TEST_ASSERT_TRUE(filterAccepts(f, 2047));
 }
 
 void test_twai_filter_hw3_rejects_unrelated_id()
 {
-    uint32_t ids[] = {787, 1016, 1021, 2047};
-    auto f = computeTwaiFilter(ids, 4);
+    uint32_t ids[] = {1016, 1021, 2047};
+    auto f = computeTwaiFilter(ids, 3);
     TEST_ASSERT_FALSE(filterAccepts(f, 1000));
 }
 
-// --- HW4 filter (Track Mode + ISA + Autopilot IDs) ---
+// --- HW4 filter (ISA + Autopilot IDs) ---
 
 void test_twai_filter_hw4_accepts_id_921()
 {
@@ -129,15 +122,15 @@ void test_twai_filter_hw4_rejects_distant_id()
 
 void test_twai_filter_hw3_rejects_id_500()
 {
-    uint32_t ids[] = {787, 1016, 1021, 2047};
-    auto f = computeTwaiFilter(ids, 4);
+    uint32_t ids[] = {1016, 1021, 2047};
+    auto f = computeTwaiFilter(ids, 3);
     TEST_ASSERT_FALSE(filterAccepts(f, 500));
 }
 
 void test_twai_filter_hw3_rejects_id_0()
 {
-    uint32_t ids[] = {787, 1016, 1021, 2047};
-    auto f = computeTwaiFilter(ids, 4);
+    uint32_t ids[] = {1016, 1021, 2047};
+    auto f = computeTwaiFilter(ids, 3);
     TEST_ASSERT_FALSE(filterAccepts(f, 0));
 }
 
@@ -203,7 +196,6 @@ int main()
     RUN_TEST(test_twai_filter_legacy_accepts_id_1006);
     RUN_TEST(test_twai_filter_legacy_rejects_id_500);
 
-    RUN_TEST(test_twai_filter_hw3_accepts_id_787);
     RUN_TEST(test_twai_filter_hw3_accepts_id_1016);
     RUN_TEST(test_twai_filter_hw3_accepts_id_1021);
     RUN_TEST(test_twai_filter_hw3_accepts_id_2047);

@@ -24,46 +24,54 @@ jobs:
       matrix:
         include:
           - env: feather_rp2040_can
-            profile: --driver DRIVER_MCP2515 --vehicle HW3 --enable EMERGENCY_VEHICLE_DETECTION
+            profile: --driver DRIVER_MCP2515 --vehicle HW3 --enable
+              EMERGENCY_VEHICLE_DETECTION
             artifact_name: firmware-rp2040
             artifact_path: .pio/build/feather_rp2040_can/firmware.uf2
             extra_python_packages: ""
           - env: feather_m4_can
-            profile: --driver DRIVER_SAME51 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            profile: --driver DRIVER_SAME51 --vehicle HW4 --enable
+              EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
             artifact_name: firmware-m4
             artifact_path: .pio/build/feather_m4_can/firmware.bin
             extra_python_packages: ""
           - env: esp32_twai
-            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+              --enable ENHANCED_AUTOPILOT
             artifact_name: firmware-esp32
             artifact_path: .pio/build/esp32_twai/firmware.bin
             extra_python_packages: littlefs-python fatfs-ng pyyaml
           - env: m5stack-atomic-can-base
-            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+              --enable ENHANCED_AUTOPILOT
             artifact_name: firmware-m5stack
             artifact_path: .pio/build/m5stack-atomic-can-base/firmware.bin
             extra_python_packages: littlefs-python fatfs-ng pyyaml
           - env: esp32_feather_v2_mcp2515
-            profile: --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+            profile: --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable
+              EMERGENCY_VEHICLE_DETECTION
             artifact_name: firmware-esp32-featherwing
             artifact_path: .pio/build/esp32_feather_v2_mcp2515/firmware.bin
             extra_python_packages: littlefs-python fatfs-ng pyyaml
           - env: esp32_ext_mcp2515
-            profile: --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            profile: --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable
+              EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
             artifact_name: firmware-esp32-ext-mcp2515
             artifact_path: .pio/build/esp32_ext_mcp2515/firmware.bin
             extra_python_packages: littlefs-python fatfs-ng pyyaml
           - env: m5stack-atoms3-mini-can-base
-            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+              --enable ENHANCED_AUTOPILOT
             artifact_name: ""
             artifact_path: ""
             extra_python_packages: littlefs-python fatfs-ng pyyaml
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.x"
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential git
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          build-essential git
       - run: pip install "platformio==${PLATFORMIO_VERSION}"
       - if: matrix.extra_python_packages != ''
         run: pip install ${{ matrix.extra_python_packages }}
@@ -72,7 +80,7 @@ jobs:
         env:
           SKIP_DASH_CREDENTIAL_CHECK: "1"
       - if: matrix.artifact_path != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_path }}
@@ -84,8 +92,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
           path: release-assets
       - name: Rename firmware files to unique names
@@ -107,11 +115,12 @@ jobs:
           fi
           echo "--- release-notes.md ---"
           cat release-notes.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: ${{ github.ref_name }}
           body_path: release-notes.md
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name,
+            'alpha') || contains(github.ref_name, 'rc') }}
           draft: true
           files: |
             release-assets/firmware-rp2040.uf2

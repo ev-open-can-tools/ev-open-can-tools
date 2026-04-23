@@ -169,19 +169,9 @@ void test_setSpeedProfileV12V13_preserves_other_bits()
     TEST_ASSERT_EQUAL_HEX8(0xFB, f.data[6]);
 }
 
-// --- Track mode helpers ---
-
-void test_setTrackModeRequest_sets_on_and_preserves_upper_bits()
-{
-    CanFrame f = {};
-    f.data[0] = 0xFE;
-    setTrackModeRequest(f, kTrackModeRequestOn);
-    TEST_ASSERT_EQUAL_HEX8(0xFD, f.data[0]);
-}
-
 void test_computeVehicleChecksum_sums_payload_and_frame_id()
 {
-    CanFrame f = {.id = 787, .dlc = 8};
+    CanFrame f = {.id = 1021, .dlc = 8};
     f.data[0] = 0xFD;
     f.data[1] = 0x10;
     f.data[2] = 0x20;
@@ -190,7 +180,7 @@ void test_computeVehicleChecksum_sums_payload_and_frame_id()
     f.data[5] = 0x00;
     f.data[6] = 0xA0;
     f.data[7] = 0x00;
-    TEST_ASSERT_EQUAL_HEX8(0xE7, computeVehicleChecksum(f));
+    TEST_ASSERT_EQUAL_HEX8(0xD1, computeVehicleChecksum(f));
 }
 
 // --- Runtime BYPASS_TLSSC_REQUIREMENT ---
@@ -255,7 +245,6 @@ int main()
     RUN_TEST(test_setSpeedProfileV12V13_sets_profile_1);
     RUN_TEST(test_setSpeedProfileV12V13_sets_profile_2);
     RUN_TEST(test_setSpeedProfileV12V13_preserves_other_bits);
-    RUN_TEST(test_setTrackModeRequest_sets_on_and_preserves_upper_bits);
     RUN_TEST(test_computeVehicleChecksum_sums_payload_and_frame_id);
 
     RUN_TEST(test_runtime_bypass_tlssc_overrides_when_bit_clear);

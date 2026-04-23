@@ -21,8 +21,8 @@ jobs:
   release-metadata:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.x"
       - run: python scripts/check_release_metadata.py
@@ -30,16 +30,18 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-format git
+      - uses: actions/checkout@v6
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          clang-format git
       - run: clang-format --version
-      - run: git ls-files '*.cpp' '*.h' '*.hpp' | xargs -r clang-format --dry-run --Werror --style=file
+      - run: git ls-files '*.cpp' '*.h' '*.hpp' | xargs -r clang-format --dry-run
+          --Werror --style=file
 
   python-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.x"
       - run: python test/test_can_analyzer.py
@@ -55,11 +57,12 @@ jobs:
           - native_log_buffer
           - native_nag
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.x"
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential git
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          build-essential git
       - run: pip install "platformio==${PLATFORMIO_VERSION}"
       - run: pio test -e ${{ matrix.env }}
 
@@ -70,32 +73,40 @@ jobs:
       matrix:
         include:
           - env: feather_rp2040_can
-            profile: --driver DRIVER_MCP2515 --vehicle HW3 --enable EMERGENCY_VEHICLE_DETECTION
+            profile: --driver DRIVER_MCP2515 --vehicle HW3 --enable
+              EMERGENCY_VEHICLE_DETECTION
             extra_python_packages: ""
           - env: feather_m4_can
-            profile: --driver DRIVER_SAME51 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            profile: --driver DRIVER_SAME51 --vehicle HW4 --enable
+              EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
             extra_python_packages: ""
           - env: esp32_twai
-            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+              --enable ENHANCED_AUTOPILOT
             extra_python_packages: littlefs-python fatfs-ng pyyaml
           - env: m5stack-atomic-can-base
-            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+              --enable ENHANCED_AUTOPILOT
             extra_python_packages: littlefs-python fatfs-ng pyyaml
           - env: esp32_feather_v2_mcp2515
-            profile: --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+            profile: --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable
+              EMERGENCY_VEHICLE_DETECTION
             extra_python_packages: littlefs-python fatfs-ng pyyaml
           - env: esp32_ext_mcp2515
-            profile: --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            profile: --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable
+              EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
             extra_python_packages: littlefs-python fatfs-ng pyyaml
           - env: m5stack-atoms3-mini-can-base
-            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+              --enable ENHANCED_AUTOPILOT
             extra_python_packages: littlefs-python fatfs-ng pyyaml
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.x"
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential git
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          build-essential git
       - run: pip install "platformio==${PLATFORMIO_VERSION}"
       - if: matrix.extra_python_packages != ''
         run: pip install ${{ matrix.extra_python_packages }}

@@ -1,6 +1,16 @@
 name: General Issue
 description: Create a new issue
 body:
+  - type: textarea
+    id: support_summary
+    attributes:
+      label: Support Request
+      description: What do you need help with? If you used the dashboard Support button, paste that summary here first.
+      placeholder: |
+        Describe the problem or paste the copied support block here.
+    validations:
+      required: true
+
   - type: dropdown
     id: type
     attributes:
@@ -14,20 +24,11 @@ body:
     validations:
       required: true
 
-  - type: input
-    id: summary
-    attributes:
-      label: Summary
-      description: Short description of the issue
-      placeholder: Briefly describe the issue
-    validations:
-      required: true
-
   - type: dropdown
     id: hw_version
     attributes:
       label: Vehicle Hardware Version
-      description: Which Tesla hardware generation does your car have?
+      description: Which Tesla hardware generation does your car have? Check the dashboard badge or the vehicle info if you are unsure.
       options:
         - Legacy (HW3 retrofit)
         - HW3
@@ -40,7 +41,7 @@ body:
     id: sw_version
     attributes:
       label: Vehicle Software Version
-      description: Which Tesla software version are you running in your car?
+      description: Which Tesla software version are you running in your car? Use the version shown by the car.
       placeholder: v2026.8.3
     validations:
       required: true
@@ -49,7 +50,7 @@ body:
     id: board
     attributes:
       label: Board / Hardware
-      description: Which board are you using?
+      description: Which board are you using? Pick the board or adapter that runs the firmware.
       options:
         - Adafruit Feather RP2040 CAN
         - Adafruit Feather M4 CAN Express
@@ -64,26 +65,47 @@ body:
     validations:
       required: false
 
+  - type: dropdown
+    id: can_termination_resistor
+    attributes:
+      label: 120 ohm CAN termination resistor
+      description: If your board or CAN adapter has an onboard 120 ohm resistor, did you cut or remove it before connecting to the vehicle CAN bus?
+      options:
+        - Not sure
+        - Yes, removed or cut
+        - No, still fitted
+        - Board does not have one
+    validations:
+      required: false
+
   - type: textarea
     id: profile
     attributes:
       label: platformio_profile.h
-      description: Paste the contents of your `platformio_profile.h` file (omit WiFi passwords if you like)
+      description: Paste the contents of your `platformio_profile.h` file. This is the file where the `#define` values for driver, vehicle and options are set. Omit WiFi passwords if you like.
       placeholder: |
         #pragma once
 
         // #define DRIVER_MCP2515
         // #define HW3
         // ...
-      render: cpp
     validations:
       required: false
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: Short description of the issue. If you copied a support block, add the one-line symptom here too.
+      placeholder: Briefly describe the issue
+    validations:
+      required: true
 
   - type: textarea
     id: steps
     attributes:
       label: Steps to Reproduce (if applicable)
-      description: How can this be reproduced?
+      description: How can this be reproduced? Include the exact actions, buttons, or settings that lead to the problem.
       placeholder: |
         1. Go to...
         2. Click on...

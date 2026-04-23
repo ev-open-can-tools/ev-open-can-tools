@@ -18,6 +18,10 @@ The project is PlatformIO-only. Pick the correct board environment in `platformi
 | `esp32_ext_mcp2515` | ESP32-S3 + external MCP2515 | Dashboard build for SPI MCP2515 hardware |
 | `waveshare_ESP32_S3_RS485_CAN` | Waveshare ESP32-S3 RS485/CAN | TWAI dashboard build |
 
+## Hardware Notes
+
+Some CAN boards and adapters include an onboard 120 ohm termination resistor. When installing on an existing vehicle CAN bus, do not add another termination point: cut or remove the board's 120 ohm resistor if the adapter has one fitted.
+
 ## Selecting Driver, Vehicle, And Defaults
 
 You can edit [`platformio_profile.h`](../platformio_profile.h) directly:

@@ -2,7 +2,7 @@ name: Auto-label Issues by Type
 
 on:
   issues:
-    types: [opened, edited]
+    types: [ opened, edited ]
 
 permissions:
   issues: write
@@ -11,7 +11,7 @@ jobs:
   label:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             const body = context.payload.issue.body || '';

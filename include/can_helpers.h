@@ -3,8 +3,6 @@
 #include "can_frame_types.h"
 #include "shared_types.h"
 
-inline constexpr uint8_t kTrackModeRequestOn = 0x01;
-
 #if defined(BYPASS_TLSSC_REQUIREMENT) && !defined(ESP32_DASHBOARD)
 inline constexpr bool kBypassTlsscRequirementDefaultEnabled = true;
 inline constexpr bool kBypassTlsscRequirementBuildEnabled = true;
@@ -91,12 +89,6 @@ inline void setSpeedProfileV12V13(CanFrame &frame, int profile)
 {
     frame.data[6] &= ~0x06;
     frame.data[6] |= (profile << 1);
-}
-
-inline void setTrackModeRequest(CanFrame &frame, uint8_t request)
-{
-    frame.data[0] &= static_cast<uint8_t>(~0x03);
-    frame.data[0] |= static_cast<uint8_t>(request & 0x03);
 }
 
 inline uint8_t computeVehicleChecksum(const CanFrame &frame, uint8_t checksumByteIndex = 7)

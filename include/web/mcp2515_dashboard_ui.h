@@ -36,10 +36,13 @@ body{background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSyst
 /* Header */
 .hdr{padding:20px 16px 0;display:flex;flex-direction:column;gap:4px}
 .hdr-top{display:flex;align-items:center;justify-content:space-between}
-.hdr-left{display:flex;align-items:center;gap:10px}
+.hdr-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 .hdr-title{font-size:20px;font-weight:700;color:var(--tx)}
 .hw-badge{padding:3px 8px;border-radius:5px;font-size:11px;font-weight:600;
   background:var(--accBg);border:1px solid var(--accBd);color:var(--acc)}
+.gtw-badge{padding:3px 8px;border-radius:5px;font-size:11px;font-weight:600;
+  background:var(--card);border:1px solid var(--bd2);color:var(--tx2)}
+.gtw-badge.known{color:var(--ok);border-color:rgba(61,186,114,.25);background:var(--okBg)}
 .theme-btn{padding:6px 10px;border:1px solid var(--bd2);border-radius:8px;
   background:var(--card);color:var(--tx2);font-size:12px;cursor:pointer;
   display:flex;align-items:center;gap:4px;transition:all .2s}
@@ -233,6 +236,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <div class="hdr-left">
       <div class="hdr-title">ev-open-can-tools</div>
       <span class="hw-badge" id="hw-badge">HW3</span>
+      <span class="gtw-badge" id="gtw-badge" title="GTW_autopilot">GTW &mdash;</span>
     </div>
     <button class="theme-btn" onclick="toggleTheme()" id="theme-btn">&#9788; Light</button>
   </div>
@@ -335,17 +339,23 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   </details>
   <div class="subsec" data-subkey="plugin-editor-rule-test">
     <div class="subsec-head">
-      <div class="subsec-title">Rule Test <span class="title-help" onclick="return toggleHelp(this,event)" title="Waits for a live matching frame, applies one editor rule and injects the result for testing.">?</span></div>
-      <div class="subsec-meta">Single rule preview</div>
+      <div class="subsec-title">Rule Test <span class="title-help" onclick="return toggleHelp(this,event)" title="Preview one rule on a live CAN frame, then inject the modified frame.">?</span></div>
+      <div class="subsec-meta">Live frame preview</div>
     </div>
     <div class="subsec-body">
       <div style="font-size:11px;color:var(--tx3);line-height:1.5;margin-bottom:8px">
-        Choose one rule from the editor. The dashboard waits for the next matching CAN frame, applies the rule to that live frame, then injects it with your count and interval.
+        Choose one rule from the editor. The dashboard waits for the next matching CAN frame, applies that rule to the live frame, then injects it the number of times you set below, spaced by the delay in milliseconds.
       </div>
-      <div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 110px;gap:6px;margin-bottom:6px">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 130px 120px;gap:6px;margin-bottom:6px;align-items:end">
         <select class="sniff-input" id="pe-test-rule" onchange="peUpdateTestPreview()"></select>
-        <input class="sniff-input" id="pe-test-count" type="number" min="1" max="200" value="1" onchange="peUpdateTestPreview()">
-        <input class="sniff-input" id="pe-test-interval" type="number" min="10" max="5000" value="100" onchange="peUpdateTestPreview()">
+        <label style="display:block">
+          <div style="font-size:11px;color:var(--tx2);font-weight:600;margin:0 0 4px 2px">Amount of times</div>
+          <input class="sniff-input" id="pe-test-count" type="number" min="1" max="200" placeholder="1" title="Amount of times to inject" onchange="peUpdateTestPreview()">
+        </label>
+        <label style="display:block">
+          <div style="font-size:11px;color:var(--tx2);font-weight:600;margin:0 0 4px 2px">Interval (ms)</div>
+          <input class="sniff-input" id="pe-test-interval" type="number" min="10" max="5000" placeholder="100" title="Milliseconds between injected frames" onchange="peUpdateTestPreview()">
+        </label>
       </div>
       <pre id="pe-test-preview" style="min-height:54px;overflow:auto;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;padding:8px;font-size:11px;color:var(--tx2);white-space:pre-wrap;word-break:break-word">Add a rule to preview a test frame.</pre>
       <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
@@ -471,13 +481,10 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
 
   <div class="subsec" data-subkey="config-can-pins">
     <div class="subsec-head">
-      <div class="subsec-title">CAN Pins <span class="title-help" onclick="return toggleHelp(this,event)" data-help-target="can-pins-info" title="Set the ESP32 GPIO pins used for the CAN transceiver. Wrong values can disable CAN.">?</span></div>
+      <div class="subsec-title">CAN Pins <span class="title-help" onclick="return toggleHelp(this,event)" title="Set the ESP32 GPIO pins used for the CAN transceiver. Wrong values can disable CAN.">?</span></div>
       <div class="subsec-meta" id="can-pins-status">default</div>
     </div>
     <div class="subsec-body">
-      <div id="can-pins-info" class="info-box">
-        GPIO pins for the CAN transceiver (TWAI). Persisted in NVS so they survive OTA updates. Leave empty to use the firmware&#39;s compile-time defaults. <b>Wrong pins disable CAN</b> &mdash; recovery needs a USB re-flash. On most ESP32 boards GPIO 6&ndash;11 remain reserved for SPI flash.
-      </div>
       <div style="display:flex;gap:6px;align-items:center">
         <input class="sniff-input" id="can-tx" type="number" min="0" max="39" placeholder="TX GPIO" style="flex:1">
         <input class="sniff-input" id="can-rx" type="number" min="0" max="39" placeholder="RX GPIO" style="flex:1">
@@ -512,6 +519,13 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
     <button class="sniff-btn" onclick="exportSettings()">Download</button>
     <button class="sniff-btn" onclick="document.getElementById('backup-file').click()">Upload &amp; Restore</button>
     <input type="file" id="backup-file" accept=".json,application/json" style="display:none" onchange="importSettings(event)">
+  </div>
+  <div class="setting-row" style="padding-top:12px;border-top:1px solid var(--bd)">
+    <div class="setting-info">
+      <div class="setting-name">Support <span class="title-help" onclick="return toggleHelp(this,event)" title="Collect a support summary and open a GitHub issue with the details prefilled.">?</span></div>
+      <div class="setting-desc">Copy a status summary before opening a GitHub issue</div>
+    </div>
+    <button class="sniff-btn" onclick="openSupport()">Open</button>
   </div>
   <div id="backup-info" class="info-box" style="display:none">
     Exports AP credentials, WiFi Internet, CAN pins and beta channel as JSON. Useful before a full re-flash or when migrating to another device. <b>Passwords are included in clear text</b> &mdash; keep the file safe.
@@ -663,6 +677,23 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   </div>
 </div>
 
+<div class="modal-backdrop" id="support-modal" onclick="supportBackdrop(event)">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="support-title" style="width:min(100%,560px)">
+    <div class="modal-title" id="support-title">Support</div>
+    <div class="modal-msg" style="margin-top:10px">
+      <textarea id="support-body" readonly style="width:100%;min-height:260px;resize:vertical;border:1px solid var(--bd2);border-radius:8px;background:var(--bg);color:var(--tx);padding:10px;font:inherit;line-height:1.5"></textarea>
+    </div>
+    <div class="modal-actions" style="justify-content:space-between;align-items:center">
+      <span id="support-status" style="font-size:11px;color:var(--tx3)"></span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="sniff-btn" onclick="copySupport()">Copy</button>
+        <button class="sniff-btn modal-btn-primary" onclick="openSupportIssue()">Open GitHub Issue</button>
+        <button class="sniff-btn" onclick="closeSupport()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="foot" id="dash-foot">ev-open-can-tools &bull; loading...</div>
 <div class="foot" style="margin-top:4px">
   <a href="https://github.com/ev-open-can-tools/ev-open-can-tools" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">GitHub</a>
@@ -682,6 +713,22 @@ const $=id=>document.getElementById(id);
 const setText=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
 const setClass=(id,value)=>{const el=$(id);if(el)el.className=value;};
 function profileNamesForHw(hw){return hw===2?SP4:SP3;}
+function gtwAutopilotName(v){
+  return ['NONE','HIGHWAY','ENHANCED','SELF_DRIVING','BASIC'][v]||'UNKNOWN';
+}
+function gtwAutopilotBadge(v){
+  if(v<0)return 'GTW —';
+  if(v===3)return 'GTW SELF';
+  return 'GTW '+gtwAutopilotName(v);
+}
+function updateGtwBadge(v){
+  const el=$('gtw-badge');if(!el)return;
+  v=Number(v);
+  const known=!isNaN(v)&&v>=0;
+  el.textContent=gtwAutopilotBadge(known?v:-1);
+  el.className='gtw-badge '+(known?'known':'');
+  el.title=known?('GTW_autopilot: '+gtwAutopilotName(v)+' ('+v+')'):'GTW_autopilot: not seen yet';
+}
 let state={hw:1,can:true,sp:0};
 let sniffPaused=false,sniffFrames=[];
 let sniffShowDbcIds=localStorage.getItem('sniffIdMode')==='dbc';
@@ -694,6 +741,8 @@ let peLoadedPluginName='';
 let peTestPollTimer=null;
 let pluginDetailOpen={};
 let dashConfirmState=null;
+let supportIssueUrl='https://github.com/ev-open-can-tools/ev-open-can-tools/issues/new?template=issue.yml';
+let supportBodyText='';
 let dashboardPollTimers=[];
 let dashboardPollFailures=0;
 let dashboardStatusOk=false;
@@ -836,6 +885,10 @@ function dashConfirmBackdrop(ev){
   if(ev.target===$('confirm-modal'))dashConfirmResolve(false);
 }
 
+function supportBackdrop(ev){
+  if(ev.target===$('support-modal'))closeSupport();
+}
+
 function dashConfirm(message,title,okText,cancelText){
   if(dashConfirmState)dashConfirmResolve(false);
   return new Promise(resolve=>{
@@ -848,6 +901,105 @@ function dashConfirm(message,title,okText,cancelText){
     document.body.style.overflow='hidden';
     setTimeout(()=>{$('confirm-ok').focus();},0);
   });
+}
+
+function supportPluginSummary(){
+  return (installedPlugins||[]).filter(p=>p&&p.enabled).map(function(p){
+    return '#'+p.priority+' '+p.name+(p.rules?' ('+p.rules+' rules)':'');
+  }).join('\n')||'none';
+}
+
+function supportSettingsSummary(){
+  return [
+    'Hardware: '+(HW[state.hw]||'?'),
+    'Speed profile: '+((profileNamesForHw(state.hw)||[])[state.sp]||'—'),
+    'CAN status: '+($('s-can')?$('s-can').textContent:'—'),
+    'Injection: '+($('s-inj')?$('s-inj').textContent:'—'),
+    'AD: '+($('s-AD')?$('s-AD').textContent:'—'),
+    'CAN pins: '+($('can-pins-status')?$('can-pins-status').textContent:'—'),
+    'Firmware: '+($('fw-ver')?$('fw-ver').textContent:'—'),
+    'Beta channel: '+($('beta-tgl')&&$('beta-tgl').checked?'enabled':'disabled'),
+    'Auto-update: '+($('auto-upd-tgl')&&$('auto-upd-tgl').checked?'enabled':'disabled'),
+    'Dashboard logging: '+($('tgl-eprn')&&$('tgl-eprn').checked?'enabled':'disabled')
+  ].join('\n');
+}
+
+function buildSupportBody(){
+  const enabled=supportPluginSummary();
+  const body=[
+    'ev-open-can-tools support report',
+    '',
+    'Device',
+    'Hardware: '+(HW[state.hw]||'?'),
+    'Speed profile: '+((profileNamesForHw(state.hw)||[])[state.sp]||'—'),
+    'CAN status: '+($('s-can')?$('s-can').textContent:'—'),
+    'Injection: '+($('s-inj')?$('s-inj').textContent:'—'),
+    'AD: '+($('s-AD')?$('s-AD').textContent:'—'),
+    'CAN pins: '+($('can-pins-status')?$('can-pins-status').textContent:'—'),
+    'Firmware: '+($('fw-ver')?$('fw-ver').textContent:'—'),
+    '',
+    'Settings',
+    'Beta channel: '+($('beta-tgl')&&$('beta-tgl').checked?'enabled':'disabled'),
+    'Auto-update: '+($('auto-upd-tgl')&&$('auto-upd-tgl').checked?'enabled':'disabled'),
+    'Dashboard logging: '+($('tgl-eprn')&&$('tgl-eprn').checked?'enabled':'disabled'),
+    '',
+    'Enabled plugins',
+    enabled,
+    '',
+    'Notes',
+    ''
+  ].join('\n');
+  supportBodyText=body;
+  return body;
+}
+
+function openSupport(){
+  const el=$('support-body');
+  if(el)el.value=buildSupportBody();
+  const st=$('support-status');
+  if(st){st.textContent='Copy this text, then open the GitHub issue form.';st.style.color='var(--tx3)';}
+  $('support-modal').style.display='flex';
+  document.body.style.overflow='hidden';
+  setTimeout(()=>{if(el)el.focus();el&&el.setSelectionRange(0,0);},0);
+}
+
+function closeSupport(){
+  $('support-modal').style.display='none';
+  document.body.style.overflow='';
+}
+
+function copySupportText(text,el){
+  if(el){
+    el.focus();
+    el.select();
+    el.setSelectionRange(0,text.length);
+    if(document.execCommand&&document.execCommand('copy'))return true;
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).catch(()=>{});
+    return true;
+  }
+  return false;
+}
+
+function copySupport(){
+  const el=$('support-body');
+  const text=el?el.value:buildSupportBody();
+  if(copySupportText(text,el)){
+    const st=$('support-status');if(st){st.textContent='Copied to clipboard';st.style.color='var(--ok)';}
+    return true;
+  }
+  const st=$('support-status');if(st){st.textContent='Copy failed';st.style.color='var(--err)';}
+  return false;
+}
+
+function openSupportIssue(){
+  const url='https://github.com/ev-open-can-tools/ev-open-can-tools/issues/new?template=issue.yml';
+  const copied=copySupport();
+  supportIssueUrl=url;
+  window.open(url,'_blank','noopener');
+  const st=$('support-status');if(st&&copied){st.textContent='Copied support details. Paste them into the support question.';st.style.color='var(--ok)';}
+  closeSupport();
 }
 
 document.addEventListener('keydown',e=>{
@@ -1146,6 +1298,7 @@ async function poll(){
     setText('s-mcp-raw','EFLG: 0x'+toHex(d.eflg,2));
     const fpsFill=$('fps-fill');if(fpsFill)fpsFill.style.width=Math.min(fpsVal/20*100,100)+'%';
     setText('hw-badge',HW[d.hw]||'?');
+    updateGtwBadge(d.gtwap);
     try{renderEflg(d.eflg);}catch(e){}
     try{renderWriteProbe(d.probe);}catch(e){}
     if(d.mux){for(let i=0;i<3;i++){setText('m'+i+'rx',d.mux[i].rx);setText('m'+i+'tx',d.mux[i].tx);const e=$('m'+i+'err');if(e){e.textContent=d.mux[i].err;e.style.color=d.mux[i].err>0?'var(--err)':'';}}}
@@ -1892,7 +2045,7 @@ function peUpdateTestPreview(){
   if(!peState.rules.length){el.textContent='Add a rule to preview a test frame.';peSetTestStatus('Idle','');return;}
   const idx=parseInt($('pe-test-rule').value,10);
   if(isNaN(idx)||idx<0||idx>=peState.rules.length){el.textContent='Select a rule to test.';return;}
-  const count=parseInt($('pe-test-count').value,10),interval=parseInt($('pe-test-interval').value,10);
+  const count=peParseInt($('pe-test-count').value,1),interval=peParseInt($('pe-test-interval').value,100);
   if(isNaN(count)||count<1||count>200){el.textContent='Count must be 1-200.';return;}
   if(isNaN(interval)||interval<10||interval>5000){el.textContent='Interval must be 10-5000 ms.';return;}
   const rule=peState.rules[idx];
@@ -1971,7 +2124,7 @@ async function peStartTest(){
   if(!peState.rules.length){peSetTestStatus('Add a rule first','err');return;}
   const idx=parseInt($('pe-test-rule').value,10);
   if(isNaN(idx)||idx<0||idx>=peState.rules.length){peSetTestStatus('Select a valid rule','err');return;}
-  const count=parseInt($('pe-test-count').value,10),interval=parseInt($('pe-test-interval').value,10);
+  const count=peParseInt($('pe-test-count').value,1),interval=peParseInt($('pe-test-interval').value,100);
   if(isNaN(count)||count<1||count>200){peSetTestStatus('Count must be 1-200','err');return;}
   if(isNaN(interval)||interval<10||interval>5000){peSetTestStatus('Interval must be 10-5000 ms','err');return;}
   peSetTestStatus('Starting...','acc');
