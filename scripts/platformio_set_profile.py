@@ -21,6 +21,7 @@ OPTIONAL_DEFINES = (
     "INJECTION_AFTER_AP",
 )
 MANAGED_DEFINES = set(DRIVER_DEFINES + VEHICLE_DEFINES + OPTIONAL_DEFINES)
+MANAGED_DEFINE_ORDER = DRIVER_DEFINES + VEHICLE_DEFINES + OPTIONAL_DEFINES
 DEFINE_PATTERN = re.compile(
     r"^(?P<indent>\s*)(?P<comment>//\s*)?#define\s+(?P<name>[A-Z0-9_]+)(?P<rest>.*)$"
 )
@@ -84,11 +85,12 @@ def main():
         else:
             updated_lines.append(line)
 
-    missing = sorted(MANAGED_DEFINES - seen)
+    missing = [name for name in MANAGED_DEFINE_ORDER if name not in seen]
     if missing:
-        raise SystemExit(
-            f"Missing managed define lines in {profile_path}: {', '.join(missing)}"
-        )
+        if updated_lines and not updated_lines[-1].endswith(("\n", "\r")):
+            updated_lines[-1] = f"{updated_lines[-1]}\n"
+        for name in missing:
+            updated_lines.append(rewrite_define(f"#define {name}\n", name in enabled))
 
     profile_path.write_text("".join(updated_lines), encoding="utf-8")
 
