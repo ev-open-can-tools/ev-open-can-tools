@@ -41,6 +41,8 @@ Temporary Items
 .gcc-flags.json
 .pio
 .platformio-ci
+platformio_profile.h
+index.html
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
