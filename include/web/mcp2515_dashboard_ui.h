@@ -295,6 +295,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   </div>
 
   <div id="plg-conflicts" style="display:none;margin-bottom:10px"></div>
+  <div id="plg-gtw-status" style="display:none;margin-bottom:10px"></div>
 
   <div style="padding-top:12px;border-top:1px solid var(--bd)" id="plg-list">
     <div style="font-size:12px;color:var(--tx3);text-align:center;padding:12px">No plugins installed</div>
@@ -1856,6 +1857,38 @@ function pluginStateSignature(list){
   return JSON.stringify((list||[]).map(p=>[p&&p.name||'',p&&p.version||'',!!(p&&p.enabled),p&&p.rules||0,p&&p.author||'']));
 }
 
+const GTW_UDS_STATE_NAMES=['Idle','Session req','Seed req','Key sent','CommCtrl sent','Active','Failed'];
+function renderGtwUdsStatus(d){
+  const el=$('plg-gtw-status');if(!el)return;
+  const supported=!!d.gtw_silent_supported;
+  const uds=d.gtw_uds||{};
+  const active=pluginHasAnyGtwSilent(d.plugins||[]);
+  if(!active&&!supported){el.style.display='none';return;}
+  el.style.display='block';
+  const stateIdx=typeof uds.state==='number'?uds.state:0;
+  const stateName=GTW_UDS_STATE_NAMES[stateIdx]||('State '+stateIdx);
+  const stateColor=stateIdx===5?'var(--ok)':stateIdx===6?'var(--err)':'var(--tx3)';
+  let h='<div style="padding:8px 10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:11px">';
+  h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+  if(supported){
+    h+='<span style="color:var(--ok);font-weight:bold">&#10003; GTW silent: custom key loaded</span>';
+  }else{
+    h+='<span style="color:var(--tx3)">&#10007; GTW silent: no key &mdash; <code>PLUGIN_GTW_UDS_CUSTOM_KEY</code> not defined, <code>gtw_silent</code> disabled</span>';
+  }
+  if(active&&supported){
+    h+='<span style="color:'+stateColor+';margin-left:auto">UDS: '+stateName+'</span>';
+    if(uds.last_seed&&uds.last_seed.length>0){
+      h+='</div><div style="margin-top:6px;font-family:monospace;color:var(--tx2)">';
+      h+='seed&nbsp;&rarr;&nbsp;<b>'+uds.last_seed+'</b>&nbsp;&nbsp;key&nbsp;&rarr;&nbsp;<b style="color:var(--ok)">'+uds.last_key+'</b>';
+      if(uds.last_nrc&&uds.last_nrc!==0)h+='&nbsp;&nbsp;<span style="color:var(--err)">NRC 0x'+uds.last_nrc.toString(16)+'</span>';
+    }
+  }
+  h+='</div></div>';
+  el.innerHTML=h;
+}
+function pluginHasAnyGtwSilent(plugins){
+  return (plugins||[]).some(p=>(p.details||[]).some(r=>(r.ops||[]).some(o=>o.type==='emit_periodic'&&o.gtw_silent)));
+}
 function renderPluginsState(d){
   installedPlugins=d.plugins||[];
   pluginAnalyzePriority(installedPlugins);
@@ -1863,6 +1896,7 @@ function renderPluginsState(d){
   installedPlugins.forEach(p=>{if(p&&p.name&&pluginDetailOpen[p.name])nextOpen[p.name]=true;});
   pluginDetailOpen=nextOpen;
   pluginMax=d.maxPlugins||pluginMax||0;
+  renderGtwUdsStatus(d);
   const max=pluginMax;
   $('plg-count').textContent=max?installedPlugins.length+' / '+max+' installed':installedPlugins.length+' installed';
   if($('plg-limit')){

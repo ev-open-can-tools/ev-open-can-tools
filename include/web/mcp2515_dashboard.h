@@ -1413,7 +1413,22 @@ static void handlePluginList()
         }
         j += "]}";
     }
-    j += "],\"wifi\":{\"connected\":";
+    j += "],\"gtw_silent_supported\":" + String(pluginGtwSilentSupported() ? "true" : "false");
+    j += ",\"gtw_uds\":{\"state\":" + String((int)pluginPeriodicEmit.uds.state);
+    j += ",\"last_nrc\":" + String(pluginPeriodicEmit.uds.lastNrc);
+    auto hexBuf = [](const uint8_t *b, uint8_t len) -> String {
+        String s = "\"";
+        for (uint8_t i = 0; i < len; i++) {
+            if (b[i] < 0x10) s += "0";
+            s += String(b[i], HEX);
+        }
+        s += "\"";
+        return s;
+    };
+    j += ",\"last_seed\":" + hexBuf(pluginPeriodicEmit.uds.lastSeed, pluginPeriodicEmit.uds.lastSeedLen);
+    j += ",\"last_key\":" + hexBuf(pluginPeriodicEmit.uds.lastKey, pluginPeriodicEmit.uds.lastKeyLen);
+    j += "}";
+    j += ",\"wifi\":{\"connected\":";
     j += staConnected ? "true" : "false";
     j += ",\"ssid\":\"" + jsonEscape(staSSID) + "\"";
     if (staConnected)

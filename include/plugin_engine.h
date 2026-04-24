@@ -77,6 +77,10 @@ struct PluginGtwUdsMachine
     uint8_t seed[PLUGIN_GTW_UDS_SEED_MAX];
     uint8_t seedLen;
     uint8_t bus;
+    uint8_t lastSeed[PLUGIN_GTW_UDS_SEED_MAX];
+    uint8_t lastSeedLen;
+    uint8_t lastKey[PLUGIN_GTW_UDS_SEED_MAX];
+    uint8_t lastKeyLen;
 };
 
 struct PluginPeriodicEmitState
@@ -161,7 +165,7 @@ static void pluginResetPeriodicEmit()
 
 static bool pluginGtwSilentSupported()
 {
-#if defined(PLUGIN_GTW_UDS_CUSTOM_KEY)
+#if defined(PLUGIN_GTW_UDS_KEY_READY)
     return true;
 #else
     return false;
@@ -170,20 +174,29 @@ static bool pluginGtwSilentSupported()
 
 // ── GTW UDS SILENCING KEY HOOK ──────────────────────────────────
 //
-// SecurityAccess key computation. Tesla uses a proprietary seed→key
+// SecurityAccess key computation. Tesla uses a proprietary seed-to-key
 // algorithm. Without the real algorithm the gateway answers with NRC
-// 0x35 (invalidKey) and silencing will not take effect.
+// invalidKey and silencing will not take effect.
 //
-// To plug in a working key generator, define PLUGIN_GTW_UDS_CUSTOM_KEY
-// and supply: bool pluginGtwUdsComputeKey(const uint8_t *seed, uint8_t seedLen,
-//                                        uint8_t *outKey, uint8_t &outLen);
-// Return true and fill outKey[0..outLen-1] with the computed key.
-//
-// Without PLUGIN_GTW_UDS_CUSTOM_KEY, gtw_silent is ignored at parse time.
-// This fallback returns false if called directly so a build cannot silently
-// pretend that gateway silencing is available.
+// Define PLUGIN_GTW_UDS_KEY_READY as the byte used by the current
+// seed-to-key algorithm. Without it, gtw_silent is ignored at parse time.
 
-#ifndef PLUGIN_GTW_UDS_CUSTOM_KEY
+#if defined(PLUGIN_GTW_UDS_KEY_READY)
+static_assert(PLUGIN_GTW_UDS_KEY_READY >= 0 && PLUGIN_GTW_UDS_KEY_READY <= 0xFF,
+              "PLUGIN_GTW_UDS_KEY_READY must be a byte value like 0x12");
+
+static bool pluginGtwUdsComputeKey(const uint8_t *seed, uint8_t seedLen,
+                                   uint8_t *outKey, uint8_t &outLen)
+{
+    if (seedLen == 0 || seedLen > PLUGIN_GTW_UDS_SEED_MAX)
+        return false;
+    const uint8_t xorKey = static_cast<uint8_t>(PLUGIN_GTW_UDS_KEY_READY);
+    for (uint8_t i = 0; i < seedLen; i++)
+        outKey[i] = seed[i] ^ xorKey;
+    outLen = seedLen;
+    return true;
+}
+#else
 static bool pluginGtwUdsComputeKey(const uint8_t *seed, uint8_t seedLen,
                                    uint8_t *outKey, uint8_t &outLen)
 {
@@ -193,9 +206,6 @@ static bool pluginGtwUdsComputeKey(const uint8_t *seed, uint8_t seedLen,
     outLen = 0;
     return false;
 }
-#else
-extern bool pluginGtwUdsComputeKey(const uint8_t *seed, uint8_t seedLen,
-                                   uint8_t *outKey, uint8_t &outLen);
 #endif
 
 // ── GTW UDS STATE MACHINE ───────────────────────────────────────
@@ -354,6 +364,12 @@ static void pluginGtwUdsTick(PluginGtwUdsMachine &m, CanDriver &driver, unsigned
                 pluginGtwUdsFail(m, 0xFE, now); // 0xFE = local key failure
                 break;
             }
+            m.lastSeedLen = m.seedLen;
+            for (uint8_t i = 0; i < m.seedLen; i++)
+                m.lastSeed[i] = m.seed[i];
+            m.lastKeyLen = keyLen;
+            for (uint8_t i = 0; i < keyLen; i++)
+                m.lastKey[i] = key[i];
             uint8_t payload[2 + PLUGIN_GTW_UDS_SEED_MAX];
             payload[0] = 0x27;
             payload[1] = 0x02;
