@@ -2499,14 +2499,16 @@ static void handleUpdateInstall()
     int contentLength = http.getSize();
     if (contentLength <= 0)
     {
-        dashLog("[OTA] Invalid content length");
+        dashLog("[OTA] Invalid content length: " + String(contentLength));
         http.end();
         return;
     }
 
+    dashLog("[OTA] Downloading " + String(contentLength) + " bytes...");
+
     if (!Update.begin(contentLength))
     {
-        dashLog("[OTA] Not enough space for update");
+        dashLog("[OTA] Update.begin failed: " + String(Update.errorString()));
         http.end();
         return;
     }
@@ -2517,14 +2519,20 @@ static void handleUpdateInstall()
 
     if (written != (size_t)contentLength)
     {
-        dashLog("[OTA] Written " + String(written) + " of " + String(contentLength) + " bytes");
+        dashLog("[OTA] Written " + String(written) + " of " + String(contentLength) + " bytes: " + String(Update.errorString()));
         Update.abort();
         return;
     }
 
-    if (!Update.end())
+    if (!Update.end(true))
     {
-        dashLog("[OTA] Update finalize failed");
+        dashLog("[OTA] Update finalize failed: " + String(Update.errorString()));
+        return;
+    }
+
+    if (!Update.isFinished())
+    {
+        dashLog("[OTA] Update not finished");
         return;
     }
 
@@ -2635,13 +2643,13 @@ static void performAutoUpdate()
     int len = http2.getSize();
     if (len <= 0)
     {
-        dashLog("[AUTO-OTA] Invalid content length");
+        dashLog("[AUTO-OTA] Invalid content length: " + String(len));
         http2.end();
         return;
     }
     if (!Update.begin(len))
     {
-        dashLog("[AUTO-OTA] Not enough space for update");
+        dashLog("[AUTO-OTA] Update.begin failed: " + String(Update.errorString()));
         http2.end();
         return;
     }
@@ -2650,13 +2658,13 @@ static void performAutoUpdate()
     http2.end();
     if (written != (size_t)len)
     {
-        dashLog("[AUTO-OTA] Written " + String(written) + "/" + String(len) + " bytes");
+        dashLog("[AUTO-OTA] Written " + String(written) + "/" + String(len) + " bytes: " + String(Update.errorString()));
         Update.abort();
         return;
     }
-    if (!Update.end())
+    if (!Update.end(true))
     {
-        dashLog("[AUTO-OTA] Finalize failed");
+        dashLog("[AUTO-OTA] Finalize failed: " + String(Update.errorString()));
         return;
     }
     dashLog("[AUTO-OTA] Update successful! Rebooting...");
