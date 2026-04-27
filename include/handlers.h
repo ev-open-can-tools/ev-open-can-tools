@@ -21,11 +21,14 @@ struct CarManagerBase
     Shared<bool> ADEnabled{false};
     Shared<bool> APActive{false};
     Shared<bool> Parked{false};
+    Shared<bool> Summoning{false};
     Shared<int> gatewayAutopilot{-1};
     Shared<bool> enablePrint{true};
     Shared<uint32_t> frameCount{0};
     Shared<uint32_t> framesSent{0};
     Shared<int> speedOffset{0};
+
+    unsigned long lastSummonActivityMs = 0;
 
     void (*onFrame)(const CanFrame &) = nullptr;
     void (*onSend)(uint8_t mux, bool ok) = nullptr;
@@ -37,7 +40,35 @@ struct CarManagerBase
 
     bool injectionGateOpen() const
     {
-        return (bool)APActive || (bool)Parked;
+        return (bool)APActive || (bool)Parked || (bool)Summoning;
+    }
+
+    // Update summon state from UI_driverAssistControl (CAN ID 1016).
+    // Tesla DBC: UI_summonHeartbeat at byte 0 bits 2-3, UI_selfParkRequest
+    // at byte 3 bits 4-7. During summon, heartbeat cycles 0->1->2->3 and/or
+    // selfParkRequest is non-zero. Manual driving leaves both at zero.
+    void updateSummonFrom1016(const CanFrame &frame)
+    {
+        if (frame.dlc < 4)
+            return;
+        uint8_t hb = static_cast<uint8_t>((frame.data[0] >> 2) & 0x03);
+        uint8_t spr = static_cast<uint8_t>((frame.data[3] >> 4) & 0x0F);
+        if (hb != 0 || spr != 0)
+        {
+#ifndef NATIVE_BUILD
+            lastSummonActivityMs = millis();
+#endif
+            Summoning = true;
+        }
+        else
+        {
+#ifndef NATIVE_BUILD
+            if (lastSummonActivityMs == 0 || millis() - lastSummonActivityMs > 1500)
+                Summoning = false;
+#else
+            Summoning = false;
+#endif
+        }
     }
 
     bool shouldInjectSpeedProfile() const
@@ -183,6 +214,7 @@ struct HW3Handler : public CarManagerBase
         {
             if (frame.dlc < 6)
                 return;
+            updateSummonFrom1016(frame);
             if (!speedProfileAuto)
                 return;
             uint8_t followDistance = (frame.data[5] & 0b11100000) >> 5;
@@ -462,6 +494,7 @@ struct HW4Handler : public CarManagerBase
         {
             if (frame.dlc < 6)
                 return;
+            updateSummonFrom1016(frame);
             if (!speedProfileAuto)
                 return;
             auto fd = (frame.data[5] & 0b11100000) >> 5;
