@@ -12,6 +12,7 @@ using String = std::string;
 #include "can_frame_types.h"
 #include "can_helpers.h"
 #include "drivers/can_driver.h"
+#include "isotp_transport.h"
 
 #define PLUGIN_MAX 8
 #define PLUGIN_RULES_MAX 16
@@ -33,7 +34,9 @@ using String = std::string;
 #define PLUGIN_GTW_UDS_KEEPALIVE_MS 2000 // TesterPresent cadence once session is active
 #define PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS 400
 #define PLUGIN_GTW_UDS_RETRY_BACKOFF_MS 5000 // after NRC or timeout, wait before retrying sequence
-#define PLUGIN_GTW_UDS_SEED_MAX 6
+#ifndef PLUGIN_GTW_UDS_SEED_MAX
+#define PLUGIN_GTW_UDS_SEED_MAX (ISOTP_PAYLOAD_MAX - 2)
+#endif
 
 enum PluginOpType : uint8_t
 {
@@ -67,9 +70,72 @@ enum PluginGtwUdsState : uint8_t
     GTW_UDS_FAILED = 6,         // NRC/timeout — back off before retry
 };
 
+static const char *pluginGtwUdsStateName(PluginGtwUdsState state)
+{
+    switch (state)
+    {
+    case GTW_UDS_IDLE:
+        return "idle";
+    case GTW_UDS_SESSION_REQ:
+        return "session_req";
+    case GTW_UDS_SEED_REQ:
+        return "seed_req";
+    case GTW_UDS_KEY_SENT:
+        return "key_sent";
+    case GTW_UDS_COMM_CTRL_SENT:
+        return "comm_ctrl_sent";
+    case GTW_UDS_ACTIVE:
+        return "active";
+    case GTW_UDS_FAILED:
+        return "failed";
+    }
+    return "unknown";
+}
+
+static const char *pluginGtwUdsNrcName(uint8_t nrc)
+{
+    switch (nrc)
+    {
+    case 0x00:
+        return "none";
+    case 0x10:
+        return "general_reject";
+    case 0x11:
+        return "service_not_supported";
+    case 0x12:
+        return "subfunction_not_supported";
+    case 0x13:
+        return "incorrect_length_or_format";
+    case 0x22:
+        return "conditions_not_correct";
+    case 0x24:
+        return "request_sequence_error";
+    case 0x31:
+        return "request_out_of_range";
+    case 0x33:
+        return "security_access_denied";
+    case 0x35:
+        return "invalid_key";
+    case 0x36:
+        return "exceeded_attempts";
+    case 0x37:
+        return "required_time_delay_not_expired";
+    case 0x78:
+        return "response_pending";
+    case 0xFD:
+        return "transport_error";
+    case 0xFE:
+        return "local_key_failure";
+    case 0xFF:
+        return "timeout";
+    }
+    return "negative_response";
+}
+
 struct PluginGtwUdsMachine
 {
     PluginGtwUdsState state;
+    PluginGtwUdsState lastFailedState;
     unsigned long stateEnteredAt;
     unsigned long nextActionAt;
     unsigned long retryAfterMs;
@@ -81,6 +147,7 @@ struct PluginGtwUdsMachine
     uint8_t lastSeedLen;
     uint8_t lastKey[PLUGIN_GTW_UDS_SEED_MAX];
     uint8_t lastKeyLen;
+    IsoTpLink isotp;
 };
 
 struct PluginPeriodicEmitState
@@ -210,21 +277,6 @@ static bool pluginGtwUdsComputeKey(const uint8_t *seed, uint8_t seedLen,
 
 // ── GTW UDS STATE MACHINE ───────────────────────────────────────
 
-static CanFrame pluginMakeUdsRequest(const uint8_t *payload, uint8_t len, uint8_t bus)
-{
-    CanFrame frame;
-    frame.id = PLUGIN_GTW_UDS_REQUEST_ID;
-    frame.dlc = 8;
-    frame.bus = bus;
-    // ISO-TP single frame PCI: high nibble = 0, low nibble = length
-    frame.data[0] = len & 0x0F;
-    for (uint8_t i = 0; i < len && i < 7; i++)
-        frame.data[1 + i] = payload[i];
-    for (uint8_t i = 1 + len; i < 8; i++)
-        frame.data[i] = 0x00;
-    return frame;
-}
-
 static void pluginGtwUdsEnter(PluginGtwUdsMachine &m, PluginGtwUdsState next, unsigned long now,
                               unsigned long actionDelayMs)
 {
@@ -236,32 +288,53 @@ static void pluginGtwUdsEnter(PluginGtwUdsMachine &m, PluginGtwUdsState next, un
 static void pluginGtwUdsFail(PluginGtwUdsMachine &m, uint8_t nrc, unsigned long now)
 {
     m.lastNrc = nrc;
+    m.lastFailedState = m.state;
     m.state = GTW_UDS_FAILED;
     m.stateEnteredAt = now;
     m.nextActionAt = now + m.retryAfterMs;
 }
 
-// Returns true if the frame was a GTW UDS response that advanced the machine.
-static bool pluginGtwUdsHandleResponse(PluginGtwUdsMachine &m, const CanFrame &frame, unsigned long now)
+static void pluginGtwUdsTimeout(PluginGtwUdsMachine &m, unsigned long now)
 {
-    if (frame.id != PLUGIN_GTW_UDS_RESPONSE_ID || frame.dlc < 2)
+    isoTpMarkRxTimeout(m.isotp);
+    pluginGtwUdsFail(m, 0xFF, now);
+}
+
+static bool pluginGtwUdsSendRequest(PluginGtwUdsMachine &m, CanDriver &driver,
+                                    const uint8_t *payload, uint8_t len, unsigned long now)
+{
+    if (isoTpSendPayload(m.isotp, driver, PLUGIN_GTW_UDS_REQUEST_ID, m.bus, payload, len))
+        return true;
+
+    pluginGtwUdsFail(m, 0xFD, now);
+    return false;
+}
+
+static bool pluginGtwUdsTransportErrorFatal(uint8_t error)
+{
+    switch (error)
+    {
+    case ISOTP_ERR_NONE:
+    case ISOTP_ERR_FC_WAIT:
+    case ISOTP_ERR_UNEXPECTED_FC:
+        return false;
+    default:
+        return true;
+    }
+}
+
+static bool pluginGtwUdsHandlePayload(PluginGtwUdsMachine &m, const uint8_t *payload,
+                                      uint8_t len, unsigned long now)
+{
+    if (len < 1)
         return false;
 
-    // Only single-frame ISO-TP responses are expected (all targeted services fit in 8 bytes).
-    uint8_t pciType = frame.data[0] >> 4;
-    if (pciType != 0x0)
-        return false;
-
-    uint8_t len = frame.data[0] & 0x0F;
-    if (len < 1 || len > 7)
-        return false;
-
-    uint8_t sid = frame.data[1];
+    uint8_t sid = payload[0];
 
     // Negative response: 0x7F <requestedSid> <NRC>
     if (sid == 0x7F && len >= 3)
     {
-        uint8_t nrc = frame.data[3];
+        uint8_t nrc = payload[2];
         // 0x78 = responsePending — keep waiting, don't fail yet.
         // Reset both the send-sentinel and the timeout window so we neither
         // resend nor abort prematurely.
@@ -278,7 +351,7 @@ static bool pluginGtwUdsHandleResponse(PluginGtwUdsMachine &m, const CanFrame &f
     switch (m.state)
     {
     case GTW_UDS_SESSION_REQ:
-        if (sid == 0x50 && len >= 2 && frame.data[2] == 0x03)
+        if (sid == 0x50 && len >= 2 && payload[1] == 0x03)
         {
             pluginGtwUdsEnter(m, GTW_UDS_SEED_REQ, now, 0);
             return true;
@@ -286,13 +359,13 @@ static bool pluginGtwUdsHandleResponse(PluginGtwUdsMachine &m, const CanFrame &f
         break;
 
     case GTW_UDS_SEED_REQ:
-        if (sid == 0x67 && len >= 3 && frame.data[2] == 0x01)
+        if (sid == 0x67 && len >= 3 && payload[1] == 0x01)
         {
             uint8_t seedLen = len - 2;
             if (seedLen > PLUGIN_GTW_UDS_SEED_MAX)
                 seedLen = PLUGIN_GTW_UDS_SEED_MAX;
             for (uint8_t i = 0; i < seedLen; i++)
-                m.seed[i] = frame.data[3 + i];
+                m.seed[i] = payload[2 + i];
             m.seedLen = seedLen;
             pluginGtwUdsEnter(m, GTW_UDS_KEY_SENT, now, 0);
             return true;
@@ -300,7 +373,7 @@ static bool pluginGtwUdsHandleResponse(PluginGtwUdsMachine &m, const CanFrame &f
         break;
 
     case GTW_UDS_KEY_SENT:
-        if (sid == 0x67 && len >= 2 && frame.data[2] == 0x02)
+        if (sid == 0x67 && len >= 2 && payload[1] == 0x02)
         {
             pluginGtwUdsEnter(m, GTW_UDS_COMM_CTRL_SENT, now, 0);
             return true;
@@ -308,7 +381,7 @@ static bool pluginGtwUdsHandleResponse(PluginGtwUdsMachine &m, const CanFrame &f
         break;
 
     case GTW_UDS_COMM_CTRL_SENT:
-        if (sid == 0x68 && len >= 2 && frame.data[2] == 0x01)
+        if (sid == 0x68 && len >= 2 && payload[1] == 0x01)
         {
             pluginGtwUdsEnter(m, GTW_UDS_ACTIVE, now, PLUGIN_GTW_UDS_KEEPALIVE_MS);
             return true;
@@ -320,6 +393,31 @@ static bool pluginGtwUdsHandleResponse(PluginGtwUdsMachine &m, const CanFrame &f
     }
 
     return false;
+}
+
+// Returns true if the frame was GTW ISO-TP traffic handled by the UDS transport.
+static bool pluginGtwUdsHandleResponse(PluginGtwUdsMachine &m, CanDriver &driver,
+                                       const CanFrame &frame, unsigned long now)
+{
+    if (frame.id != PLUGIN_GTW_UDS_RESPONSE_ID)
+        return false;
+
+    if (!isoTpHandleFrame(m.isotp, driver, frame, PLUGIN_GTW_UDS_REQUEST_ID))
+        return false;
+
+    if (pluginGtwUdsTransportErrorFatal(m.isotp.lastError))
+    {
+        pluginGtwUdsFail(m, 0xFD, now);
+        return true;
+    }
+
+    if (m.isotp.rxComplete)
+    {
+        pluginGtwUdsHandlePayload(m, m.isotp.rxPayload, static_cast<uint8_t>(m.isotp.rxLength), now);
+        m.isotp.rxComplete = false;
+    }
+
+    return true;
 }
 
 // Drives the UDS state machine forward: sends the next request if ready, or
@@ -334,24 +432,24 @@ static void pluginGtwUdsTick(PluginGtwUdsMachine &m, CanDriver &driver, unsigned
     case GTW_UDS_IDLE:
     {
         const uint8_t payload[] = {0x10, 0x03}; // DiagnosticSessionControl → ExtendedSession
-        driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus));
-        pluginGtwUdsEnter(m, GTW_UDS_SESSION_REQ, now, PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS);
+        if (pluginGtwUdsSendRequest(m, driver, payload, sizeof(payload), now))
+            pluginGtwUdsEnter(m, GTW_UDS_SESSION_REQ, now, PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS);
         break;
     }
     case GTW_UDS_SESSION_REQ:
         if ((long)(now - m.stateEnteredAt) >= PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS)
-            pluginGtwUdsFail(m, 0xFF, now); // 0xFF = internal timeout marker
+            pluginGtwUdsTimeout(m, now); // 0xFF = internal timeout marker
         break;
 
     case GTW_UDS_SEED_REQ:
         if (m.stateEnteredAt == m.nextActionAt)
         {
             const uint8_t payload[] = {0x27, 0x01}; // SecurityAccess requestSeed
-            driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus));
-            m.nextActionAt = now + PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS;
+            if (pluginGtwUdsSendRequest(m, driver, payload, sizeof(payload), now))
+                m.nextActionAt = now + PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS;
         }
         else if ((long)(now - m.stateEnteredAt) >= PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS)
-            pluginGtwUdsFail(m, 0xFF, now);
+            pluginGtwUdsTimeout(m, now);
         break;
 
     case GTW_UDS_KEY_SENT:
@@ -375,11 +473,11 @@ static void pluginGtwUdsTick(PluginGtwUdsMachine &m, CanDriver &driver, unsigned
             payload[1] = 0x02;
             for (uint8_t i = 0; i < keyLen; i++)
                 payload[2 + i] = key[i];
-            driver.send(pluginMakeUdsRequest(payload, 2 + keyLen, m.bus));
-            m.nextActionAt = now + PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS;
+            if (pluginGtwUdsSendRequest(m, driver, payload, 2 + keyLen, now))
+                m.nextActionAt = now + PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS;
         }
         else if ((long)(now - m.stateEnteredAt) >= PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS)
-            pluginGtwUdsFail(m, 0xFF, now);
+            pluginGtwUdsTimeout(m, now);
         break;
 
     case GTW_UDS_COMM_CTRL_SENT:
@@ -387,18 +485,18 @@ static void pluginGtwUdsTick(PluginGtwUdsMachine &m, CanDriver &driver, unsigned
         {
             // 0x28 CommunicationControl: enableRxAndDisableTx (0x01), normalCommunication (0x01)
             const uint8_t payload[] = {0x28, 0x01, 0x01};
-            driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus));
-            m.nextActionAt = now + PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS;
+            if (pluginGtwUdsSendRequest(m, driver, payload, sizeof(payload), now))
+                m.nextActionAt = now + PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS;
         }
         else if ((long)(now - m.stateEnteredAt) >= PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS)
-            pluginGtwUdsFail(m, 0xFF, now);
+            pluginGtwUdsTimeout(m, now);
         break;
 
     case GTW_UDS_ACTIVE:
     {
         const uint8_t payload[] = {0x3E, 0x00}; // TesterPresent
-        driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus));
-        m.nextActionAt = now + PLUGIN_GTW_UDS_KEEPALIVE_MS;
+        if (pluginGtwUdsSendRequest(m, driver, payload, sizeof(payload), now))
+            m.nextActionAt = now + PLUGIN_GTW_UDS_KEEPALIVE_MS;
         break;
     }
 
@@ -1102,7 +1200,7 @@ static bool pluginProcessFrame(const CanFrame &original, CanDriver &driver)
         if (pluginPeriodicEmit.uds.bus != CAN_BUS_ANY && original.bus != CAN_BUS_ANY &&
             (pluginPeriodicEmit.uds.bus & original.bus) == 0)
             return false;
-        pluginGtwUdsHandleResponse(pluginPeriodicEmit.uds, original, millis());
+        pluginGtwUdsHandleResponse(pluginPeriodicEmit.uds, driver, original, millis());
         return true;
     }
 

@@ -1495,8 +1495,13 @@ static void handlePluginList()
         j += "]}";
     }
     j += "],\"gtw_silent_supported\":" + String(pluginGtwSilentSupported() ? "true" : "false");
-    j += ",\"gtw_uds\":{\"state\":" + String((int)pluginPeriodicEmit.uds.state);
-    j += ",\"last_nrc\":" + String(pluginPeriodicEmit.uds.lastNrc);
+    const PluginGtwUdsMachine &uds = pluginPeriodicEmit.uds;
+    j += ",\"gtw_uds\":{\"state\":" + String((int)uds.state);
+    j += ",\"state_name\":\"" + String(pluginGtwUdsStateName(uds.state)) + "\"";
+    j += ",\"last_failed_state\":" + String((int)uds.lastFailedState);
+    j += ",\"last_failed_state_name\":\"" + String(pluginGtwUdsStateName(uds.lastFailedState)) + "\"";
+    j += ",\"last_nrc\":" + String(uds.lastNrc);
+    j += ",\"last_error\":\"" + String(pluginGtwUdsNrcName(uds.lastNrc)) + "\"";
     auto hexBuf = [](const uint8_t *b, uint8_t len) -> String
     {
         String s = "\"";
@@ -1509,8 +1514,24 @@ static void handlePluginList()
         s += "\"";
         return s;
     };
-    j += ",\"last_seed\":" + hexBuf(pluginPeriodicEmit.uds.lastSeed, pluginPeriodicEmit.uds.lastSeedLen);
-    j += ",\"last_key\":" + hexBuf(pluginPeriodicEmit.uds.lastKey, pluginPeriodicEmit.uds.lastKeyLen);
+    j += ",\"last_seed\":" + hexBuf(uds.lastSeed, uds.lastSeedLen);
+    j += ",\"last_key\":" + hexBuf(uds.lastKey, uds.lastKeyLen);
+    const IsoTpLink &isotp = uds.isotp;
+    j += ",\"isotp\":{\"rx_active\":" + String(isotp.rxActive ? "true" : "false");
+    j += ",\"tx_active\":" + String(isotp.txActive ? "true" : "false");
+    j += ",\"waiting_fc\":" + String(isotp.txWaitingFlowControl ? "true" : "false");
+    j += ",\"last_rx_pci\":" + String(isotp.lastRxPci);
+    j += ",\"last_rx_pci_name\":\"" + String(isoTpPciName(isotp.lastRxPci)) + "\"";
+    j += ",\"last_tx_pci\":" + String(isotp.lastTxPci);
+    j += ",\"last_tx_pci_name\":\"" + String(isoTpPciName(isotp.lastTxPci)) + "\"";
+    j += ",\"last_error\":\"" + String(isoTpErrorName(isotp.lastError)) + "\"";
+    j += ",\"last_rx_len\":" + String(isotp.lastRxLength);
+    j += ",\"last_tx_len\":" + String(isotp.lastTxLength);
+    j += ",\"last_complete_rx_len\":" + String(isotp.lastCompleteRxLength);
+    j += ",\"last_complete_tx_len\":" + String(isotp.lastCompleteTxLength);
+    j += ",\"fc_rx\":" + String(isotp.flowControlRxCount);
+    j += ",\"fc_tx\":" + String(isotp.flowControlTxCount);
+    j += "}";
     j += "}";
     j += ",\"wifi\":{\"connected\":";
     j += staConnected ? "true" : "false";

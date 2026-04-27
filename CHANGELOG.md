@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GTW silent UDS dashboard status now reports the failed step and decoded error name for timeouts and negative responses.
+- GTW silent UDS transport now uses a reusable ISO-TP helper with single-frame, first-frame, consecutive-frame, and flow-control handling plus dashboard transport diagnostics.
+
 ## [2.5.0-beta.9] - 2026-04-27
 
 ### Added

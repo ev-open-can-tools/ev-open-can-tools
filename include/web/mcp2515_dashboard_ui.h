@@ -1928,6 +1928,10 @@ function renderGtwUdsStatus(d){
   el.style.display='block';
   const stateIdx=typeof uds.state==='number'?uds.state:0;
   const stateName=GTW_UDS_STATE_NAMES[stateIdx]||('State '+stateIdx);
+  const failedIdx=typeof uds.last_failed_state==='number'?uds.last_failed_state:0;
+  const failedName=uds.last_failed_state_name||GTW_UDS_STATE_NAMES[failedIdx]||('state '+failedIdx);
+  const errorName=uds.last_error||'none';
+  const tp=uds.isotp||{};
   const stateColor=stateIdx===5?'var(--ok)':stateIdx===6?'var(--err)':'var(--tx3)';
   let h='<div style="padding:8px 10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:11px">';
   h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
@@ -1938,10 +1942,23 @@ function renderGtwUdsStatus(d){
   }
   if(active&&supported){
     h+='<span style="color:'+stateColor+';margin-left:auto">UDS: '+stateName+'</span>';
+    if(stateIdx===6){
+      h+='</div><div style="margin-top:6px;font-family:monospace;color:var(--err)">';
+      h+='last failure: '+failedName+' / '+errorName;
+      if(uds.last_nrc&&uds.last_nrc!==0)h+=' (0x'+uds.last_nrc.toString(16)+')';
+    }
     if(uds.last_seed&&uds.last_seed.length>0){
       h+='</div><div style="margin-top:6px;font-family:monospace;color:var(--tx2)">';
       h+='seed&nbsp;&rarr;&nbsp;<b>'+uds.last_seed+'</b>&nbsp;&nbsp;key&nbsp;&rarr;&nbsp;<b style="color:var(--ok)">'+uds.last_key+'</b>';
       if(uds.last_nrc&&uds.last_nrc!==0)h+='&nbsp;&nbsp;<span style="color:var(--err)">NRC 0x'+uds.last_nrc.toString(16)+'</span>';
+    }
+    if(tp.last_rx_len||tp.last_tx_len||tp.rx_active||tp.tx_active||tp.waiting_fc){
+      h+='</div><div style="margin-top:6px;font-family:monospace;color:var(--tx2)">';
+      h+='ISO-TP rx='+((tp.last_rx_pci_name||'none'))+'('+((tp.last_complete_rx_len||tp.last_rx_len||0))+')';
+      h+=' tx='+((tp.last_tx_pci_name||'none'))+'('+((tp.last_complete_tx_len||tp.last_tx_len||0))+')';
+      if(tp.waiting_fc)h+=' waiting_fc';
+      if(tp.last_error&&tp.last_error!=='none')h+=' <span style="color:var(--err)">'+tp.last_error+'</span>';
+      if(tp.fc_rx||tp.fc_tx)h+=' fc rx/tx='+((tp.fc_rx||0))+'/'+((tp.fc_tx||0));
     }
   }
   h+='</div></div>';
