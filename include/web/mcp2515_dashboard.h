@@ -839,10 +839,10 @@ static void dashApplyFilters()
     {
         dashMcp->setFilterMask(MCP2515::MASK0, false, 0x7FF);
         dashMcp->setFilter(MCP2515::RXF0, false, 69);
-        dashMcp->setFilter(MCP2515::RXF1, false, 1006);
+        dashMcp->setFilter(MCP2515::RXF1, false, 280);
         dashMcp->setFilterMask(MCP2515::MASK1, false, 0x7FF);
-        dashMcp->setFilter(MCP2515::RXF2, false, 69);
-        dashMcp->setFilter(MCP2515::RXF3, false, 1006);
+        dashMcp->setFilter(MCP2515::RXF2, false, 1006);
+        dashMcp->setFilter(MCP2515::RXF3, false, 280);
         dashMcp->setFilter(MCP2515::RXF4, false, 69);
         dashMcp->setFilter(MCP2515::RXF5, false, 1006);
     }
@@ -853,7 +853,7 @@ static void dashApplyFilters()
         dashMcp->setFilter(MCP2515::RXF1, false, 1021);
         dashMcp->setFilterMask(MCP2515::MASK1, false, 0x7FF);
         dashMcp->setFilter(MCP2515::RXF2, false, 1016);
-        dashMcp->setFilter(MCP2515::RXF3, false, 1021);
+        dashMcp->setFilter(MCP2515::RXF3, false, 280);
         dashMcp->setFilter(MCP2515::RXF4, false, 1016);
         dashMcp->setFilter(MCP2515::RXF5, false, 921);
     }
@@ -864,7 +864,7 @@ static void dashApplyFilters()
         dashMcp->setFilter(MCP2515::RXF1, false, 1021);
         dashMcp->setFilterMask(MCP2515::MASK1, false, 0x7FF);
         dashMcp->setFilter(MCP2515::RXF2, false, 1016);
-        dashMcp->setFilter(MCP2515::RXF3, false, 1021);
+        dashMcp->setFilter(MCP2515::RXF3, false, 280);
         dashMcp->setFilter(MCP2515::RXF4, false, 1016);
         dashMcp->setFilter(MCP2515::RXF5, false, 1021);
     }

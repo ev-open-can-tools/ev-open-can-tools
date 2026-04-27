@@ -92,6 +92,13 @@ inline uint8_t readVehicleGear(const CanFrame &frame)
     return static_cast<uint8_t>((frame.data[7] >> 3) & 0x07);
 }
 
+// DI_systemStatus (CAN ID 280 / 0x118) DI_gear: byte 2 bits 5-7
+// Values: 0=INVALID, 1=P, 2=R, 3=N, 4=D, 7=SNA
+inline uint8_t readDIGear(const CanFrame &frame)
+{
+    return static_cast<uint8_t>((frame.data[2] >> 5) & 0x07);
+}
+
 inline bool isVehicleParked(uint8_t gear)
 {
     return gear == 1;

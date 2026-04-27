@@ -59,10 +59,10 @@ struct LegacyHandler : public CarManagerBase
 {
     const uint32_t *filterIds() const override
     {
-        static constexpr uint32_t ids[] = {69, 390, 921, 1006};
+        static constexpr uint32_t ids[] = {69, 280, 390, 921, 1006};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 4; }
+    uint8_t filterIdCount() const override { return 5; }
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
@@ -83,6 +83,13 @@ struct LegacyHandler : public CarManagerBase
                 speedProfile = 1;
             else
                 speedProfile = 0;
+            return;
+        }
+        if (frame.id == 280)
+        {
+            if (frame.dlc < 3)
+                return;
+            Parked = isVehicleParked(readDIGear(frame));
             return;
         }
         if (frame.id == 390)
@@ -149,15 +156,22 @@ struct HW3Handler : public CarManagerBase
 {
     const uint32_t *filterIds() const override
     {
-        static constexpr uint32_t ids[] = {390, 921, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {280, 390, 921, 1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 5; }
+    uint8_t filterIdCount() const override { return 6; }
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
         if (onFrame)
             onFrame(frame);
+        if (frame.id == 280)
+        {
+            if (frame.dlc < 3)
+                return;
+            Parked = isVehicleParked(readDIGear(frame));
+            return;
+        }
         if (frame.id == 390)
         {
             if (frame.dlc < 8)
@@ -389,21 +403,28 @@ struct HW4Handler : public CarManagerBase
     const uint32_t *filterIds() const override
     {
 #if defined(ISA_SPEED_CHIME_SUPPRESS) && !defined(ESP32_DASHBOARD)
-        static constexpr uint32_t ids[] = {390, 921, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {280, 390, 921, 1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 5; }
+    uint8_t filterIdCount() const override { return 6; }
 #else
-        static constexpr uint32_t ids[] = {390, 921, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {280, 390, 921, 1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 5; }
+    uint8_t filterIdCount() const override { return 6; }
 #endif
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
         if (onFrame)
             onFrame(frame);
+        if (frame.id == 280)
+        {
+            if (frame.dlc < 3)
+                return;
+            Parked = isVehicleParked(readDIGear(frame));
+            return;
+        }
         if (frame.id == 390)
         {
             if (frame.dlc < 8)
