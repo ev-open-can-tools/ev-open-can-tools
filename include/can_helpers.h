@@ -87,6 +87,16 @@ inline bool isDASAutopilotActive(uint8_t status)
     return status >= 3 && status <= 5;
 }
 
+inline uint8_t readVehicleGear(const CanFrame &frame)
+{
+    return static_cast<uint8_t>((frame.data[7] >> 3) & 0x07);
+}
+
+inline bool isVehicleParked(uint8_t gear)
+{
+    return gear == 1;
+}
+
 inline const char *describeGTWAutopilot(uint8_t value)
 {
     switch (value)

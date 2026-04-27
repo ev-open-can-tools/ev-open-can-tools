@@ -30,6 +30,14 @@ static CanFrame hw4Mux1Frame()
     return f;
 }
 
+static CanFrame gearFrame(uint8_t gear)
+{
+    CanFrame f = {.id = 390};
+    f.dlc = 8;
+    f.data[7] = static_cast<uint8_t>(gear << 3);
+    return f;
+}
+
 static void activateAp(CarManagerBase &handler)
 {
     CanFrame f = {.id = 921};
@@ -69,6 +77,45 @@ void test_hw3_enhanced_autopilot_waits_for_ap_before_mux1_injection()
     TEST_ASSERT_EQUAL_HEX8(0x40, mock.sent[0].data[5] & 0x40);
 }
 
+void test_hw3_enhanced_autopilot_allows_mux1_injection_while_parked()
+{
+    HW3Handler handler;
+    handler.enablePrint = false;
+
+    CanFrame park = gearFrame(1);
+    handler.handleMessage(park, mock);
+    TEST_ASSERT_TRUE(handler.Parked);
+    TEST_ASSERT_FALSE(handler.APActive);
+
+    CanFrame whileParked = hw3Mux1Frame();
+    handler.handleMessage(whileParked, mock);
+
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+    TEST_ASSERT_FALSE((mock.sent[0].data[2] >> 3) & 0x01);
+    TEST_ASSERT_EQUAL_HEX8(0x40, mock.sent[0].data[5] & 0x40);
+}
+
+void test_hw3_enhanced_autopilot_stops_mux1_injection_when_shifted_to_drive()
+{
+    HW3Handler handler;
+    handler.enablePrint = false;
+
+    CanFrame park = gearFrame(1);
+    handler.handleMessage(park, mock);
+    CanFrame whileParked = hw3Mux1Frame();
+    handler.handleMessage(whileParked, mock);
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+    mock.reset();
+
+    CanFrame drive = gearFrame(4);
+    handler.handleMessage(drive, mock);
+    TEST_ASSERT_FALSE(handler.Parked);
+
+    CanFrame whileDriving = hw3Mux1Frame();
+    handler.handleMessage(whileDriving, mock);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
 void test_hw4_enhanced_autopilot_waits_for_ap_before_mux1_injection()
 {
     HW4Handler handler;
@@ -99,12 +146,55 @@ void test_hw4_enhanced_autopilot_waits_for_ap_before_mux1_injection()
     TEST_ASSERT_EQUAL_HEX8(0x80, mock.sent[0].data[5] & 0x80);
 }
 
+void test_hw4_enhanced_autopilot_allows_mux1_injection_while_parked()
+{
+    HW4Handler handler;
+    handler.enablePrint = false;
+
+    CanFrame park = gearFrame(1);
+    handler.handleMessage(park, mock);
+    TEST_ASSERT_TRUE(handler.Parked);
+    TEST_ASSERT_FALSE(handler.APActive);
+
+    CanFrame whileParked = hw4Mux1Frame();
+    handler.handleMessage(whileParked, mock);
+
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+    TEST_ASSERT_FALSE((mock.sent[0].data[2] >> 3) & 0x01);
+    TEST_ASSERT_EQUAL_HEX8(0x80, mock.sent[0].data[5] & 0x80);
+}
+
+void test_hw4_enhanced_autopilot_stops_mux1_injection_when_shifted_to_drive()
+{
+    HW4Handler handler;
+    handler.enablePrint = false;
+
+    CanFrame park = gearFrame(1);
+    handler.handleMessage(park, mock);
+    CanFrame whileParked = hw4Mux1Frame();
+    handler.handleMessage(whileParked, mock);
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+    mock.reset();
+
+    CanFrame drive = gearFrame(4);
+    handler.handleMessage(drive, mock);
+    TEST_ASSERT_FALSE(handler.Parked);
+
+    CanFrame whileDriving = hw4Mux1Frame();
+    handler.handleMessage(whileDriving, mock);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
 int main()
 {
     UNITY_BEGIN();
 
     RUN_TEST(test_hw3_enhanced_autopilot_waits_for_ap_before_mux1_injection);
+    RUN_TEST(test_hw3_enhanced_autopilot_allows_mux1_injection_while_parked);
+    RUN_TEST(test_hw3_enhanced_autopilot_stops_mux1_injection_when_shifted_to_drive);
     RUN_TEST(test_hw4_enhanced_autopilot_waits_for_ap_before_mux1_injection);
+    RUN_TEST(test_hw4_enhanced_autopilot_allows_mux1_injection_while_parked);
+    RUN_TEST(test_hw4_enhanced_autopilot_stops_mux1_injection_when_shifted_to_drive);
 
     return UNITY_END();
 }

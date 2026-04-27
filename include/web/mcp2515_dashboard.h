@@ -409,7 +409,7 @@ static bool dashCheckADEnabled()
 
 static bool dashApInjectionAllowed()
 {
-    return !apInjectionGate || (dashHandler && (bool)dashHandler->APActive);
+    return !apInjectionGate || (dashHandler && dashHandler->injectionGateOpen());
 }
 
 static bool dashInjectionActive()

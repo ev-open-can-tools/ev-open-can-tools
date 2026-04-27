@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0-beta.8] - 2026-04-27
+
+### Fixed
+
+- AP Injection Gate now also opens while the vehicle is in Park, so Summon unlock injection can run while parked and stops again after shifting to Drive.
+
 ## [2.5.0-beta.7] - 2026-04-25
 
 ### Fixed

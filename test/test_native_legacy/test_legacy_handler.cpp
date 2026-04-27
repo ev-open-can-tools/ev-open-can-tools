@@ -153,15 +153,16 @@ void test_legacy_ignores_unrelated_can_id()
 
 void test_legacy_filter_ids_count()
 {
-    TEST_ASSERT_EQUAL_UINT8(3, handler.filterIdCount());
+    TEST_ASSERT_EQUAL_UINT8(4, handler.filterIdCount());
 }
 
 void test_legacy_filter_ids_values()
 {
     const uint32_t *ids = handler.filterIds();
     TEST_ASSERT_EQUAL_UINT32(69, ids[0]);
-    TEST_ASSERT_EQUAL_UINT32(921, ids[1]);
-    TEST_ASSERT_EQUAL_UINT32(1006, ids[2]);
+    TEST_ASSERT_EQUAL_UINT32(390, ids[1]);
+    TEST_ASSERT_EQUAL_UINT32(921, ids[2]);
+    TEST_ASSERT_EQUAL_UINT32(1006, ids[3]);
 }
 
 int main()

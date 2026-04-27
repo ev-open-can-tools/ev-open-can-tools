@@ -19,6 +19,7 @@ struct CarManagerBase
     Shared<int> speedProfile{1};
     Shared<bool> ADEnabled{false};
     Shared<bool> APActive{false};
+    Shared<bool> Parked{false};
     Shared<int> gatewayAutopilot{-1};
     Shared<bool> enablePrint{true};
     Shared<uint32_t> frameCount{0};
@@ -33,6 +34,11 @@ struct CarManagerBase
     bool (*checkIsa)() = nullptr;
     bool (*checkEvd)() = nullptr;
 
+    bool injectionGateOpen() const
+    {
+        return (bool)APActive || (bool)Parked;
+    }
+
     virtual void handleMessage(CanFrame &frame, CanDriver &driver) = 0;
     virtual const uint32_t *filterIds() const = 0;
     virtual uint8_t filterIdCount() const = 0;
@@ -43,10 +49,10 @@ struct LegacyHandler : public CarManagerBase
 {
     const uint32_t *filterIds() const override
     {
-        static constexpr uint32_t ids[] = {69, 921, 1006};
+        static constexpr uint32_t ids[] = {69, 390, 921, 1006};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 3; }
+    uint8_t filterIdCount() const override { return 4; }
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
@@ -65,6 +71,13 @@ struct LegacyHandler : public CarManagerBase
                 speedProfile = 1;
             else
                 speedProfile = 0;
+            return;
+        }
+        if (frame.id == 390)
+        {
+            if (frame.dlc < 8)
+                return;
+            Parked = isVehicleParked(readVehicleGear(frame));
             return;
         }
         if (frame.id == 921)
@@ -126,15 +139,22 @@ struct HW3Handler : public CarManagerBase
 {
     const uint32_t *filterIds() const override
     {
-        static constexpr uint32_t ids[] = {921, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {390, 921, 1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 4; }
+    uint8_t filterIdCount() const override { return 5; }
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
         if (onFrame)
             onFrame(frame);
+        if (frame.id == 390)
+        {
+            if (frame.dlc < 8)
+                return;
+            Parked = isVehicleParked(readVehicleGear(frame));
+            return;
+        }
         if (frame.id == 1016)
         {
             if (frame.dlc < 6)
@@ -215,7 +235,7 @@ struct HW3Handler : public CarManagerBase
 #if !defined(ESP32_DASHBOARD)
                 bool modified = false;
 #if defined(ENHANCED_AUTOPILOT)
-                if (enhancedAutopilotRuntime && enhancedAutopilotInjectionAllowed(APActive))
+                if (enhancedAutopilotRuntime && enhancedAutopilotInjectionAllowed(injectionGateOpen()))
                 {
                     setBit(frame, 19, false);
                     setBit(frame, 46, true);
@@ -347,21 +367,28 @@ struct HW4Handler : public CarManagerBase
     const uint32_t *filterIds() const override
     {
 #if defined(ISA_SPEED_CHIME_SUPPRESS) && !defined(ESP32_DASHBOARD)
-        static constexpr uint32_t ids[] = {921, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {390, 921, 1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 4; }
+    uint8_t filterIdCount() const override { return 5; }
 #else
-        static constexpr uint32_t ids[] = {921, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {390, 921, 1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 4; }
+    uint8_t filterIdCount() const override { return 5; }
 #endif
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
         if (onFrame)
             onFrame(frame);
+        if (frame.id == 390)
+        {
+            if (frame.dlc < 8)
+                return;
+            Parked = isVehicleParked(readVehicleGear(frame));
+            return;
+        }
         if (frame.id == 921)
         {
             if (frame.dlc < 1)
@@ -468,7 +495,7 @@ struct HW4Handler : public CarManagerBase
 #if !defined(ESP32_DASHBOARD)
                 bool modified = false;
 #if defined(ENHANCED_AUTOPILOT)
-                if (enhancedAutopilotRuntime && enhancedAutopilotInjectionAllowed(APActive))
+                if (enhancedAutopilotRuntime && enhancedAutopilotInjectionAllowed(injectionGateOpen()))
                 {
                     setBit(frame, 19, false);
                     setBit(frame, 47, true);

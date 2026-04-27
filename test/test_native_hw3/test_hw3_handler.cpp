@@ -161,6 +161,31 @@ void test_hw3_das_status_active_marks_ap_active()
     TEST_ASSERT_EQUAL(0, mock.sent.size());
 }
 
+void test_hw3_gear_park_marks_parked()
+{
+    CanFrame f = {.id = 390};
+    f.dlc = 8;
+    f.data[7] = static_cast<uint8_t>(1U << 3);
+
+    handler.handleMessage(f, mock);
+
+    TEST_ASSERT_TRUE(handler.Parked);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
+void test_hw3_gear_drive_clears_parked()
+{
+    handler.Parked = true;
+    CanFrame f = {.id = 390};
+    f.dlc = 8;
+    f.data[7] = static_cast<uint8_t>(4U << 3);
+
+    handler.handleMessage(f, mock);
+
+    TEST_ASSERT_FALSE(handler.Parked);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
 // --- Nag suppression (mux 1) ---
 
 void test_hw3_nag_suppression_clears_bit19_on_mux1()
@@ -233,16 +258,17 @@ void test_hw3_mux1_sends_exactly_1()
 
 void test_hw3_filter_ids_count()
 {
-    TEST_ASSERT_EQUAL_UINT8(4, handler.filterIdCount());
+    TEST_ASSERT_EQUAL_UINT8(5, handler.filterIdCount());
 }
 
 void test_hw3_filter_ids_values()
 {
     const uint32_t *ids = handler.filterIds();
-    TEST_ASSERT_EQUAL_UINT32(921, ids[0]);
-    TEST_ASSERT_EQUAL_UINT32(1016, ids[1]);
-    TEST_ASSERT_EQUAL_UINT32(1021, ids[2]);
-    TEST_ASSERT_EQUAL_UINT32(2047, ids[3]);
+    TEST_ASSERT_EQUAL_UINT32(390, ids[0]);
+    TEST_ASSERT_EQUAL_UINT32(921, ids[1]);
+    TEST_ASSERT_EQUAL_UINT32(1016, ids[2]);
+    TEST_ASSERT_EQUAL_UINT32(1021, ids[3]);
+    TEST_ASSERT_EQUAL_UINT32(2047, ids[4]);
 }
 
 int main()
@@ -265,6 +291,8 @@ int main()
     RUN_TEST(test_hw3_recorded_ap_mux0_enables_ad);
     RUN_TEST(test_hw3_das_status_available_does_not_mark_ap_active);
     RUN_TEST(test_hw3_das_status_active_marks_ap_active);
+    RUN_TEST(test_hw3_gear_park_marks_parked);
+    RUN_TEST(test_hw3_gear_drive_clears_parked);
     RUN_TEST(test_hw3_nag_suppression_clears_bit19_on_mux1);
     RUN_TEST(test_hw3_nag_suppression_skips_mux1_changes_when_eap_runtime_disabled);
     RUN_TEST(test_hw3_mux1_sets_track_labels_bit46);

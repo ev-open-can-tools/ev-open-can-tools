@@ -324,20 +324,46 @@ void test_hw4_gw_autopilot_mux2_updates_state_without_send()
     TEST_ASSERT_EQUAL(0, mock.sent.size());
 }
 
+void test_hw4_gear_park_marks_parked()
+{
+    CanFrame f = {.id = 390};
+    f.dlc = 8;
+    f.data[7] = static_cast<uint8_t>(1U << 3);
+
+    handler.handleMessage(f, mock);
+
+    TEST_ASSERT_TRUE(handler.Parked);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
+void test_hw4_gear_drive_clears_parked()
+{
+    handler.Parked = true;
+    CanFrame f = {.id = 390};
+    f.dlc = 8;
+    f.data[7] = static_cast<uint8_t>(4U << 3);
+
+    handler.handleMessage(f, mock);
+
+    TEST_ASSERT_FALSE(handler.Parked);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
 // --- Filter IDs ---
 
 void test_hw4_filter_ids_count()
 {
-    TEST_ASSERT_EQUAL_UINT8(4, handler.filterIdCount());
+    TEST_ASSERT_EQUAL_UINT8(5, handler.filterIdCount());
 }
 
 void test_hw4_filter_ids_values()
 {
     const uint32_t *ids = handler.filterIds();
-    TEST_ASSERT_EQUAL_UINT32(921, ids[0]);
-    TEST_ASSERT_EQUAL_UINT32(1016, ids[1]);
-    TEST_ASSERT_EQUAL_UINT32(1021, ids[2]);
-    TEST_ASSERT_EQUAL_UINT32(2047, ids[3]);
+    TEST_ASSERT_EQUAL_UINT32(390, ids[0]);
+    TEST_ASSERT_EQUAL_UINT32(921, ids[1]);
+    TEST_ASSERT_EQUAL_UINT32(1016, ids[2]);
+    TEST_ASSERT_EQUAL_UINT32(1021, ids[3]);
+    TEST_ASSERT_EQUAL_UINT32(2047, ids[4]);
 }
 
 int main()
@@ -379,6 +405,8 @@ int main()
     RUN_TEST(test_hw4_das_status_available_does_not_mark_ap_active);
     RUN_TEST(test_hw4_das_status_active_marks_ap_active);
     RUN_TEST(test_hw4_gw_autopilot_mux2_updates_state_without_send);
+    RUN_TEST(test_hw4_gear_park_marks_parked);
+    RUN_TEST(test_hw4_gear_drive_clears_parked);
 
     return UNITY_END();
 }

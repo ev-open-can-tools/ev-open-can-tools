@@ -156,6 +156,25 @@ void test_isDASAutopilotActive_false_for_available_state()
     TEST_ASSERT_FALSE(isDASAutopilotActive(2));
 }
 
+// --- Gear state ---
+
+void test_readVehicleGear_extracts_dif_gear_bits()
+{
+    CanFrame f = {};
+    f.data[7] = static_cast<uint8_t>(4U << 3);
+    TEST_ASSERT_EQUAL_UINT8(4, readVehicleGear(f));
+}
+
+void test_isVehicleParked_true_for_park()
+{
+    TEST_ASSERT_TRUE(isVehicleParked(1));
+}
+
+void test_isVehicleParked_false_for_drive()
+{
+    TEST_ASSERT_FALSE(isVehicleParked(4));
+}
+
 // --- setSpeedProfileV12V13 ---
 
 void test_setSpeedProfileV12V13_sets_profile_0()
@@ -264,6 +283,9 @@ int main()
     RUN_TEST(test_readDASAutopilotStatus_extracts_lower_nibble);
     RUN_TEST(test_isDASAutopilotActive_true_for_active_states);
     RUN_TEST(test_isDASAutopilotActive_false_for_available_state);
+    RUN_TEST(test_readVehicleGear_extracts_dif_gear_bits);
+    RUN_TEST(test_isVehicleParked_true_for_park);
+    RUN_TEST(test_isVehicleParked_false_for_drive);
 
     RUN_TEST(test_setSpeedProfileV12V13_sets_profile_0);
     RUN_TEST(test_setSpeedProfileV12V13_sets_profile_1);
