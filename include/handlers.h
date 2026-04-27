@@ -44,16 +44,19 @@ struct CarManagerBase
     }
 
     // Update summon state from UI_driverAssistControl (CAN ID 1016).
-    // Tesla DBC: UI_summonHeartbeat at byte 0 bits 2-3, UI_selfParkRequest
-    // at byte 3 bits 4-7. During summon, heartbeat cycles 0->1->2->3 and/or
-    // selfParkRequest is non-zero. Manual driving leaves both at zero.
+    // Tesla DBC: UI_selfParkRequest at byte 3 bits 4-7 carries the active
+    // summon / self-park command (4=PRIME, 5=PAUSE, 7/8=AUTO_SUMMON_FWD/REV,
+    // 11=SMART_SUMMON, 0=NONE). Latch Summoning while spr is non-zero and
+    // hold for 5 s after the last activity so brief command gaps mid-summon
+    // do not drop the gate. UI_summonHeartbeat (byte 0 bits 2-3) is NOT
+    // used: once summon has run, heartbeat keeps cycling 0..3 indefinitely
+    // even after summon ends, so it cannot signal end-of-summon.
     void updateSummonFrom1016(const CanFrame &frame)
     {
         if (frame.dlc < 4)
             return;
-        uint8_t hb = static_cast<uint8_t>((frame.data[0] >> 2) & 0x03);
         uint8_t spr = static_cast<uint8_t>((frame.data[3] >> 4) & 0x0F);
-        if (hb != 0 || spr != 0)
+        if (spr != 0)
         {
 #ifndef NATIVE_BUILD
             lastSummonActivityMs = millis();
@@ -63,12 +66,24 @@ struct CarManagerBase
         else
         {
 #ifndef NATIVE_BUILD
-            if (lastSummonActivityMs == 0 || millis() - lastSummonActivityMs > 1500)
+            if (lastSummonActivityMs == 0 || millis() - lastSummonActivityMs > 5000)
                 Summoning = false;
 #else
             Summoning = false;
 #endif
         }
+    }
+
+    // Force Summoning off when the vehicle is observed in Park. This handles
+    // the case where summon ends (spr=0 sustained) and the driver shifts back
+    // to P before any Drive-time timeout could elapse, ensuring a manual
+    // P->D shift afterwards correctly waits for AP.
+    void clearSummonOnPark()
+    {
+        Summoning = false;
+#ifndef NATIVE_BUILD
+        lastSummonActivityMs = 0;
+#endif
     }
 
     bool shouldInjectSpeedProfile() const
@@ -121,6 +136,7 @@ struct LegacyHandler : public CarManagerBase
             if (frame.dlc < 3)
                 return;
             Parked = isVehicleParked(readDIGear(frame));
+            if ((bool)Parked) clearSummonOnPark();
             return;
         }
         if (frame.id == 390)
@@ -128,6 +144,7 @@ struct LegacyHandler : public CarManagerBase
             if (frame.dlc < 8)
                 return;
             Parked = isVehicleParked(readVehicleGear(frame));
+            if ((bool)Parked) clearSummonOnPark();
             return;
         }
         if (frame.id == 921)
@@ -201,6 +218,7 @@ struct HW3Handler : public CarManagerBase
             if (frame.dlc < 3)
                 return;
             Parked = isVehicleParked(readDIGear(frame));
+            if ((bool)Parked) clearSummonOnPark();
             return;
         }
         if (frame.id == 390)
@@ -208,6 +226,7 @@ struct HW3Handler : public CarManagerBase
             if (frame.dlc < 8)
                 return;
             Parked = isVehicleParked(readVehicleGear(frame));
+            if ((bool)Parked) clearSummonOnPark();
             return;
         }
         if (frame.id == 1016)
@@ -455,6 +474,7 @@ struct HW4Handler : public CarManagerBase
             if (frame.dlc < 3)
                 return;
             Parked = isVehicleParked(readDIGear(frame));
+            if ((bool)Parked) clearSummonOnPark();
             return;
         }
         if (frame.id == 390)
@@ -462,6 +482,7 @@ struct HW4Handler : public CarManagerBase
             if (frame.dlc < 8)
                 return;
             Parked = isVehicleParked(readVehicleGear(frame));
+            if ((bool)Parked) clearSummonOnPark();
             return;
         }
         if (frame.id == 921)
