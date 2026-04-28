@@ -43,35 +43,58 @@ struct CarManagerBase
         return (bool)APActive || (bool)Parked || (bool)Summoning;
     }
 
-    // Update summon state from UI_driverAssistControl (CAN ID 1016).
-    // Tesla DBC: UI_selfParkRequest at byte 3 bits 4-7 carries the active
-    // summon / self-park command (4=PRIME, 5=PAUSE, 7/8=AUTO_SUMMON_FWD/REV,
-    // 11=SMART_SUMMON, 0=NONE). Latch Summoning while spr is non-zero and
-    // hold for 5 s after the last activity so brief command gaps mid-summon
-    // do not drop the gate. UI_summonHeartbeat (byte 0 bits 2-3) is NOT
-    // used: once summon has run, heartbeat keeps cycling 0..3 indefinitely
-    // even after summon ends, so it cannot signal end-of-summon.
-    void updateSummonFrom1016(const CanFrame &frame)
+    // Combined Summon-active activity tracker. Either signal can refresh
+    // the latch; flag clears 5 s after the last refresh.
+    void updateSummonActivity(bool active)
     {
-        if (frame.dlc < 4)
-            return;
-        uint8_t spr = static_cast<uint8_t>((frame.data[3] >> 4) & 0x0F);
-        if (spr != 0)
+        if (active)
         {
 #ifndef NATIVE_BUILD
             lastSummonActivityMs = millis();
 #endif
             Summoning = true;
+            return;
         }
-        else
-        {
 #ifndef NATIVE_BUILD
-            if (lastSummonActivityMs == 0 || millis() - lastSummonActivityMs > 5000)
-                Summoning = false;
+        if (lastSummonActivityMs != 0 && millis() - lastSummonActivityMs <= 5000)
+            return;
+        Summoning = false;
 #else
-            Summoning = false;
+        Summoning = false;
 #endif
-        }
+    }
+
+    // Update summon state from UI_driverAssistControl (CAN ID 1016).
+    // Tesla DBC: UI_selfParkRequest at byte 3 bits 4-7 carries the active
+    // summon / self-park command (4=PRIME, 5=PAUSE, 7/8=AUTO_SUMMON_FWD/REV,
+    // 11=SMART_SUMMON, 0=NONE). spr is transient: it returns to 0 within a
+    // few hundred ms after a command is issued even though the car keeps
+    // driving autonomously, so spr by itself cannot keep the gate open
+    // through the whole summon. UI_summonHeartbeat (byte 0 bits 2-3) is
+    // unusable here because once summon has run, heartbeat keeps cycling
+    // 0..3 indefinitely until reboot. The DI_autonomyControlActive bit on
+    // CAN 280 is the sustained signal and is also tracked, see
+    // updateSummonFromDISystemStatus().
+    void updateSummonFrom1016(const CanFrame &frame)
+    {
+        if (frame.dlc < 4)
+            return;
+        uint8_t spr = static_cast<uint8_t>((frame.data[3] >> 4) & 0x0F);
+        updateSummonActivity(spr != 0);
+    }
+
+    // Update summon state from DI_systemStatus (CAN ID 280).
+    // Tesla DBC: DI_autonomyControlActive at bit 50 (byte 6 bit 2). This
+    // bit is held high for the entire duration the DI is being driven by
+    // an autonomy stack (Smart Summon, Smart Park, Autopark, etc.) and
+    // is the most reliable signal that the car is currently moving under
+    // remote/autonomous control rather than under driver control.
+    void updateSummonFromDISystemStatus(const CanFrame &frame)
+    {
+        if (frame.dlc < 7)
+            return;
+        bool aca = (frame.data[6] & 0x04) != 0;
+        updateSummonActivity(aca);
     }
 
     // Force Summoning off when the vehicle is observed in Park. This handles
@@ -144,6 +167,7 @@ struct LegacyHandler : public CarManagerBase
                 // otherwise drop the gate mid-summon.
                 if (diGear == 1) clearSummonOnPark();
             }
+            updateSummonFromDISystemStatus(frame);
             return;
         }
         if (frame.id == 390)
@@ -238,6 +262,7 @@ struct HW3Handler : public CarManagerBase
                 // otherwise drop the gate mid-summon.
                 if (diGear == 1) clearSummonOnPark();
             }
+            updateSummonFromDISystemStatus(frame);
             return;
         }
         if (frame.id == 390)
@@ -506,6 +531,7 @@ struct HW4Handler : public CarManagerBase
                 // otherwise drop the gate mid-summon.
                 if (diGear == 1) clearSummonOnPark();
             }
+            updateSummonFromDISystemStatus(frame);
             return;
         }
         if (frame.id == 390)
