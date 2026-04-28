@@ -135,16 +135,28 @@ struct LegacyHandler : public CarManagerBase
         {
             if (frame.dlc < 3)
                 return;
-            Parked = isVehicleParked(readDIGear(frame));
-            if ((bool)Parked) clearSummonOnPark();
+            {
+                uint8_t diGear = readDIGear(frame);
+                Parked = isVehicleParked(diGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions
+                // (e.g. during a Summon shift to Reverse) and would
+                // otherwise drop the gate mid-summon.
+                if (diGear == 1) clearSummonOnPark();
+            }
             return;
         }
         if (frame.id == 390)
         {
             if (frame.dlc < 8)
                 return;
-            Parked = isVehicleParked(readVehicleGear(frame));
-            if ((bool)Parked) clearSummonOnPark();
+            {
+                uint8_t difGear = readVehicleGear(frame);
+                Parked = isVehicleParked(difGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions.
+                if (difGear == 1) clearSummonOnPark();
+            }
             return;
         }
         if (frame.id == 921)
@@ -217,16 +229,28 @@ struct HW3Handler : public CarManagerBase
         {
             if (frame.dlc < 3)
                 return;
-            Parked = isVehicleParked(readDIGear(frame));
-            if ((bool)Parked) clearSummonOnPark();
+            {
+                uint8_t diGear = readDIGear(frame);
+                Parked = isVehicleParked(diGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions
+                // (e.g. during a Summon shift to Reverse) and would
+                // otherwise drop the gate mid-summon.
+                if (diGear == 1) clearSummonOnPark();
+            }
             return;
         }
         if (frame.id == 390)
         {
             if (frame.dlc < 8)
                 return;
-            Parked = isVehicleParked(readVehicleGear(frame));
-            if ((bool)Parked) clearSummonOnPark();
+            {
+                uint8_t difGear = readVehicleGear(frame);
+                Parked = isVehicleParked(difGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions.
+                if (difGear == 1) clearSummonOnPark();
+            }
             return;
         }
         if (frame.id == 1016)
@@ -473,16 +497,28 @@ struct HW4Handler : public CarManagerBase
         {
             if (frame.dlc < 3)
                 return;
-            Parked = isVehicleParked(readDIGear(frame));
-            if ((bool)Parked) clearSummonOnPark();
+            {
+                uint8_t diGear = readDIGear(frame);
+                Parked = isVehicleParked(diGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions
+                // (e.g. during a Summon shift to Reverse) and would
+                // otherwise drop the gate mid-summon.
+                if (diGear == 1) clearSummonOnPark();
+            }
             return;
         }
         if (frame.id == 390)
         {
             if (frame.dlc < 8)
                 return;
-            Parked = isVehicleParked(readVehicleGear(frame));
-            if ((bool)Parked) clearSummonOnPark();
+            {
+                uint8_t difGear = readVehicleGear(frame);
+                Parked = isVehicleParked(difGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions.
+                if (difGear == 1) clearSummonOnPark();
+            }
             return;
         }
         if (frame.id == 921)
