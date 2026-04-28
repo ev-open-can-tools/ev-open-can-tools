@@ -41,6 +41,14 @@ jobs:
             artifact_name: firmware-esp32
             artifact_path: .pio/build/esp32_twai/firmware.bin
             extra_python_packages: littlefs-python fatfs-ng pyyaml
+
+          - env: esp32s2_twai
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+              --enable ENHANCED_AUTOPILOT
+            artifact_name: firmware-esp32s2
+            artifact_path: .pio/build/esp32s2_twai/firmware.bin
+            extra_python_packages: littlefs-python fatfs-ng pyyaml
+            
           - env: m5stack-atomic-can-base
             profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
               --enable ENHANCED_AUTOPILOT
