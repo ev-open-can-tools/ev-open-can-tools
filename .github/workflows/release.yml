@@ -137,6 +137,7 @@ jobs:
             release-assets/firmware-m5stack.bin
             release-assets/firmware-esp32-featherwing.bin
             release-assets/firmware-esp32-ext-mcp2515.bin
+            release-assets/firmware-esp32s2.bin
       - name: Publish draft release
         env:
           GH_TOKEN: ${{ github.token }}
