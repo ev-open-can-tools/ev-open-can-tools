@@ -20,7 +20,12 @@ struct CarManagerBase
     Shared<bool> speedProfileAuto{true};
     Shared<bool> ADEnabled{false};
     Shared<bool> APActive{false};
-    Shared<bool> Parked{false};
+    // Default Parked=true so the AP Injection Gate opens immediately on
+    // module boot when the DI is asleep (e.g. car locked with Sentry on,
+    // CAN ID 280 not broadcast). The first DI_systemStatus frame with a
+    // driving gear (R/N/D) flips this to false; if 280 never arrives,
+    // the car is asleep / parked and the gate stays open by design.
+    Shared<bool> Parked{true};
     Shared<bool> Summoning{false};
     Shared<int> gatewayAutopilot{-1};
     Shared<bool> enablePrint{true};
