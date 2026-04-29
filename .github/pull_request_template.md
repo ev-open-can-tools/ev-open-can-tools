@@ -1,3 +1,7 @@
+## Target branch
+
+- [ ] This PR targets `dev`. Do not open feature or fix PRs directly against `main`.
+
 ## Summary
 
 <!-- Brief description of what this PR does -->
