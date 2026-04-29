@@ -91,14 +91,14 @@ void test_readMuxID_max_value()
 
 // --- isADSelectedInUI ---
 
-void test_isADSelectedInUI_true_when_bit5_set()
+void test_isADSelectedInUI_true_when_bit6_set()
 {
     CanFrame f = {};
-    f.data[4] = 0x20; // bit 5 set
+    f.data[4] = 0x40; // bit 6 set
     TEST_ASSERT_TRUE(isADSelectedInUI(f));
 }
 
-void test_isADSelectedInUI_false_when_bit5_clear()
+void test_isADSelectedInUI_false_when_bit6_clear()
 {
     CanFrame f = {};
     f.data[4] = 0x00;
@@ -108,7 +108,7 @@ void test_isADSelectedInUI_false_when_bit5_clear()
 void test_isADSelectedInUI_ignores_other_bits()
 {
     CanFrame f = {};
-    f.data[4] = 0xDF; // all bits set except bit 5
+    f.data[4] = 0xBF; // all bits set except bit 6
     TEST_ASSERT_FALSE(isADSelectedInUI(f));
 }
 
@@ -133,46 +133,6 @@ void test_readGTWAutopilot_masks_other_bits()
     CanFrame f = {};
     f.data[5] = 0xFF;
     TEST_ASSERT_EQUAL_UINT8(7, readGTWAutopilot(f));
-}
-
-// --- DAS autopilot status ---
-
-void test_readDASAutopilotStatus_extracts_lower_nibble()
-{
-    CanFrame f = {};
-    f.data[0] = 0xA5;
-    TEST_ASSERT_EQUAL_UINT8(5, readDASAutopilotStatus(f));
-}
-
-void test_isDASAutopilotActive_true_for_active_states()
-{
-    TEST_ASSERT_TRUE(isDASAutopilotActive(3));
-    TEST_ASSERT_TRUE(isDASAutopilotActive(4));
-    TEST_ASSERT_TRUE(isDASAutopilotActive(5));
-}
-
-void test_isDASAutopilotActive_false_for_available_state()
-{
-    TEST_ASSERT_FALSE(isDASAutopilotActive(2));
-}
-
-// --- Gear state ---
-
-void test_readVehicleGear_extracts_dif_gear_bits()
-{
-    CanFrame f = {};
-    f.data[7] = static_cast<uint8_t>(4U << 3);
-    TEST_ASSERT_EQUAL_UINT8(4, readVehicleGear(f));
-}
-
-void test_isVehicleParked_true_for_park()
-{
-    TEST_ASSERT_TRUE(isVehicleParked(1));
-}
-
-void test_isVehicleParked_false_for_drive()
-{
-    TEST_ASSERT_FALSE(isVehicleParked(4));
 }
 
 // --- setSpeedProfileV12V13 ---
@@ -246,7 +206,7 @@ void test_runtime_bypass_tlssc_off_still_reads_real_bit()
 {
     bypassTlsscRequirementRuntime = false;
     CanFrame f = {};
-    f.data[4] = 0x20;
+    f.data[4] = 0x40;
     TEST_ASSERT_TRUE(isADSelectedInUI(f));
 }
 
@@ -274,18 +234,12 @@ int main()
     RUN_TEST(test_readMuxID_zero);
     RUN_TEST(test_readMuxID_max_value);
 
-    RUN_TEST(test_isADSelectedInUI_true_when_bit5_set);
-    RUN_TEST(test_isADSelectedInUI_false_when_bit5_clear);
+    RUN_TEST(test_isADSelectedInUI_true_when_bit6_set);
+    RUN_TEST(test_isADSelectedInUI_false_when_bit6_clear);
     RUN_TEST(test_isADSelectedInUI_ignores_other_bits);
     RUN_TEST(test_isADSelectedInUI_true_with_other_bits);
     RUN_TEST(test_readGTWAutopilot_extracts_bits_42_to_44);
     RUN_TEST(test_readGTWAutopilot_masks_other_bits);
-    RUN_TEST(test_readDASAutopilotStatus_extracts_lower_nibble);
-    RUN_TEST(test_isDASAutopilotActive_true_for_active_states);
-    RUN_TEST(test_isDASAutopilotActive_false_for_available_state);
-    RUN_TEST(test_readVehicleGear_extracts_dif_gear_bits);
-    RUN_TEST(test_isVehicleParked_true_for_park);
-    RUN_TEST(test_isVehicleParked_false_for_drive);
 
     RUN_TEST(test_setSpeedProfileV12V13_sets_profile_0);
     RUN_TEST(test_setSpeedProfileV12V13_sets_profile_1);

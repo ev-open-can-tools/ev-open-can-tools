@@ -46,12 +46,6 @@ static constexpr bool kDashInjectionDefaultEnabled = true;
 static constexpr bool kDashInjectionDefaultEnabled = false;
 #endif
 
-#if defined(INJECTION_AFTER_AP) || defined(DASH_INJECTION_AFTER_AP)
-static constexpr bool kDashApGateDefaultEnabled = true;
-#else
-static constexpr bool kDashApGateDefaultEnabled = false;
-#endif
-
 #if defined(DRIVER_TWAI)
 #ifndef TWAI_TX_PIN
 #define TWAI_TX_PIN GPIO_NUM_5
@@ -100,19 +94,6 @@ static const uint8_t mcpEflg = 0;
 
 static uint8_t hwMode = DASH_DEFAULT_HW;
 static bool canActive = kDashInjectionDefaultEnabled;
-static bool apInjectionGate = kDashApGateDefaultEnabled;
-static bool dashSpeedProfileAuto = true;
-static uint8_t dashManualSpeedProfile = 1;
-
-static constexpr uint8_t kHw3SlewRateMin = 1;
-static constexpr uint8_t kHw3SlewRateMax = 25;
-static constexpr uint8_t kHw3SlewRateDefault = 5;
-static bool hw3OffsetSlew = false;
-static uint8_t hw3SlewRate = kHw3SlewRateDefault;
-static uint8_t hw3OffsetTargetRaw = 0;
-static uint8_t hw3OffsetLastRaw = 0;
-static uint32_t hw3OffsetLastSentMs = 0;
-static uint32_t hw3OffsetSlewCount = 0;
 
 // WiFi AP (hotspot) — overridable at runtime
 static char apSSID[33] = "";
@@ -278,9 +259,8 @@ static const char *decodeCanId(uint32_t id)
 
 static void sniffPush(const CanFrame &f)
 {
-    uint8_t dlc = (f.dlc <= 8) ? f.dlc : 8;
-    sniffBuf[sniffHead] = {millis(), f.id, dlc, {}};
-    memcpy(sniffBuf[sniffHead].data, f.data, dlc);
+    sniffBuf[sniffHead] = {millis(), f.id, f.dlc, {}};
+    memcpy(sniffBuf[sniffHead].data, f.data, f.dlc);
     sniffHead = (sniffHead + 1) % SNIFFER_CAP;
     if (sniffCount < SNIFFER_CAP)
         sniffCount++;
@@ -315,24 +295,23 @@ static void mcpDashOnFrame(const CanFrame &f)
     canOnline = true;
     fpsFrames++;
     sniffPush(f);
-    if (f.id == 1021 && f.dlc > 0)
+    if (f.id == 1021)
     {
         uint8_t m = f.data[0] & 0x07;
         if (m < 4)
             muxRx[m]++;
     }
-    if (f.id == 1016 && f.dlc > 5)
+    if (f.id == 1016)
         followDist = (f.data[5] & 0xE0) >> 5;
     if (recActive)
     {
         int idx = recCount;
         if (idx < REC_CAP)
         {
-            uint8_t dlc = (f.dlc <= 8) ? f.dlc : 8;
             recBuf[idx].ts = millis();
             recBuf[idx].id = f.id;
-            recBuf[idx].dlc = dlc;
-            memcpy(recBuf[idx].data, f.data, dlc);
+            recBuf[idx].dlc = f.dlc;
+            memcpy(recBuf[idx].data, f.data, f.dlc);
             recCount = idx + 1;
             if (recCount >= REC_CAP)
                 recActive = false;
@@ -409,111 +388,9 @@ static bool dashCheckADEnabled()
     return canActive;
 }
 
-static bool dashApInjectionAllowed()
-{
-    return !apInjectionGate || (dashHandler && dashHandler->injectionGateOpen());
-}
-
-static bool dashInjectionActive()
-{
-    return canActive && dashApInjectionAllowed();
-}
-
 static bool dashCheckNagDisabled()
 {
     return false;
-}
-
-static bool dashStaSsidLooksCorrupt(const String &ssid)
-{
-    return ssid.indexOf("\"ssid\"") >= 0 || ssid.indexOf("{\"") >= 0 ||
-           ssid.indexOf("\",\"") >= 0;
-}
-
-static uint8_t dashClampHw3SlewRate(int rate)
-{
-    if (rate < kHw3SlewRateMin)
-        return kHw3SlewRateMin;
-    if (rate > kHw3SlewRateMax)
-        return kHw3SlewRateMax;
-    return static_cast<uint8_t>(rate);
-}
-
-static uint8_t dashLoadHw3SlewRate(uint8_t rate)
-{
-    if (rate < kHw3SlewRateMin || rate > kHw3SlewRateMax)
-        return kHw3SlewRateDefault;
-    return rate;
-}
-
-static uint8_t dashClampSpeedProfileForHw(uint8_t hw, int profile)
-{
-    int maxProfile = hw == 2 ? 4 : 2;
-    if (profile < 0)
-        return 0;
-    if (profile > maxProfile)
-        return static_cast<uint8_t>(maxProfile);
-    return static_cast<uint8_t>(profile);
-}
-
-static void dashApplySpeedProfileState()
-{
-    if (!dashHandler)
-        return;
-    dashHandler->speedProfileAuto = dashSpeedProfileAuto;
-    if (!dashSpeedProfileAuto)
-        dashHandler->speedProfile = dashClampSpeedProfileForHw(hwMode, dashManualSpeedProfile);
-}
-
-static bool dashReadHw3OffsetRaw(const CanFrame &frame, uint8_t &raw)
-{
-    if (hwMode != 1 || frame.id != 1021 || frame.dlc < 2 || readMuxID(frame) != 2)
-        return false;
-
-    raw = static_cast<uint8_t>(((frame.data[1] & 0x3F) << 2) | ((frame.data[0] >> 6) & 0x03));
-    return true;
-}
-
-static void dashWriteHw3OffsetRaw(CanFrame &frame, uint8_t raw)
-{
-    frame.data[0] = static_cast<uint8_t>((frame.data[0] & ~0xC0) | ((raw & 0x03) << 6));
-    frame.data[1] = static_cast<uint8_t>((frame.data[1] & ~0x3F) | (raw >> 2));
-}
-
-static bool dashApplyHw3OffsetSlew(CanFrame &modified, const CanFrame & /*original*/)
-{
-    uint8_t activeRaw = 0;
-    if (!dashReadHw3OffsetRaw(modified, activeRaw))
-        return false;
-
-    hw3OffsetTargetRaw = activeRaw;
-    uint8_t shapedRaw = activeRaw;
-    uint32_t now = millis();
-
-    if (hw3OffsetSlew)
-    {
-        uint8_t last = hw3OffsetLastRaw;
-        if (activeRaw < last && hw3OffsetLastSentMs != 0)
-        {
-            uint32_t rateRawPerSec = static_cast<uint32_t>(dashLoadHw3SlewRate(hw3SlewRate)) * 4;
-            uint32_t dt = now - hw3OffsetLastSentMs;
-            uint32_t maxDrop = (rateRawPerSec * dt + 500) / 1000;
-            uint8_t floorRaw = last > maxDrop ? static_cast<uint8_t>(last - maxDrop) : 0;
-            if (activeRaw < floorRaw)
-            {
-                shapedRaw = floorRaw;
-                hw3OffsetSlewCount++;
-            }
-        }
-    }
-
-    hw3OffsetLastRaw = shapedRaw;
-    hw3OffsetLastSentMs = now;
-    if (shapedRaw == activeRaw)
-        return false;
-
-    dashWriteHw3OffsetRaw(modified, shapedRaw);
-    return true;
 }
 
 static void dashApplyRuntimeState()
@@ -528,12 +405,8 @@ static void dashApplyRuntimeState()
     {
         dashHandler->checkAD = dashCheckADEnabled;
         dashHandler->checkNag = dashCheckNagDisabled;
-        dashApplySpeedProfileState();
         if (!canActive)
-        {
             dashHandler->ADEnabled = false;
-            dashHandler->APActive = false;
-        }
     }
 
 #if defined(DASH_RGB_STATUS_LED)
@@ -548,13 +421,7 @@ static void dashSavePrefs()
     prefs.putUChar("hw", hwMode);
     prefs.putUChar("hw_def", DASH_DEFAULT_HW);
     prefs.putBool("can", canActive);
-    prefs.putBool("ap_gate", apInjectionGate);
-    prefs.putBool("sp_auto", dashSpeedProfileAuto);
-    prefs.putUChar("sp_sel", dashManualSpeedProfile);
     prefs.putBool("eprn", dashHandler ? (bool)dashHandler->enablePrint : true);
-    prefs.putUChar("plg_rep", pluginGetReplayCount());
-    prefs.putBool("h3_slw", hw3OffsetSlew);
-    prefs.putUChar("h3_srt", hw3SlewRate);
     prefs.end();
 }
 
@@ -655,12 +522,6 @@ static void dashLoadPrefs()
     if (storedDefaultHw != DASH_DEFAULT_HW)
         prefs.putUChar("hw_def", DASH_DEFAULT_HW);
     canActive = prefs.getBool("can", kDashInjectionDefaultEnabled);
-    apInjectionGate = prefs.getBool("ap_gate", kDashApGateDefaultEnabled);
-    dashSpeedProfileAuto = prefs.getBool("sp_auto", true);
-    dashManualSpeedProfile = dashClampSpeedProfileForHw(hwMode, prefs.getUChar("sp_sel", 1));
-    pluginSetReplayCount(prefs.getUChar("plg_rep", PLUGIN_REPLAY_COUNT));
-    hw3OffsetSlew = prefs.getBool("h3_slw", false);
-    hw3SlewRate = dashLoadHw3SlewRate(prefs.getUChar("h3_srt", kHw3SlewRateDefault));
     bool ep = prefs.getBool("eprn", true);
 
     dashApplyRuntimeState();
@@ -696,7 +557,7 @@ static void dashLoadPrefs()
     // Load WiFi STA credentials
     String wifiSsid = prefs.isKey("wifi_ssid") ? prefs.getString("wifi_ssid", "") : "";
     String wifiPass = prefs.isKey("wifi_pass") ? prefs.getString("wifi_pass", "") : "";
-    if (!dashStaConfigLengthValid(wifiSsid, wifiPass) || dashStaSsidLooksCorrupt(wifiSsid))
+    if (!dashStaConfigLengthValid(wifiSsid, wifiPass))
     {
         prefs.remove("wifi_ssid");
         prefs.remove("wifi_pass");
@@ -724,7 +585,6 @@ static void dashLoadPrefs()
                                                                                              : "HW4"));
     dashLog("[BOOT] Prefs loaded HW=" + String(hwMode));
     dashLog("[BOOT] canActive=" + String(canActive ? "YES" : "NO"));
-    dashLog("[BOOT] pluginReplay=" + String(pluginGetReplayCount()));
 }
 
 static uint32_t dashPluginStateHash(const char *value)
@@ -839,10 +699,10 @@ static void dashApplyFilters()
     {
         dashMcp->setFilterMask(MCP2515::MASK0, false, 0x7FF);
         dashMcp->setFilter(MCP2515::RXF0, false, 69);
-        dashMcp->setFilter(MCP2515::RXF1, false, 280);
+        dashMcp->setFilter(MCP2515::RXF1, false, 1006);
         dashMcp->setFilterMask(MCP2515::MASK1, false, 0x7FF);
-        dashMcp->setFilter(MCP2515::RXF2, false, 1006);
-        dashMcp->setFilter(MCP2515::RXF3, false, 280);
+        dashMcp->setFilter(MCP2515::RXF2, false, 69);
+        dashMcp->setFilter(MCP2515::RXF3, false, 1006);
         dashMcp->setFilter(MCP2515::RXF4, false, 69);
         dashMcp->setFilter(MCP2515::RXF5, false, 1006);
     }
@@ -853,7 +713,7 @@ static void dashApplyFilters()
         dashMcp->setFilter(MCP2515::RXF1, false, 1021);
         dashMcp->setFilterMask(MCP2515::MASK1, false, 0x7FF);
         dashMcp->setFilter(MCP2515::RXF2, false, 1016);
-        dashMcp->setFilter(MCP2515::RXF3, false, 280);
+        dashMcp->setFilter(MCP2515::RXF3, false, 1021);
         dashMcp->setFilter(MCP2515::RXF4, false, 1016);
         dashMcp->setFilter(MCP2515::RXF5, false, 921);
     }
@@ -864,7 +724,7 @@ static void dashApplyFilters()
         dashMcp->setFilter(MCP2515::RXF1, false, 1021);
         dashMcp->setFilterMask(MCP2515::MASK1, false, 0x7FF);
         dashMcp->setFilter(MCP2515::RXF2, false, 1016);
-        dashMcp->setFilter(MCP2515::RXF3, false, 280);
+        dashMcp->setFilter(MCP2515::RXF3, false, 1021);
         dashMcp->setFilter(MCP2515::RXF4, false, 1016);
         dashMcp->setFilter(MCP2515::RXF5, false, 1021);
     }
@@ -923,9 +783,8 @@ static void handleStatus()
         fpsLastMs = now;
     }
 
-    bool ADActive = dashHandler ? (bool)dashHandler->APActive : false;
+    bool ADActive = dashHandler ? (bool)dashHandler->ADEnabled : false;
     int sp = dashHandler ? (int)dashHandler->speedProfile : 0;
-    bool spAuto = dashHandler ? (bool)dashHandler->speedProfileAuto : true;
     int soff = dashHandler ? (int)dashHandler->speedOffset : 0;
     int gtwAp = dashHandler ? (int)dashHandler->gatewayAutopilot : -1;
     bool ep = dashHandler ? (bool)dashHandler->enablePrint : true;
@@ -934,8 +793,6 @@ static void handleStatus()
     j += hwMode;
     j += ",\"sp\":";
     j += sp;
-    j += ",\"spAuto\":";
-    j += spAuto ? "true" : "false";
     j += ",\"soff\":";
     j += soff;
     j += ",\"gtwap\":";
@@ -944,24 +801,6 @@ static void handleStatus()
     j += ADActive ? "true" : "false";
     j += ",\"eprn\":";
     j += ep ? "true" : "false";
-    j += ",\"plgr\":";
-    j += pluginGetReplayCount();
-    j += ",\"plgrmax\":";
-    j += PLUGIN_REPLAY_COUNT_MAX;
-    j += ",\"apGate\":";
-    j += apInjectionGate ? "true" : "false";
-    j += ",\"ia\":";
-    j += dashInjectionActive() ? "true" : "false";
-    j += ",\"hw3OffsetSlew\":";
-    j += hw3OffsetSlew ? "true" : "false";
-    j += ",\"hw3SlewRate\":";
-    j += hw3SlewRate;
-    j += ",\"hw3OffsetTarget\":";
-    j += hw3OffsetTargetRaw;
-    j += ",\"hw3OffsetLast\":";
-    j += hw3OffsetLastRaw;
-    j += ",\"hw3SlewCount\":";
-    j += hw3OffsetSlewCount;
     j += ",\"can\":";
     j += canOnline ? "true" : "false";
     j += ",\"ci\":";
@@ -1041,57 +880,6 @@ static void handleConfig()
     }
     if (server.hasArg("can"))
         canActive = server.arg("can") == "1";
-    bool profileAutoRequested = server.hasArg("spa") && server.arg("spa") == "1";
-    if (server.hasArg("sp"))
-    {
-        uint8_t v = dashClampSpeedProfileForHw(hwMode, server.arg("sp").toInt());
-        if (!profileAutoRequested && (v != dashManualSpeedProfile || dashSpeedProfileAuto))
-            dashLog("[CFG] Speed profile manual " + String(v));
-        dashManualSpeedProfile = v;
-        if (!profileAutoRequested)
-            dashSpeedProfileAuto = false;
-    }
-    if (server.hasArg("spa"))
-    {
-        bool v = server.arg("spa") == "1";
-        if (v != dashSpeedProfileAuto)
-            dashLog("[CFG] Speed profile " + String(v ? "AUTO" : "MANUAL"));
-        dashSpeedProfileAuto = v;
-    }
-    if (server.hasArg("apg"))
-    {
-        bool v = server.arg("apg") == "1";
-        if (v != apInjectionGate)
-        {
-            apInjectionGate = v;
-            dashLog("[CFG] AP injection gate " + String(v ? "ON" : "OFF"));
-        }
-    }
-    if (server.hasArg("plgr"))
-    {
-        uint8_t previous = pluginGetReplayCount();
-        pluginSetReplayCount(server.arg("plgr").toInt());
-        if (pluginGetReplayCount() != previous)
-            dashLog("[CFG] Plugin replay x" + String(pluginGetReplayCount()));
-    }
-    if (server.hasArg("hw3OffsetSlew"))
-    {
-        bool v = server.arg("hw3OffsetSlew") == "1";
-        if (v != hw3OffsetSlew)
-        {
-            hw3OffsetSlew = v;
-            dashLog("[CFG] HW3 offset slew " + String(v ? "ON" : "OFF"));
-        }
-    }
-    if (server.hasArg("hw3SlewRate"))
-    {
-        uint8_t v = dashClampHw3SlewRate(server.arg("hw3SlewRate").toInt());
-        if (v != hw3SlewRate)
-        {
-            hw3SlewRate = v;
-            dashLog("[CFG] HW3 slew rate " + String(hw3SlewRate) + "%/s");
-        }
-    }
     if (hwChanged)
     {
         dashSwapHandler(hwMode);
@@ -1355,10 +1143,6 @@ static const char *pluginOpName(PluginOpType t)
         return "and_byte";
     case OP_CHECKSUM:
         return "checksum";
-    case OP_COUNTER:
-        return "counter";
-    case OP_EMIT_PERIODIC:
-        return "emit_periodic";
     default:
         return "?";
     }
@@ -1415,7 +1199,11 @@ static bool dashPluginTestRuleMatches(const PluginRule &rule, const CanFrame &fr
 {
     if (rule.canId != frame.id)
         return false;
-    return pluginRuleMatchesBus(rule, frame) && pluginRuleMatchesMux(rule, frame);
+    if (rule.mux < 0)
+        return true;
+    if (frame.dlc == 0)
+        return false;
+    return (frame.data[0] & 0x07) == (uint8_t)rule.mux;
 }
 
 static bool dashBuildPluginTestFrame(const PluginRule &rule, const CanFrame &base, CanFrame &frame, String &error)
@@ -1457,8 +1245,6 @@ static void handlePluginList()
             j += "{\"id\":" + String(rule.canId);
             j += ",\"hex\":\"0x" + String(rule.canId, HEX) + "\"";
             j += ",\"mux\":" + String(rule.mux);
-            j += ",\"mux_mask\":" + String(rule.muxMask);
-            j += ",\"bus\":" + String(rule.busMask);
             j += ",\"send\":" + String(rule.sendAfter ? "true" : "false");
             j += ",\"ops\":[";
             for (uint8_t o = 0; o < rule.opCount; o++)
@@ -1471,17 +1257,6 @@ static void handlePluginList()
                     j += ",\"bit\":" + String(op.index) + ",\"val\":" + String(op.value);
                 else if (op.type == OP_CHECKSUM)
                     j += "";
-                else if (op.type == OP_COUNTER)
-                {
-                    j += ",\"byte\":" + String(op.index);
-                    j += ",\"mask\":" + String(op.mask);
-                    j += ",\"step\":" + String(op.value);
-                }
-                else if (op.type == OP_EMIT_PERIODIC)
-                {
-                    j += ",\"interval\":" + String(op.intervalMs);
-                    j += ",\"gtw_silent\":" + String(op.gtwSilent ? "true" : "false");
-                }
                 else
                 {
                     j += ",\"byte\":" + String(op.index) + ",\"val\":" + String(op.value);
@@ -1494,25 +1269,7 @@ static void handlePluginList()
         }
         j += "]}";
     }
-    j += "],\"gtw_silent_supported\":" + String(pluginGtwSilentSupported() ? "true" : "false");
-    j += ",\"gtw_uds\":{\"state\":" + String((int)pluginPeriodicEmit.uds.state);
-    j += ",\"last_nrc\":" + String(pluginPeriodicEmit.uds.lastNrc);
-    auto hexBuf = [](const uint8_t *b, uint8_t len) -> String
-    {
-        String s = "\"";
-        for (uint8_t i = 0; i < len; i++)
-        {
-            if (b[i] < 0x10)
-                s += "0";
-            s += String(b[i], HEX);
-        }
-        s += "\"";
-        return s;
-    };
-    j += ",\"last_seed\":" + hexBuf(pluginPeriodicEmit.uds.lastSeed, pluginPeriodicEmit.uds.lastSeedLen);
-    j += ",\"last_key\":" + hexBuf(pluginPeriodicEmit.uds.lastKey, pluginPeriodicEmit.uds.lastKeyLen);
-    j += "}";
-    j += ",\"wifi\":{\"connected\":";
+    j += "],\"wifi\":{\"connected\":";
     j += staConnected ? "true" : "false";
     j += ",\"ssid\":\"" + jsonEscape(staSSID) + "\"";
     if (staConnected)
@@ -1575,7 +1332,6 @@ static bool pluginInstallJson(const String &json, const String &url)
     }
 
     dashSaveAllPluginStates();
-    pluginResetPeriodicEmit();
 
     dashReapplyFiltersWithPlugins();
     dashLog("[PLG] Installed: " + String(temp.name) + " (" + String(temp.ruleCount) + " rules)");
@@ -1645,7 +1401,6 @@ static void handlePluginToggle()
     if (idx < pluginCount)
     {
         pluginStore[idx].enabled = !pluginStore[idx].enabled;
-        pluginResetPeriodicEmit();
         dashSchedulePluginStateSave();
         dashReapplyFiltersWithPlugins();
         dashLog("[PLG] " + String(pluginStore[idx].name) + " " +
@@ -1671,7 +1426,6 @@ static void handlePluginRemove()
         String name = pluginStore[idx].name;
         dashClearPluginState(pluginStore[idx]);
         pluginRemove(idx);
-        pluginResetPeriodicEmit();
         dashSaveAllPluginStates();
         dashReapplyFiltersWithPlugins();
         dashLog("[PLG] Removed: " + name);
@@ -1697,7 +1451,6 @@ static void handlePluginPriority()
 
     if (pluginMove((uint8_t)idx, (uint8_t)priority))
     {
-        pluginResetPeriodicEmit();
         dashSaveAllPluginStates();
         dashReapplyFiltersWithPlugins();
         dashLog("[PLG] Priority: " + String(pluginStore[priority].name) + " #" + String(priority + 1));
@@ -1955,9 +1708,9 @@ static void handleWifiConfig()
     {
         String ssid = server.arg("ssid");
         String pass = server.arg("pass");
-        if (!dashStaConfigLengthValid(ssid, pass) || dashStaSsidLooksCorrupt(ssid))
+        if (!dashStaConfigLengthValid(ssid, pass))
         {
-            server.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid SSID or password\"}");
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"SSID max 32 bytes, password max 64 bytes\"}");
             return;
         }
         strlcpy(staSSID, ssid.c_str(), sizeof(staSSID));
@@ -2003,19 +1756,12 @@ static void handleWifiStatus()
         stored = p.isKey("wifi_ssid") && p.getString("wifi_ssid", "").length() > 0;
         p.end();
     }
-    bool connectedNow = WiFi.status() == WL_CONNECTED;
-    IPAddress staIp = WiFi.localIP();
-    bool hasStaIp = static_cast<uint32_t>(staIp) != 0;
-    bool connected = connectedNow || staConnected || hasStaIp;
-    String activeSsid = connectedNow ? WiFi.SSID() : String(staSSID);
-    if (dashStaSsidLooksCorrupt(activeSsid))
-        activeSsid = "";
     String j = "{\"connected\":";
-    j += connected ? "true" : "false";
-    j += ",\"ssid\":\"" + jsonEscape(activeSsid) + "\"";
+    j += staConnected ? "true" : "false";
+    j += ",\"ssid\":\"" + jsonEscape(staSSID) + "\"";
     j += ",\"stored\":" + String(stored ? "true" : "false");
-    if (connected)
-        j += ",\"ip\":\"" + staIp.toString() + "\"";
+    if (staConnected)
+        j += ",\"ip\":\"" + WiFi.localIP().toString() + "\"";
     j += ",\"static\":" + String(staStaticIP ? "true" : "false");
     if (staStaticIP)
     {
@@ -2024,8 +1770,6 @@ static void handleWifiStatus()
         j += ",\"cfg_mask\":\"" + staMask.toString() + "\"";
         j += ",\"cfg_dns\":\"" + staDNS.toString() + "\"";
     }
-    if (!connected)
-        j += ",\"connecting\":" + String(staConnectAttemptActive ? "true" : "false");
     j += "}";
     server.send(200, "application/json", j);
 }
@@ -2112,9 +1856,7 @@ static void handleSettingsExport()
     Preferences p;
     String apSsid = "", apPass = "", wSsid = "", wPass = "";
     String wIp = "", wGw = "", wMask = "", wDns = "";
-    bool wStatic = false, beta = false, apHid = false, startAfterAp = false;
-    bool h3Slew = false;
-    uint8_t h3SlewRate = kHw3SlewRateDefault;
+    bool wStatic = false, beta = false, apHid = false;
     int canTx = -1, canRx = -1;
 
     if (p.begin(PREFS_NS, false))
@@ -2138,9 +1880,6 @@ static void handleSettingsExport()
         if (p.isKey("wifi_dns"))
             wDns = p.getString("wifi_dns", "");
         beta = p.getBool("upd_beta", false);
-        startAfterAp = p.getBool("ap_gate", kDashApGateDefaultEnabled);
-        h3Slew = p.getBool("h3_slw", false);
-        h3SlewRate = dashLoadHw3SlewRate(p.getUChar("h3_srt", kHw3SlewRateDefault));
         p.end();
     }
     Preferences cp;
@@ -2157,9 +1896,6 @@ static void handleSettingsExport()
     j += ",\"static\":" + String(wStatic ? "true" : "false");
     j += ",\"ip\":\"" + jsonEscape(wIp) + "\",\"gw\":\"" + jsonEscape(wGw) + "\"";
     j += ",\"mask\":\"" + jsonEscape(wMask) + "\",\"dns\":\"" + jsonEscape(wDns) + "\"}";
-    j += ",\"plugins\":{\"replay\":" + String(pluginGetReplayCount()) +
-         ",\"startAfterAp\":" + String(startAfterAp ? "true" : "false") + "}";
-    j += ",\"hw3\":{\"offsetSlew\":" + String(h3Slew ? "true" : "false") + ",\"slewRate\":" + String(h3SlewRate) + "}";
     j += ",\"can\":{\"tx\":" + String(canTx) + ",\"rx\":" + String(canRx) + "}";
     j += ",\"beta\":" + String(beta ? "true" : "false");
     j += "}";
@@ -2222,17 +1958,6 @@ static void handleSettingsImport()
     }
     if (doc["beta"].is<bool>())
         p.putBool("upd_beta", doc["beta"].as<bool>());
-    if (doc["plugins"].is<JsonObject>() && doc["plugins"]["replay"].is<int>())
-        p.putUChar("plg_rep", pluginClampReplayCount(doc["plugins"]["replay"].as<int>()));
-    if (doc["plugins"].is<JsonObject>() && doc["plugins"]["startAfterAp"].is<bool>())
-        p.putBool("ap_gate", doc["plugins"]["startAfterAp"].as<bool>());
-    if (doc["hw3"].is<JsonObject>())
-    {
-        if (doc["hw3"]["offsetSlew"].is<bool>())
-            p.putBool("h3_slw", doc["hw3"]["offsetSlew"].as<bool>());
-        if (doc["hw3"]["slewRate"].is<int>())
-            p.putUChar("h3_srt", dashClampHw3SlewRate(doc["hw3"]["slewRate"].as<int>()));
-    }
     p.end();
 
     if (doc["can"].is<JsonObject>())
@@ -2545,16 +2270,14 @@ static void handleUpdateInstall()
     int contentLength = http.getSize();
     if (contentLength <= 0)
     {
-        dashLog("[OTA] Invalid content length: " + String(contentLength));
+        dashLog("[OTA] Invalid content length");
         http.end();
         return;
     }
 
-    dashLog("[OTA] Downloading " + String(contentLength) + " bytes...");
-
     if (!Update.begin(contentLength))
     {
-        dashLog("[OTA] Update.begin failed: " + String(Update.errorString()));
+        dashLog("[OTA] Not enough space for update");
         http.end();
         return;
     }
@@ -2565,20 +2288,14 @@ static void handleUpdateInstall()
 
     if (written != (size_t)contentLength)
     {
-        dashLog("[OTA] Written " + String(written) + " of " + String(contentLength) + " bytes: " + String(Update.errorString()));
+        dashLog("[OTA] Written " + String(written) + " of " + String(contentLength) + " bytes");
         Update.abort();
         return;
     }
 
-    if (!Update.end(true))
+    if (!Update.end())
     {
-        dashLog("[OTA] Update finalize failed: " + String(Update.errorString()));
-        return;
-    }
-
-    if (!Update.isFinished())
-    {
-        dashLog("[OTA] Update not finished");
+        dashLog("[OTA] Update finalize failed");
         return;
     }
 
@@ -2689,13 +2406,13 @@ static void performAutoUpdate()
     int len = http2.getSize();
     if (len <= 0)
     {
-        dashLog("[AUTO-OTA] Invalid content length: " + String(len));
+        dashLog("[AUTO-OTA] Invalid content length");
         http2.end();
         return;
     }
     if (!Update.begin(len))
     {
-        dashLog("[AUTO-OTA] Update.begin failed: " + String(Update.errorString()));
+        dashLog("[AUTO-OTA] Not enough space for update");
         http2.end();
         return;
     }
@@ -2704,13 +2421,13 @@ static void performAutoUpdate()
     http2.end();
     if (written != (size_t)len)
     {
-        dashLog("[AUTO-OTA] Written " + String(written) + "/" + String(len) + " bytes: " + String(Update.errorString()));
+        dashLog("[AUTO-OTA] Written " + String(written) + "/" + String(len) + " bytes");
         Update.abort();
         return;
     }
-    if (!Update.end(true))
+    if (!Update.end())
     {
-        dashLog("[AUTO-OTA] Finalize failed: " + String(Update.errorString()));
+        dashLog("[AUTO-OTA] Finalize failed");
         return;
     }
     dashLog("[AUTO-OTA] Update successful! Rebooting...");
@@ -2780,7 +2497,7 @@ static void dashPluginTestCapture(const CanFrame &frame)
 
 static void dashPluginProcess(const CanFrame &frame, CanDriver &driver)
 {
-    if (!dashInjectionActive())
+    if (!canActive)
         return;
     dashPluginTestCapture(frame);
     pluginProcessFrame(frame, driver);
@@ -2798,8 +2515,6 @@ static void dashPluginTestTick()
         dashLog("[PLGTEST] Stopped: injection disabled");
         return;
     }
-    if (!dashApInjectionAllowed())
-        return;
     if (!dashDriver)
     {
         pluginTestState.active = false;
@@ -2828,7 +2543,6 @@ static void dashPluginTestTick()
         return;
     }
 
-    pluginAdvanceRuleCounters(pluginTestState.frame, pluginTestState.rule);
     pluginTestState.nextSendAt = now + pluginTestState.intervalMs;
 }
 
@@ -2921,7 +2635,6 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
 
     // Set plugin processing hook
     appPluginProcess = dashPluginProcess;
-    pluginBeforeSend = dashApplyHw3OffsetSlew;
 
     ArduinoOTA.setHostname("ev-open-can-tools");
     ArduinoOTA.setPassword(DASH_OTA_PASS);
@@ -2985,8 +2698,6 @@ static void mcpDashboardLoop()
         return;
     dashFlushPluginStatesIfDue();
     dashPluginTestTick();
-    if (dashInjectionActive() && dashDriver)
-        pluginEmitPeriodicTick(*dashDriver, millis());
     dashCheckBusHealth();
     if (canOnline && millis() - lastFrameMs > 10000)
     {

@@ -191,25 +191,6 @@ class EvCanAnalyzerTests(unittest.TestCase):
         assert observation is not None
         self.assertEqual("GTW_udsResponse:NegativeResponse", observation.message_name)
 
-    def test_decode_gateway_uds_communication_control_request(self) -> None:
-        frame = analyzer.FrameRecord(
-            line_number=1,
-            timestamp="7.1",
-            channel="can0",
-            can_id=0x684,
-            data=bytes.fromhex("0328010100000000"),
-            original_line="",
-        )
-
-        observation = analyzer.decode_diagnostic_frame(frame)
-
-        assert observation is not None
-        self.assertEqual("UDS_gtwRequest", observation.message_name)
-        self.assertEqual(0x28, observation.fields["UDS_Service"]["value"])
-        self.assertEqual(
-            "CommunicationControl", observation.fields["UDS_Service"]["label"]
-        )
-
     def test_detect_change_in_override_config(self) -> None:
         frames = [
             analyzer.FrameRecord(

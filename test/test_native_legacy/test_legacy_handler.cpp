@@ -62,26 +62,13 @@ void test_legacy_stalk_pos3_sets_profile_0()
     TEST_ASSERT_EQUAL_INT(0, handler.speedProfile);
 }
 
-void test_legacy_manual_profile_ignores_stalk_position()
-{
-    handler.speedProfileAuto = false;
-    handler.speedProfile = 1;
-
-    CanFrame f = {.id = 69};
-    f.data[1] = 0x00; // would map to profile 2
-    handler.handleMessage(f, mock);
-
-    TEST_ASSERT_EQUAL_INT(1, handler.speedProfile);
-    TEST_ASSERT_FALSE(handler.speedProfileAuto);
-}
-
 // --- AD activation (CAN ID 1006) ---
 
 void test_legacy_AD_enabled_on_mux0()
 {
     CanFrame f = {.id = 1006};
     f.data[0] = 0x00; // mux 0
-    f.data[4] = 0x20; // AD bit set
+    f.data[4] = 0x40; // AD bit set
     handler.handleMessage(f, mock);
     TEST_ASSERT_TRUE(handler.ADEnabled);
     TEST_ASSERT_EQUAL(1, mock.sent.size());
@@ -101,21 +88,21 @@ void test_legacy_AD_sets_bit46()
 {
     CanFrame f = {.id = 1006};
     f.data[0] = 0x00;
-    f.data[4] = 0x20;
+    f.data[4] = 0x40;
     handler.handleMessage(f, mock);
     TEST_ASSERT_EQUAL(1, mock.sent.size());
     TEST_ASSERT_EQUAL_HEX8(0x40, mock.sent[0].data[5] & 0x40);
 }
 
-void test_legacy_AD_applies_selected_speed_profile_bits()
+void test_legacy_AD_preserves_speed_profile_bits()
 {
     handler.speedProfile = 2;
     CanFrame f = {.id = 1006};
     f.data[0] = 0x00;
-    f.data[4] = 0x20;
+    f.data[4] = 0x40;
     f.data[6] = 0x02;
     handler.handleMessage(f, mock);
-    TEST_ASSERT_EQUAL_HEX8(0x04, mock.sent[0].data[6] & 0x06);
+    TEST_ASSERT_EQUAL_HEX8(0x02, mock.sent[0].data[6] & 0x06);
 }
 
 void test_legacy_checkAD_blocks_mux0_send()
@@ -124,7 +111,7 @@ void test_legacy_checkAD_blocks_mux0_send()
 
     CanFrame f = {.id = 1006};
     f.data[0] = 0x00;
-    f.data[4] = 0x20;
+    f.data[4] = 0x40;
     handler.handleMessage(f, mock);
     TEST_ASSERT_FALSE(handler.ADEnabled);
     TEST_ASSERT_EQUAL(0, mock.sent.size());
@@ -166,17 +153,14 @@ void test_legacy_ignores_unrelated_can_id()
 
 void test_legacy_filter_ids_count()
 {
-    TEST_ASSERT_EQUAL_UINT8(5, handler.filterIdCount());
+    TEST_ASSERT_EQUAL_UINT8(2, handler.filterIdCount());
 }
 
 void test_legacy_filter_ids_values()
 {
     const uint32_t *ids = handler.filterIds();
     TEST_ASSERT_EQUAL_UINT32(69, ids[0]);
-    TEST_ASSERT_EQUAL_UINT32(280, ids[1]);
-    TEST_ASSERT_EQUAL_UINT32(390, ids[2]);
-    TEST_ASSERT_EQUAL_UINT32(921, ids[3]);
-    TEST_ASSERT_EQUAL_UINT32(1006, ids[4]);
+    TEST_ASSERT_EQUAL_UINT32(1006, ids[1]);
 }
 
 int main()
@@ -190,12 +174,11 @@ int main()
     RUN_TEST(test_legacy_stalk_pos1_sets_profile_2);
     RUN_TEST(test_legacy_stalk_pos2_sets_profile_1);
     RUN_TEST(test_legacy_stalk_pos3_sets_profile_0);
-    RUN_TEST(test_legacy_manual_profile_ignores_stalk_position);
 
     RUN_TEST(test_legacy_AD_enabled_on_mux0);
     RUN_TEST(test_legacy_no_send_when_AD_disabled);
     RUN_TEST(test_legacy_AD_sets_bit46);
-    RUN_TEST(test_legacy_AD_applies_selected_speed_profile_bits);
+    RUN_TEST(test_legacy_AD_preserves_speed_profile_bits);
     RUN_TEST(test_legacy_checkAD_blocks_mux0_send);
 
     RUN_TEST(test_legacy_nag_suppression_clears_bit19_on_mux1);

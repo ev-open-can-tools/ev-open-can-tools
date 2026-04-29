@@ -51,14 +51,12 @@ The plugin system allows you to create and share CAN frame modification rules as
 
 ### Rule object
 
-Each rule matches incoming CAN frames by ID, optional bus, and optional mux index, applies a sequence of operations, and optionally includes the result in the composed frame sent back on the bus.
+Each rule matches incoming CAN frames by ID (and optionally mux index), applies a sequence of operations, and optionally includes the result in the composed frame sent back on the bus.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `id` | integer | yes | CAN frame ID to match (decimal, e.g. `921` = `0x399`). |
-| `bus` | string, integer, or array | no | Bus pin: `CH`, `VEH`, `PARTY`, a comma-separated string such as `"CH,VEH"`, a bitmask (`1=CH`, `2=VEH`, `4=PARTY`), or an array of names. Omit to match any bus. Frames with unknown bus still match pinned rules for backwards compatibility. Single-bus builds can enforce pins by defining `CAN_BUS_DEFAULT=CAN_BUS_CH`, `CAN_BUS_DEFAULT=CAN_BUS_VEH`, or `CAN_BUS_DEFAULT=CAN_BUS_PARTY`. |
-| `mux` | integer | no | Mux value to match in byte 0. `-1` or omit to match any mux. Values `0..7` default to legacy low-3-bit matching. Values `8..255` default to full-byte matching. |
-| `mux_mask` | integer | no | Byte-0 mask used with `mux`. Matching is `(byte0 & mux_mask) == (mux & mux_mask)`. Use `7` for low-3-bit muxes, `15` for low-nibble muxes, and `255` for full-byte DBC muxes. Alias: `muxMask`. |
+| `mux` | integer | no | Mux index to match (bits 0-2 of byte 0). `-1` or omit to match any mux. |
 | `ops` | array | yes | Array of operations to apply (see below). |
 | `send` | boolean | no | Include this rule in the composed frame sent on the CAN bus. Defaults to `true`. |
 
@@ -66,7 +64,7 @@ Each rule matches incoming CAN frames by ID, optional bus, and optional mux inde
 
 Operations are applied in priority order on a **copy** of the original frame. In dashboard builds, automatic CAN writes are limited to enabled plugin rules with `send: true`; built-in handlers only observe frames for dashboard status.
 
-When multiple enabled plugin rules match the same incoming CAN ID and mux, the firmware composes one output frame and sends it once. For GTW 2047 (`0x7FF`), the dashboard's plugin replay count can repeat that modified frame immediately. Plugin priority decides overlapping writes: the highest-priority plugin owns a bit first, and lower-priority plugins cannot overwrite that same bit in the same frame cycle.
+When multiple enabled plugin rules match the same incoming CAN ID and mux, the firmware composes one output frame and sends it once. Plugin priority decides overlapping writes: the highest-priority plugin owns a bit first, and lower-priority plugins cannot overwrite that same bit in the same frame cycle.
 
 #### `set_bit` — Set or clear a single bit
 
@@ -109,47 +107,6 @@ Sets specific bits without clearing others. `data[byte] |= val`
 
 Clears specific bits without affecting others. `data[byte] &= val`
 
-#### `counter` — Increment a rolling counter field
-
-```json
-{ "type": "counter", "byte": 0, "mask": 15, "step": 1 }
-```
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `byte` | 0-7 | Byte index in the data field. |
-| `mask` | 1-255 | Contiguous bitmask for the counter field. Defaults to `15` (0x0F, lower nibble). |
-| `step` | 1-255 | Amount to add before wrapping inside the masked field. Defaults to `1`. |
-
-The counter is read from the masked bits, incremented modulo the field width, and written back into the same bits. Place `counter` before `checksum` when the frame also uses the byte 7 vehicle checksum. Replayed GTW 2047 frames, repeated Rule Test sends, and periodic emits advance the counter again before each extra send.
-
-#### `emit_periodic` — Periodically emit the cached GTW mux 3 frame
-
-```json
-{ "type": "emit_periodic", "interval": 100, "gtw_silent": true }
-```
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `interval` | 10-5000 | Emit interval in milliseconds. Defaults to `100`. |
-| `gtw_silent` | boolean | When `true`, runs the full UDS sequence against the gateway to suppress its native broadcasts. Defaults to `false`. |
-
-This operation is only valid on GTW 2047 (`0x7FF`) rules with `mux: 3` and `send: true`. For the DBC-defined full-byte `GTW_carConfigMultiplexer`, use `"mux_mask": 255`. The first matching live mux 3 frame seeds the cache after all other operations have been applied. After that, the dashboard loop sends the cached modified frame at its own interval, even if no new GTW mux 3 frame arrives.
-
-##### How `gtw_silent` actually works
-
-GTW runs a UDS server on `0x684` (request) / `0x685` (response). A bare `TesterPresent` loop is not enough: Tesla gates `CommunicationControl` behind an extended diagnostic session **and** SecurityAccess. The firmware therefore drives a small state machine:
-
-1. `0x10 0x03` — DiagnosticSessionControl → ExtendedSession
-2. `0x27 0x01` — SecurityAccess requestSeed
-3. `0x27 0x02 <key>` — SecurityAccess sendKey (key computed from the seed via `pluginGtwUdsComputeKey`)
-4. `0x28 0x01 0x01` — CommunicationControl disable-Tx
-5. `0x3E 0x00` — TesterPresent, repeated every 2 s to keep the session alive
-
-Positive responses (`SID + 0x40`) advance the state. Negative responses (`0x7F <SID> <NRC>`) surface the NRC: `0x78 responsePending` extends the wait, anything else fails the sequence and schedules a retry after the back-off window. When the CAN filter is narrowed, `0x684` and `0x685` are automatically added so responses reach the state machine.
-
-> **Key requirement.** Tesla's SecurityAccess seed → key algorithm is proprietary and is **not** included in this repository. Without `PLUGIN_GTW_UDS_CUSTOM_KEY`, `gtw_silent: true` is parsed as disabled: the periodic emit still works, but the firmware does not send the gateway UDS silencing sequence or add `0x684`/`0x685` filters. To make `gtw_silent` actually silence GTW, define `PLUGIN_GTW_UDS_CUSTOM_KEY` at build time and supply a working `pluginGtwUdsComputeKey` implementation.
-
 #### `checksum` — Recompute the vehicle checksum
 
 ```json
@@ -167,8 +124,7 @@ Always place this as the **last** operation if the frame uses checksums.
 |----------|-------|
 | Max plugins installed | 8 |
 | Max rules per plugin | 16 |
-| Max operations per rule | 16 |
-| Max filter IDs per plugin | 32 |
+| Max operations per rule | 8 |
 
 ## Examples
 
@@ -233,8 +189,8 @@ Host your plugin JSON file anywhere accessible via HTTP/HTTPS:
 Click on any installed plugin name in the dashboard to expand its detail view. This shows:
 
 - **CAN IDs** targeted by each rule (hex and decimal)
-- **Bus pin and mux value/mask** if the rule is bus- or mux-specific
-- **Operations** listed in execution order (e.g. `set_bit(46, true)`, `counter(0, mask=0xf, step=1)`, `emit_periodic(100 ms)`, `checksum(byte 7)`)
+- **Mux value** if the rule is mux-specific
+- **Operations** listed in execution order (e.g. `set_bit(46, true)`, `checksum(byte 7)`)
 
 This lets you inspect exactly what a plugin does before enabling it.
 
@@ -245,7 +201,7 @@ When two enabled plugins target the same bit on the same CAN ID and mux, the das
 ## Important notes
 
 - Dashboard builds do not inject CAN frames from built-in handlers; enabled plugins are the automatic injection path.
-- Enabled plugin rules for the same CAN ID, bus, and mux are merged into one injected frame per incoming frame; GTW 2047 can be repeated by the configured plugin replay count, and GTW mux 3 can also be kept alive with `emit_periodic`.
+- Enabled plugin rules for the same CAN ID and mux are merged into one injected frame per incoming frame.
 - If two plugins write the same bit, the lower-priority plugin's write is ignored for that bit. Default priority is install order, with the first installed plugin at `#1`.
 - Plugin-required CAN IDs are automatically added to the hardware filter list.
 - Rule Test is a manual dashboard action that sends the preview frame only when you start it.

@@ -26,7 +26,7 @@ The dashboard is available on ESP32 builds that include `ESP32_DASHBOARD`. It ru
 - **WiFi Internet**: scan for networks, connect as STA, and optionally store a static IP/gateway/mask/DNS configuration
 - **Firmware Update**: check GitHub releases, switch between stable and beta channel, enable auto-update on boot, or upload a local `.bin` manually
 - **CAN Pins**: override TWAI TX/RX GPIO pins at runtime for supported boards; settings are stored in NVS
-- **Settings Backup**: export and restore AP, WiFi, CAN pin, update, and plugin replay settings as JSON
+- **Settings Backup**: export and restore AP, WiFi, CAN pin, and update settings as JSON
 
 ## Plugins
 
@@ -34,8 +34,6 @@ The dashboard is available on ESP32 builds that include `ESP32_DASHBOARD`. It ru
 - **Plugin list**: inspect rules, enable or disable plugins, remove them, and spot priority overlaps between enabled plugins
 - **Plugin Editor**: create plugins without hand-writing JSON, preview the result live, load an installed plugin back into the editor, download the generated file, and add a quick rule from shorthand such as `0x7FF mux=2 byte[5] = 0x4C`
 - **Rule Test**: wait for a matching live CAN frame, apply one editor rule to that frame, then send the result repeatedly with a chosen count and interval
-- **Plugin Replay**: set how many modified GTW 2047 (`0x7FF`) plugin frames are sent for each observed GTW frame
-- **Periodic emit plugins**: use `emit_periodic` rules to keep the last modified GTW mux 3 value on the bus, optionally with GTW UDS silent-mode keep-alives
 - Plugin-based overrides such as nag suppression and Summon unlock can live here instead of on the main Features card
 - Dashboard builds only inject automatically through enabled plugins; built-in vehicle handlers stay observational
 - Dashboard cards can be collapsed individually with `Hide` / `Show` to keep the page shorter on mobile

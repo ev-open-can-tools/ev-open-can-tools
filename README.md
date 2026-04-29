@@ -44,7 +44,7 @@ Not everyone needs to write code to be useful here. Testing, documenting, sharin
 
 Depending on your hardware and build, the project can provide:
 
-- Vehicle-side features you can activate via [plugins](https://github.com/ev-open-can-tools/ev-open-can-tools-plugins)
+- Vehicle-side features such as AD activation, nag suppression, Actually Smart Summon EU unlock, speed profile mapping, HW4 ISA speed chime suppression, HW4 emergency vehicle detection, optional TLSSC bypass, and a dedicated Autosteer nag-killer build
 - A local ESP32 dashboard with runtime hardware mode switching, live status, CAN sniffer, CAN recorder, controller stats, live log, stop or resume injection, and reboot control
 - WiFi and OTA features including hotspot mode, WiFi internet, GitHub release updates, beta channel support, auto-update on boot, and manual `.bin` upload
 - A plugin system that supports install by URL, file upload, or pasted JSON, plus a browser-based Plugin Editor and rule testing tools

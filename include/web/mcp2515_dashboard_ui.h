@@ -295,7 +295,6 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   </div>
 
   <div id="plg-conflicts" style="display:none;margin-bottom:10px"></div>
-  <div id="plg-gtw-status" style="display:none;margin-bottom:10px"></div>
 
   <div style="padding-top:12px;border-top:1px solid var(--bd)" id="plg-list">
     <div style="font-size:12px;color:var(--tx3);text-align:center;padding:12px">No plugins installed</div>
@@ -397,7 +396,6 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
         <div class="profile-label">Profile</div>
         <div class="profile-group" id="sp3-group">
           <div class="hw-seg" id="sp3-seg">
-            <button class="hw-btn" data-v="-1" onclick="setProfileAuto()">Auto</button>
             <button class="hw-btn" data-v="0" onclick="setProfile(0)">Chill</button>
             <button class="hw-btn" data-v="1" onclick="setProfile(1)">Normal</button>
             <button class="hw-btn" data-v="2" onclick="setProfile(2)">Hurry</button>
@@ -405,7 +403,6 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
         </div>
         <div class="profile-group hidden" id="sp4-group">
           <div class="hw-seg" id="sp4-seg">
-            <button class="hw-btn" data-v="-1" onclick="setProfileAuto()">Auto</button>
             <button class="hw-btn" data-v="0" onclick="setProfile(0)">Chill</button>
             <button class="hw-btn" data-v="1" onclick="setProfile(1)">Normal</button>
             <button class="hw-btn" data-v="2" onclick="setProfile(2)">Hurry</button>
@@ -415,70 +412,6 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
         </div>
         <div class="profile-note" id="profile-note">Available profiles depend on the selected hardware.</div>
       </div>
-    </div>
-  </div>
-
-  <div class="subsec" id="hw3-slew-section" data-subkey="config-hw3-slew">
-    <div class="subsec-head">
-      <div class="subsec-title">HW3 Offset Slew <span class="title-help" onclick="return toggleHelp(this,event)" title="Limits downward HW3 mux 2 offset changes sent by enabled dashboard plugins.">?</span></div>
-      <div class="subsec-meta" id="hw3-slew-meta">Off</div>
-    </div>
-    <div class="subsec-body">
-      <div class="setting-row" style="padding-top:0">
-        <div class="setting-info">
-          <div class="setting-name">Ramp-down limiter</div>
-          <div class="setting-desc">Opt-in only; increases still pass immediately</div>
-        </div>
-        <label class="tgl"><input type="checkbox" id="hw3-slew-tgl" onchange="saveHw3Slew()"><div class="tgl-track"><div class="tgl-thumb"></div></div></label>
-      </div>
-      <div class="setting-row">
-        <div class="setting-info">
-          <div class="setting-name">Slew Rate</div>
-          <div class="setting-desc" id="hw3-slew-rate-hint">5%/s</div>
-        </div>
-        <input class="sniff-input" id="hw3-slew-rate" type="number" min="1" max="25" value="5" onchange="saveHw3Slew()" style="width:72px;text-align:right;flex:0 0 auto">
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px">
-        <div class="stat" style="padding:8px"><div class="stat-lbl">Target</div><div class="stat-val" id="hw3-slew-target">0</div></div>
-        <div class="stat" style="padding:8px"><div class="stat-lbl">Last</div><div class="stat-val" id="hw3-slew-last">0</div></div>
-        <div class="stat" style="padding:8px"><div class="stat-lbl">Capped</div><div class="stat-val" id="hw3-slew-count">0</div></div>
-      </div>
-      <div style="font-size:11px;color:var(--tx3);margin-top:6px" id="hw3-slew-status"></div>
-    </div>
-  </div>
-
-  <div class="subsec" data-subkey="config-plugin-replay">
-    <div class="subsec-head">
-      <div class="subsec-title">Plugin Replay <span class="title-help" onclick="return toggleHelp(this,event)" title="Set how many modified GTW 2047 plugin frames are sent immediately per observed frame.">?</span></div>
-      <div class="subsec-meta" id="plugin-replay-meta">1x</div>
-    </div>
-    <div class="subsec-body">
-      <div class="setting-row" style="padding-top:0">
-        <div class="setting-info">
-          <div class="setting-name">GTW 2047 Replay Count</div>
-          <div class="setting-desc">Modified GTW_autopilot frames sent per observed 0x7FF frame</div>
-        </div>
-        <input class="sniff-input" id="plugin-replay" type="number" min="1" max="20" value="1" style="width:72px;text-align:right">
-        <button class="sniff-btn" onclick="savePluginReplay()">Save</button>
-      </div>
-      <div style="font-size:11px;color:var(--tx3);margin-top:6px" id="plugin-replay-status"></div>
-    </div>
-  </div>
-
-  <div class="subsec" data-subkey="config-ap-injection-gate">
-    <div class="subsec-head">
-      <div class="subsec-title">AP Injection Gate <span class="title-help" onclick="return toggleHelp(this,event)" title="When enabled, plugins inject only after Autopilot is observed active.">?</span></div>
-      <div class="subsec-meta" id="ap-gate-meta">Off</div>
-    </div>
-    <div class="subsec-body">
-      <div class="setting-row" style="padding-top:0">
-        <div class="setting-info">
-          <div class="setting-name">Start after AP</div>
-          <div class="setting-desc">Hold plugin injection until AP or NoA is active</div>
-        </div>
-        <label class="tgl"><input type="checkbox" id="ap-gate-tgl" onchange="saveApGate()"><div class="tgl-track"><div class="tgl-thumb"></div></div></label>
-      </div>
-      <div style="font-size:11px;color:var(--tx3);margin-top:6px" id="ap-gate-status"></div>
     </div>
   </div>
 
@@ -514,7 +447,7 @@ hr{border:none;border-top:1px solid var(--bd);margin:16px}
   <div class="subsec" data-subkey="config-wifi-internet">
     <div class="subsec-head">
       <div class="subsec-title">WiFi Internet <span class="title-help" onclick="return toggleHelp(this,event)" title="Connect the device to an upstream WiFi network for updates and downloads. Saved in NVS.">?</span></div>
-      <div class="subsec-meta"><span id="wifi-status">Not configured</span></div>
+      <div class="subsec-meta" id="wifi-status">Not configured</div>
     </div>
     <div class="subsec-body">
       <div class="setting-desc" style="margin-bottom:8px">Connect to your home WiFi. Required for firmware updates and plugin downloads. Stored in NVS &mdash; survives firmware updates.</div>
@@ -780,10 +713,6 @@ const $=id=>document.getElementById(id);
 const setText=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
 const setClass=(id,value)=>{const el=$(id);if(el)el.className=value;};
 function profileNamesForHw(hw){return hw===2?SP4:SP3;}
-function profileDisplayName(hw,sp,auto){
-  const name=(profileNamesForHw(hw)||[])[clampProfileForHw(hw,sp)]||'—';
-  return auto?'Auto ('+name+')':name;
-}
 function gtwAutopilotName(v){
   return ['NONE','HIGHWAY','ENHANCED','SELF_DRIVING','BASIC'][v]||'UNKNOWN';
 }
@@ -800,7 +729,7 @@ function updateGtwBadge(v){
   el.className='gtw-badge '+(known?'known':'');
   el.title=known?('GTW_autopilot: '+gtwAutopilotName(v)+' ('+v+')'):'GTW_autopilot: not seen yet';
 }
-let state={hw:1,can:true,apGate:false,sp:0,spAuto:true,plgr:1,plgrmax:20,hw3OffsetSlew:false,hw3SlewRate:5};
+let state={hw:1,can:true,sp:0};
 let sniffPaused=false,sniffFrames=[];
 let sniffShowDbcIds=localStorage.getItem('sniffIdMode')==='dbc';
 let otaFile=null;
@@ -808,7 +737,6 @@ let otaUser=localStorage.getItem('otaU')||'',otaPass=localStorage.getItem('otaP'
 let logSince=0;
 let installedPlugins=[];
 let pluginMax=0;
-const peMaxOps=16;
 let peLoadedPluginName='';
 let peTestPollTimer=null;
 let pluginDetailOpen={};
@@ -984,7 +912,7 @@ function supportPluginSummary(){
 function supportSettingsSummary(){
   return [
     'Hardware: '+(HW[state.hw]||'?'),
-    'Speed profile: '+profileDisplayName(state.hw,state.sp,state.spAuto),
+    'Speed profile: '+((profileNamesForHw(state.hw)||[])[state.sp]||'—'),
     'CAN status: '+($('s-can')?$('s-can').textContent:'—'),
     'Injection: '+($('s-inj')?$('s-inj').textContent:'—'),
     'AD: '+($('s-AD')?$('s-AD').textContent:'—'),
@@ -992,8 +920,6 @@ function supportSettingsSummary(){
     'Firmware: '+($('fw-ver')?$('fw-ver').textContent:'—'),
     'Beta channel: '+($('beta-tgl')&&$('beta-tgl').checked?'enabled':'disabled'),
     'Auto-update: '+($('auto-upd-tgl')&&$('auto-upd-tgl').checked?'enabled':'disabled'),
-    'HW3 offset slew: '+(state.hw3OffsetSlew?'enabled @ '+(state.hw3SlewRate||5)+'%/s':'disabled'),
-    'Plugin replay: '+(state.plgr||1)+'x',
     'Dashboard logging: '+($('tgl-eprn')&&$('tgl-eprn').checked?'enabled':'disabled')
   ].join('\n');
 }
@@ -1005,7 +931,7 @@ function buildSupportBody(){
     '',
     'Device',
     'Hardware: '+(HW[state.hw]||'?'),
-    'Speed profile: '+profileDisplayName(state.hw,state.sp,state.spAuto),
+    'Speed profile: '+((profileNamesForHw(state.hw)||[])[state.sp]||'—'),
     'CAN status: '+($('s-can')?$('s-can').textContent:'—'),
     'Injection: '+($('s-inj')?$('s-inj').textContent:'—'),
     'AD: '+($('s-AD')?$('s-AD').textContent:'—'),
@@ -1015,8 +941,6 @@ function buildSupportBody(){
     'Settings',
     'Beta channel: '+($('beta-tgl')&&$('beta-tgl').checked?'enabled':'disabled'),
     'Auto-update: '+($('auto-upd-tgl')&&$('auto-upd-tgl').checked?'enabled':'disabled'),
-    'HW3 offset slew: '+(state.hw3OffsetSlew?'enabled @ '+(state.hw3SlewRate||5)+'%/s':'disabled'),
-    'Plugin replay: '+(state.plgr||1)+'x',
     'Dashboard logging: '+($('tgl-eprn')&&$('tgl-eprn').checked?'enabled':'disabled'),
     '',
     'Enabled plugins',
@@ -1116,48 +1040,30 @@ function clampProfileForHw(hw,sp){
   return 0;
 }
 
-function updateProfileControls(hw,sp,spAuto){
+function updateProfileControls(hw,sp){
   const sp3=$('sp3-group'),sp4=$('sp4-group'),note=$('profile-note');
-  const slewSec=$('hw3-slew-section');
   const safeSp=clampProfileForHw(hw,sp);
   if(sp3)sp3.classList.toggle('hidden',hw!==1);
   if(sp4)sp4.classList.toggle('hidden',hw!==2);
-  if(slewSec)slewSec.style.display=hw===1?'':'none';
   const sp3Seg=$('sp3-seg'),sp4Seg=$('sp4-seg');
-  updateProfileSeg(sp3Seg,safeSp,spAuto);
-  updateProfileSeg(sp4Seg,safeSp,spAuto);
+  if(sp3Seg)updSeg(sp3Seg,safeSp,'hw-btn');
+  if(sp4Seg)updSeg(sp4Seg,safeSp,'hw-btn');
   if(note){
-    if(spAuto)note.textContent='Auto follows the vehicle follow distance.';
-    else if(hw===1)note.textContent='Manual SP3 profile is locked.';
-    else if(hw===2)note.textContent='Manual SP4 profile is locked.';
+    if(hw===1)note.textContent='SP3 profiles are available on HW3.';
+    else if(hw===2)note.textContent='SP4 profiles are available on HW4.';
     else note.textContent='Profiles are only available on HW3 and HW4.';
   }
-}
-
-function updateProfileSeg(el,sp,spAuto){
-  if(!el)return;
-  el.querySelectorAll('.hw-btn').forEach(b=>{
-    const v=parseInt(b.dataset.v);
-    b.classList.toggle('active',spAuto?v===-1:v===sp);
-  });
 }
 
 function updSeg(el,v,cls){
   el.querySelectorAll('.'+cls).forEach(b=>b.classList.toggle('active',parseInt(b.dataset.v)===v));
 }
 
-function setHW(v){state.hw=v;state.sp=clampProfileForHw(v,state.sp);updSeg($('hw-seg'),v,'hw-btn');updateHW4(v);updateProfileControls(v,state.sp,state.spAuto);updateSniffIdToggle();renderSniffer();pushCfg();}
-
-function setProfileAuto(){
-  state.spAuto=true;
-  updateProfileControls(state.hw,state.sp,state.spAuto);
-  pushCfg();
-}
+function setHW(v){state.hw=v;state.sp=clampProfileForHw(v,state.sp);updSeg($('hw-seg'),v,'hw-btn');updateHW4(v);updateProfileControls(v,state.sp);updateSniffIdToggle();renderSniffer();pushCfg();}
 
 function setProfile(v){
-  state.spAuto=false;
   state.sp=clampProfileForHw(state.hw,v);
-  updateProfileControls(state.hw,state.sp,state.spAuto);
+  updateProfileControls(state.hw,state.sp);
   pushCfg();
 }
 
@@ -1186,81 +1092,8 @@ function toggleSniffIdMode(){
 }
 
 async function pushCfg(){
-  const body='hw='+state.hw+'&sp='+state.sp+'&spa='+(state.spAuto?'1':'0')+'&can='+(state.can?'1':'0');
+  const body='hw='+state.hw+'&sp='+state.sp+'&can='+(state.can?'1':'0');
   try{await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});}catch(e){}
-}
-
-function updateHw3SlewControl(d){
-  const enabled=!!d.hw3OffsetSlew;
-  const rate=Math.max(1,Math.min(25,parseInt(d.hw3SlewRate,10)||5));
-  state.hw3OffsetSlew=enabled;state.hw3SlewRate=rate;
-  const tgl=$('hw3-slew-tgl');if(tgl)tgl.checked=enabled;
-  const inp=$('hw3-slew-rate');if(inp&&document.activeElement!==inp)inp.value=rate;
-  setText('hw3-slew-meta',enabled?('On • '+rate+'%'):'Off');
-  setText('hw3-slew-rate-hint',rate+'%/s (about '+(rate*0.6).toFixed(1)+' km/h/s at 60 km/h)');
-  setText('hw3-slew-target',d.hw3OffsetTarget===undefined?'0':d.hw3OffsetTarget);
-  setText('hw3-slew-last',d.hw3OffsetLast===undefined?'0':d.hw3OffsetLast);
-  setText('hw3-slew-count',d.hw3SlewCount||0);
-}
-async function saveHw3Slew(){
-  const tgl=$('hw3-slew-tgl'),inp=$('hw3-slew-rate'),st=$('hw3-slew-status');
-  let rate=parseInt(inp.value,10);
-  if(isNaN(rate)||rate<1||rate>25){st.textContent='Use 1-25';st.style.color='var(--err)';return;}
-  const enabled=tgl.checked?'1':'0';
-  st.textContent='Saving...';st.style.color='var(--tx3)';
-  try{
-    const body='hw3OffsetSlew='+enabled+'&hw3SlewRate='+rate;
-    const r=await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
-    const d=await r.json();
-    if(!d.ok)throw new Error();
-    state.hw3OffsetSlew=enabled==='1';state.hw3SlewRate=rate;
-    st.textContent='Saved';st.style.color='var(--ok)';
-    poll();
-  }catch(e){st.textContent='Save failed';st.style.color='var(--err)';}
-}
-
-function updatePluginReplayControl(count,max){
-  count=Math.max(1,parseInt(count,10)||1);
-  max=Math.max(count,parseInt(max,10)||20);
-  state.plgr=count;state.plgrmax=max;
-  const input=$('plugin-replay');
-  if(input){input.max=max;if(document.activeElement!==input)input.value=count;}
-  const meta=$('plugin-replay-meta');if(meta)meta.textContent=count+'x';
-}
-async function savePluginReplay(){
-  const input=$('plugin-replay'),st=$('plugin-replay-status'),max=state.plgrmax||20;
-  let v=parseInt(input.value,10);
-  if(isNaN(v)||v<1||v>max){st.textContent='Use 1-'+max;st.style.color='var(--err)';return;}
-  st.textContent='Saving...';st.style.color='var(--tx3)';
-  try{
-    const r=await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'plgr='+v});
-    const d=await r.json();
-    if(!d.ok)throw new Error();
-    updatePluginReplayControl(v,max);
-    st.textContent='Saved';st.style.color='var(--ok)';
-    poll();
-  }catch(e){st.textContent='Save failed';st.style.color='var(--err)';}
-}
-
-function updateApGateControl(d){
-  const enabled=!!d.apGate;
-  state.apGate=enabled;
-  const tgl=$('ap-gate-tgl');if(tgl)tgl.checked=enabled;
-  setText('ap-gate-meta',enabled?'On':'Off');
-}
-async function saveApGate(){
-  const tgl=$('ap-gate-tgl'),st=$('ap-gate-status');
-  const enabled=tgl.checked?'1':'0';
-  st.textContent='Saving...';st.style.color='var(--tx3)';
-  try{
-    const r=await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'apg='+enabled});
-    const d=await r.json();
-    if(!d.ok)throw new Error();
-    state.apGate=enabled==='1';
-    setText('ap-gate-meta',state.apGate?'On':'Off');
-    st.textContent='Saved';st.style.color='var(--ok)';
-    poll();
-  }catch(e){st.textContent='Save failed';st.style.color='var(--err)';}
 }
 
 async function pushLogging(){
@@ -1271,7 +1104,7 @@ async function pushLogging(){
 }
 
 async function emergencyStop(){if(!await dashConfirm('Stop injecting? This remains disabled after reboot until you press Resume Injection.','Stop injection','Stop'))return;try{await fetch('/disable',{method:'POST'});}catch(e){}poll();}
-async function resumeInj(){try{await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'hw='+state.hw+'&sp='+state.sp+'&spa='+(state.spAuto?'1':'0')+'&can=1'});}catch(e){}poll();}
+async function resumeInj(){try{await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'hw='+state.hw+'&sp='+state.sp+'&can=1'});}catch(e){}poll();}
 async function reboot(){if(!await dashConfirm('Reboot device?','Reboot','Reboot'))return;try{await fetch('/reboot',{method:'POST'});}catch(e){}}
 
 function fmtUp(s){
@@ -1440,19 +1273,16 @@ async function poll(){
   return runPoll('status',async()=>{
     try{
       const d=await fetchPollJson('/status',5000,true);
-    const on=!!d.can,armed=!!d.ci,injecting=typeof d.ia==='undefined'?armed:!!d.ia,fpsVal=Number(d.fps||0);
-    state.hw=d.hw;state.sp=clampProfileForHw(d.hw,d.sp);state.spAuto=typeof d.spAuto==='undefined'?state.spAuto:!!d.spAuto;state.can=armed;
-    if(typeof d.plgr!=='undefined')updatePluginReplayControl(d.plgr,d.plgrmax);
-    if(typeof d.apGate!=='undefined')updateApGateControl(d);
-    updateHw3SlewControl(d);
+    const on=!!d.can,injecting=!!d.ci,fpsVal=Number(d.fps||0);
+    state.hw=d.hw;state.sp=clampProfileForHw(d.hw,d.sp);state.can=injecting;
     setClass('dot','sdot '+(d.txerr>5?'dot-warn':on?'dot-on':'dot-off'));
-    setText('hdr-desc',on?(injecting?(d.AD?'AD active — injecting':'CAN active — injecting'):(armed&&d.apGate?'Waiting for AP — injection armed':'CAN active — monitoring')):'Waiting for CAN frames');
-    updateInjectButtons(armed);
+    setText('hdr-desc',on?(d.AD?'AD active — injecting':'CAN active — monitoring'):'Waiting for CAN frames');
+    updateInjectButtons(injecting);
 
     setText('s-can',on?'Active':'Offline');
     setClass('s-can','stat-val '+(on?'v-ok':'v-err'));
-    setText('s-inj',injecting?'Active':(armed&&d.apGate?'Waiting AP':'BLOCKED'));
-    setClass('s-inj','stat-val '+(injecting?'v-ok':(armed&&d.apGate?'v-warn':'v-err')));
+    setText('s-inj',injecting?'Active':'BLOCKED');
+    setClass('s-inj','stat-val '+(injecting?'v-ok':'v-err'));
     setText('s-AD',d.AD?'Active':'Inactive');
     setClass('s-AD','stat-val '+(d.AD?'v-ok':'v-dim'));
     setText('s-fps',fpsVal.toFixed(1)+' Hz');
@@ -1462,7 +1292,7 @@ async function poll(){
     setText('s-txerr',d.txerr);
     setClass('s-txerr','stat-val '+(d.txerr>0?'v-warn':'v-dim'));
     setText('s-fd',d.fd||'—');
-    setText('s-prof',profileDisplayName(d.hw,state.sp,state.spAuto));
+    setText('s-prof',profileNamesForHw(d.hw)[d.sp]||'—');
     setText('s-soff',d.soff||'0');
     setText('s-up',fmtUp(d.up));
     setText('s-mcp-raw','EFLG: 0x'+toHex(d.eflg,2));
@@ -1473,7 +1303,7 @@ async function poll(){
     try{renderWriteProbe(d.probe);}catch(e){}
     if(d.mux){for(let i=0;i<3;i++){setText('m'+i+'rx',d.mux[i].rx);setText('m'+i+'tx',d.mux[i].tx);const e=$('m'+i+'err');if(e){e.textContent=d.mux[i].err;e.style.color=d.mux[i].err>0?'var(--err)':'';}}}
     updateSniffIdToggle();
-    const hwSeg=$('hw-seg');if(hwSeg)updSeg(hwSeg,d.hw,'hw-btn');updateHW4(d.hw);updateProfileControls(d.hw,state.sp,state.spAuto);
+    const hwSeg=$('hw-seg');if(hwSeg)updSeg(hwSeg,d.hw,'hw-btn');updateHW4(d.hw);updateProfileControls(d.hw,state.sp);
     const eprn=$('tgl-eprn');if(eprn&&typeof d.eprn!=='undefined')eprn.checked=d.eprn;
     if(!dashboardInitialLoaded){
       dashboardInitialLoaded=true;
@@ -1600,32 +1430,23 @@ function pickWifi(ssid){
 }
 async function loadWifiStatus(){
   return runPoll('wifi_status',async()=>{
+    if(!dashboardStatusOk)return;
     try{const d=await fetchPollJson('/wifi_status',2000);
     dashboardStaIp=d.connected&&d.ip?d.ip:'';
-    const ssidInput=$('wifi-ssid');
-    if(d.ssid&&document.activeElement!==ssidInput)ssidInput.value=d.ssid;
+    if(d.ssid)$('wifi-ssid').value=d.ssid;
+    if(d.stored){$('wifi-stored').textContent='\u2022 saved';$('wifi-stored').style.color='var(--ok)';}
+    else{$('wifi-stored').textContent='';}
     if(d.connected){
       $('wifi-status').textContent=(d.ip&&d.ip!==location.hostname)?('Connected: '+d.ip+' \u2022 switch to that WiFi and open this IP'):('Connected: '+d.ip);
       $('wifi-status').style.color='var(--ok)';
     }
-    else if(d.connecting&&d.ssid){
-      $('wifi-status').textContent='Connecting to '+d.ssid+'...';$('wifi-status').style.color='var(--acc)';
-    }
-    else if(d.ssid){
-      $('wifi-status').textContent='Saved: '+d.ssid;
-      $('wifi-status').style.color='var(--tx3)';
-    }
-    else{
-      $('wifi-status').textContent='Not configured';
-      $('wifi-status').style.color='var(--tx3)';
-    }
+    else if(d.ssid){$('wifi-status').textContent='Connecting to '+d.ssid+'...';$('wifi-status').style.color='var(--acc)';}
     if(d.static){$('wifi-static').checked=true;toggleStaticIP();
       if(d.cfg_ip)$('wifi-ip').value=d.cfg_ip;
       if(d.cfg_gw)$('wifi-gw').value=d.cfg_gw;
       if(d.cfg_mask)$('wifi-mask').value=d.cfg_mask;
       if(d.cfg_dns)$('wifi-dns').value=d.cfg_dns;
     }
-    else{$('wifi-static').checked=false;toggleStaticIP();}
     }catch(e){}
   });
 }
@@ -1638,9 +1459,6 @@ async function saveWifi(){
   }
   try{await fetch('/wifi_config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
     $('wifi-status').textContent='Connecting to '+ssid+'...';$('wifi-status').style.color='var(--acc)';
-    loadWifiStatus();
-    setTimeout(loadWifiStatus,2000);
-    setTimeout(loadWifiStatus,5000);
   }catch(e){$('wifi-status').textContent='Error';$('wifi-status').style.color='var(--err)';}
 }
 // ── Plugin management ──
@@ -1739,14 +1557,10 @@ function pluginOpBits(o){
   if(o.type==='set_byte')return pluginByteBits(o.byte,o.mask===undefined?255:o.mask);
   if(o.type==='or_byte')return pluginByteBits(o.byte,o.val||0);
   if(o.type==='and_byte')return pluginByteBits(o.byte,(~(o.val===undefined?255:o.val))&255);
-  if(o.type==='counter')return pluginByteBits(o.byte,o.mask===undefined?15:o.mask);
   if(o.type==='checksum')return pluginByteBits(7,255);
-  if(o.type==='emit_periodic')return[];
   return[];
 }
-function pluginRuleMuxMask(r){return r&&typeof r.mux_mask==='number'?r.mux_mask:peDefaultMuxMask(r&&typeof r.mux==='number'?r.mux:-1);}
-function pluginMuxesOverlap(a,am,b,bm){if(a<0||b<0)return true;const mask=(am||peDefaultMuxMask(a))&(bm||peDefaultMuxMask(b));return !mask||((a&mask)===(b&mask));}
-function pluginBusesOverlap(a,b){return !a||!b||((a&b)!==0);}
+function pluginMuxesOverlap(a,b){return a<0||b<0||a===b;}
 function pluginFormatBits(bits){
   bits=Array.from(new Set(bits)).sort((a,b)=>a-b);
   if(bits.length>6)return bits.slice(0,6).join(', ')+', +'+(bits.length-6)+' more';
@@ -1774,10 +1588,10 @@ function pluginAnalyzePriority(list){
       const conflicts=[];
       (r.ops||[]).forEach(o=>{
         pluginOpBits(o).forEach(bit=>{
-          const owner=owners.find(x=>x.id===r.id&&pluginBusesOverlap(x.bus,r.bus)&&pluginMuxesOverlap(x.mux,x.mux_mask,r.mux,pluginRuleMuxMask(r))&&x.bit===bit);
+          const owner=owners.find(x=>x.id===r.id&&pluginMuxesOverlap(x.mux,r.mux)&&x.bit===bit);
           if(owner){
             if(owner.plugin!==p.name)conflicts.push({bit:bit,winner:owner.plugin,winnerPriority:owner.priority});
-          }else owners.push({id:r.id,bus:r.bus||0,mux:r.mux,mux_mask:pluginRuleMuxMask(r),bit:bit,plugin:p.name,priority:i+1});
+          }else owners.push({id:r.id,mux:r.mux,bit:bit,plugin:p.name,priority:i+1});
         });
       });
       if(conflicts.length){r.pluginConflict=true;r.conflicts=conflicts;p.hasConflict=true;}
@@ -1792,12 +1606,12 @@ function renderPluginConflictPanel(list){
   const rows=[];
   (list||[]).forEach(p=>(p.details||[]).forEach(r=>{
     if(r.pluginConflict)pluginConflictGroups(r.conflicts).forEach(g=>{
-      rows.push('<div>CAN '+r.hex+(r.bus?(' '+peBusLabel(r.bus)):'')+(r.mux>=0?' mux '+r.mux+'/0x'+pluginRuleMuxMask(r).toString(16):' any mux')+': '+p.name+' ignores bit '+pluginFormatBits(g.bits)+'; '+g.winner+' (#'+g.winnerPriority+') wins</div>');
+      rows.push('<div>CAN '+r.hex+(r.mux>=0?' mux '+r.mux:' any mux')+': '+p.name+' ignores bit '+pluginFormatBits(g.bits)+'; '+g.winner+' (#'+g.winnerPriority+') wins</div>');
     });
   }));
   let h='<div style="padding:8px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:11px;color:var(--tx3);line-height:1.5">';
   h+='<div style="color:var(--tx2);font-weight:600;margin-bottom:3px">Injection priority</div>';
-  h+=first?('#'+first.priority+' '+first.name+' is the first enabled plugin; the merged frame is injected after plugin bits are resolved; GTW 2047 uses the configured replay count.'):
+  h+=first?('#'+first.priority+' '+first.name+' is the first enabled plugin; one merged frame is injected after plugin bits are resolved.'):
     'No enabled plugins are injecting frames.';
   if(rows.length){
     h+='<div style="margin-top:6px;color:var(--warn)">'+rows.slice(0,5).join('')+(rows.length>5?'<div>+'+(rows.length-5)+' more conflicts</div>':'')+'</div>';
@@ -1814,8 +1628,6 @@ function pluginPrioritySelect(idx,total){
 function fmtOp(o){
   if(o.type==='set_bit') return 'set_bit('+o.bit+', '+(o.val?'true':'false')+')';
   if(o.type==='checksum') return 'checksum(byte 7)';
-  if(o.type==='counter') return 'counter('+o.byte+', mask=0x'+((o.mask===undefined?15:o.mask)&255).toString(16)+', step='+(o.step||1)+')';
-  if(o.type==='emit_periodic') return 'emit_periodic('+((o.interval||100)|0)+' ms'+(o.gtw_silent?', GTW silent':'')+')';
   if(o.type==='set_byte') return 'set_byte('+o.byte+', 0x'+o.val.toString(16)+', mask=0x'+o.mask.toString(16)+')';
   if(o.type==='or_byte') return 'or_byte('+o.byte+', 0x'+o.val.toString(16)+')';
   if(o.type==='and_byte') return 'and_byte('+o.byte+', 0x'+o.val.toString(16)+')';
@@ -1825,8 +1637,7 @@ function renderPluginDetails(details){
   return '<div style="margin-top:6px;padding:8px;background:var(--bg2);border-radius:6px;font-size:11px;font-family:monospace">'
     +details.map(r=>{
       let hdr='<div style="margin-bottom:4px"><b>CAN '+r.hex+' ('+r.id+')</b>';
-      if(r.bus) hdr+=' <span style="color:var(--acc)">'+peBusLabel(r.bus)+'</span>';
-      if(r.mux>=0) hdr+=' <span style="color:var(--acc)">mux='+r.mux+'/0x'+pluginRuleMuxMask(r).toString(16)+'</span>';
+      if(r.mux>=0) hdr+=' <span style="color:var(--acc)">mux='+r.mux+'</span>';
       if(r.pluginConflict) hdr+=' <span style="color:var(--warn);font-weight:bold" title="Lower priority bits are ignored">&#9888; Priority overlap</span>';
       hdr+='</div>';
       let ops=r.ops.map(o=>'<div style="padding-left:12px;color:var(--tx2)">'+fmtOp(o)+'</div>').join('');
@@ -1918,38 +1729,6 @@ function pluginStateSignature(list){
   return JSON.stringify((list||[]).map(p=>[p&&p.name||'',p&&p.version||'',!!(p&&p.enabled),p&&p.rules||0,p&&p.author||'']));
 }
 
-const GTW_UDS_STATE_NAMES=['Idle','Session req','Seed req','Key sent','CommCtrl sent','Active','Failed'];
-function renderGtwUdsStatus(d){
-  const el=$('plg-gtw-status');if(!el)return;
-  const supported=!!d.gtw_silent_supported;
-  const uds=d.gtw_uds||{};
-  const active=pluginHasAnyGtwSilent(d.plugins||[]);
-  if(!active&&!supported){el.style.display='none';return;}
-  el.style.display='block';
-  const stateIdx=typeof uds.state==='number'?uds.state:0;
-  const stateName=GTW_UDS_STATE_NAMES[stateIdx]||('State '+stateIdx);
-  const stateColor=stateIdx===5?'var(--ok)':stateIdx===6?'var(--err)':'var(--tx3)';
-  let h='<div style="padding:8px 10px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font-size:11px">';
-  h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
-  if(supported){
-    h+='<span style="color:var(--ok);font-weight:bold">&#10003; GTW silent: custom key loaded</span>';
-  }else{
-    h+='<span style="color:var(--tx3)">&#10007; GTW silent: no key &mdash; <code>PLUGIN_GTW_UDS_CUSTOM_KEY</code> not defined, <code>gtw_silent</code> disabled</span>';
-  }
-  if(active&&supported){
-    h+='<span style="color:'+stateColor+';margin-left:auto">UDS: '+stateName+'</span>';
-    if(uds.last_seed&&uds.last_seed.length>0){
-      h+='</div><div style="margin-top:6px;font-family:monospace;color:var(--tx2)">';
-      h+='seed&nbsp;&rarr;&nbsp;<b>'+uds.last_seed+'</b>&nbsp;&nbsp;key&nbsp;&rarr;&nbsp;<b style="color:var(--ok)">'+uds.last_key+'</b>';
-      if(uds.last_nrc&&uds.last_nrc!==0)h+='&nbsp;&nbsp;<span style="color:var(--err)">NRC 0x'+uds.last_nrc.toString(16)+'</span>';
-    }
-  }
-  h+='</div></div>';
-  el.innerHTML=h;
-}
-function pluginHasAnyGtwSilent(plugins){
-  return (plugins||[]).some(p=>(p.details||[]).some(r=>(r.ops||[]).some(o=>o.type==='emit_periodic'&&o.gtw_silent)));
-}
 function renderPluginsState(d){
   installedPlugins=d.plugins||[];
   pluginAnalyzePriority(installedPlugins);
@@ -1957,7 +1736,6 @@ function renderPluginsState(d){
   installedPlugins.forEach(p=>{if(p&&p.name&&pluginDetailOpen[p.name])nextOpen[p.name]=true;});
   pluginDetailOpen=nextOpen;
   pluginMax=d.maxPlugins||pluginMax||0;
-  renderGtwUdsStatus(d);
   const max=pluginMax;
   $('plg-count').textContent=max?installedPlugins.length+' / '+max+' installed':installedPlugins.length+' installed';
   if($('plg-limit')){
@@ -2126,12 +1904,10 @@ async function importSettings(ev){
 let peState={rules:[]};
 function peGetMeta(){return{name:($('pe-name').value||'').trim(),version:($('pe-version').value||'1.0').trim(),author:($('pe-author').value||'').trim()};}
 function peParseInt(s,def){if(typeof s==='number')return s;if(s===''||s==null)return def;s=String(s).trim();let n=s.toLowerCase().startsWith('0x')?parseInt(s,16):parseInt(s,10);return isNaN(n)?def:n;}
-function peBusLabel(v){if(v===undefined||v===null||v===''||v===0)return'';if(Array.isArray(v))return v.join(',');if(typeof v==='number'){let out=[];if(v&1)out.push('CH');if(v&2)out.push('VEH');if(v&4)out.push('PARTY');return out.join(',');}return String(v);}
-function peDefaultMuxMask(mux){return mux<0?0:(mux>7?255:7);}
 function peSetStatus(msg,kind){const el=$('pe-status');el.textContent=msg;el.style.color=kind==='ok'?'var(--ok)':kind==='err'?'var(--err)':kind==='acc'?'var(--acc)':'var(--tx3)';}
 function peSetTestStatus(msg,kind){const el=$('pe-test-status');el.textContent=msg;el.style.color=kind==='ok'?'var(--ok)':kind==='err'?'var(--err)':kind==='acc'?'var(--acc)':'var(--tx3)';}
 function peHasContent(){const meta=peGetMeta();return !!(meta.name||meta.author||meta.version!=='1.0'||peState.rules.length);}
-function peRuleLabel(r,i){return 'Rule '+(i+1)+' · CAN 0x'+toHex((r.id||0)&0x7FF,3)+(r.mux>=0?' · mux '+r.mux:'')+(peBusLabel(r.bus)?' · '+peBusLabel(r.bus):'');}
+function peRuleLabel(r,i){return 'Rule '+(i+1)+' · CAN 0x'+toHex((r.id||0)&0x7FF,3)+(r.mux>=0?' · mux '+r.mux:'');}
 function peParseShortcutLine(line){
   const raw=(line||'').trim();
   if(!raw)return{error:'Shortcut line required'};
@@ -2140,11 +1916,11 @@ function peParseShortcutLine(line){
   const canId=peParseInt(m[1],NaN),mux=m[2]===undefined?-1:peParseInt(m[2],NaN);
   const byte=peParseInt(m[3],NaN),val=peParseInt(m[4],NaN),mask=m[5]===undefined?255:peParseInt(m[5],NaN);
   if(isNaN(canId)||canId<1||canId>0x7FF)return{error:'CAN ID must be 1-0x7FF'};
-  if(isNaN(mux)||mux<-1||mux>255)return{error:'mux must be -1..255'};
+  if(isNaN(mux)||mux<-1||mux>7)return{error:'mux must be -1..7'};
   if(isNaN(byte)||byte<0||byte>7)return{error:'byte must be 0-7'};
   if(isNaN(val)||val<0||val>255)return{error:'value must be 0-255'};
   if(isNaN(mask)||mask<0||mask>255)return{error:'mask must be 0-255'};
-  return{rule:{id:canId|0,mux:mux|0,mux_mask:peDefaultMuxMask(mux|0),bus:'',send:true,ops:[{type:'set_byte',byte:byte|0,val:val|0,mask:mask|0}]},note:raw};
+  return{rule:{id:canId|0,mux:mux|0,send:true,ops:[{type:'set_byte',byte:byte|0,val:val|0,mask:mask|0}]},note:raw};
 }
 function peUpdateRuleOptions(){
   const sel=$('pe-test-rule');if(!sel)return;
@@ -2154,7 +1930,7 @@ function peUpdateRuleOptions(){
   sel.innerHTML=peState.rules.map((r,i)=>'<option value="'+i+'">'+peRuleLabel(r,i)+'</option>').join('');
   sel.value=String(!isNaN(prev)&&prev>=0&&prev<peState.rules.length?prev:0);
 }
-function peAddRule(){if(peState.rules.length>=16){peSetStatus('Max 16 rules per plugin','err');return;}peState.rules.push({id:0,mux:-1,mux_mask:0,bus:'',send:true,ops:[]});peRender();}
+function peAddRule(){if(peState.rules.length>=16){peSetStatus('Max 16 rules per plugin','err');return;}peState.rules.push({id:0,mux:-1,send:true,ops:[]});peRender();}
 function peAddRuleFromShortcut(){
   if(peState.rules.length>=16){peSetStatus('Max 16 rules per plugin','err');return;}
   const input=$('pe-shortcut');const parsed=peParseShortcutLine(input.value);
@@ -2165,22 +1941,18 @@ function peAddRuleFromShortcut(){
   peSetStatus('Shortcut added','ok');
 }
 function peRemoveRule(i){peState.rules.splice(i,1);peRender();}
-function peAddOp(i,type){const r=peState.rules[i];if(!r)return;if(r.ops.length>=peMaxOps){peSetStatus('Max '+peMaxOps+' ops per rule','err');return;}
+function peAddOp(i,type){const r=peState.rules[i];if(!r)return;if(r.ops.length>=8){peSetStatus('Max 8 ops per rule','err');return;}
   const op={type:type};
   if(type==='set_bit'){op.bit=0;op.val=1;}
   else if(type==='set_byte'){op.byte=0;op.val=0;op.mask=255;}
   else if(type==='or_byte'){op.byte=0;op.val=0;}
   else if(type==='and_byte'){op.byte=0;op.val=255;}
-  else if(type==='counter'){op.byte=0;op.mask=15;op.step=1;}
-  else if(type==='emit_periodic'){op.interval=100;op.gtw_silent=false;}
   r.ops.push(op);peRender();}
 function peRemoveOp(i,j){peState.rules[i].ops.splice(j,1);peRender();}
 function peUpdateField(i,j,field,value){
   if(j<0){const r=peState.rules[i];if(!r)return;
     if(field==='id')r.id=peParseInt(value,0);
-    else if(field==='mux'){const oldDefault=peDefaultMuxMask(r.mux);const oldMask=r.mux_mask||0;r.mux=value===''?-1:peParseInt(value,-1);if(!oldMask||oldMask===oldDefault)r.mux_mask=peDefaultMuxMask(r.mux);}
-    else if(field==='mux_mask')r.mux_mask=Math.max(0,Math.min(255,peParseInt(value,peDefaultMuxMask(r.mux))));
-    else if(field==='bus')r.bus=String(value||'').trim().toUpperCase();
+    else if(field==='mux'){r.mux=value===''?-1:peParseInt(value,-1);}
     else if(field==='send')r.send=!!value;
     peRender();return;
   }
@@ -2190,22 +1962,17 @@ function peUpdateField(i,j,field,value){
     else if(nt==='set_byte'){op.byte=0;op.val=0;op.mask=255;}
     else if(nt==='or_byte'){op.byte=0;op.val=0;}
     else if(nt==='and_byte'){op.byte=0;op.val=255;}
-    else if(nt==='counter'){op.byte=0;op.mask=15;op.step=1;}
-    else if(nt==='emit_periodic'){op.interval=100;op.gtw_silent=false;}
     peRender();return;
   }
   if(field==='bit')op.bit=Math.max(0,Math.min(63,peParseInt(value,0)));
   else if(field==='byte')op.byte=Math.max(0,Math.min(7,peParseInt(value,0)));
   else if(field==='val')op.val=Math.max(0,Math.min(op.type==='set_bit'?1:255,peParseInt(value,0)));
   else if(field==='mask')op.mask=Math.max(0,Math.min(255,peParseInt(value,255)));
-  else if(field==='step')op.step=Math.max(1,Math.min(255,peParseInt(value,1)));
-  else if(field==='interval')op.interval=Math.max(10,Math.min(5000,peParseInt(value,100)));
-  else if(field==='gtw_silent')op.gtw_silent=!!value;
   peRenderPreview();peUpdateTestPreview();
 }
 function peOpRow(i,j,op){
   const sel='<select class="sniff-input" style="width:90px" onchange="peUpdateField('+i+','+j+',\'type\',this.value)">'+
-    ['set_bit','set_byte','or_byte','and_byte','counter','emit_periodic','checksum'].map(t=>'<option value="'+t+'"'+(op.type===t?' selected':'')+'>'+t+'</option>').join('')+'</select>';
+    ['set_bit','set_byte','or_byte','and_byte','checksum'].map(t=>'<option value="'+t+'"'+(op.type===t?' selected':'')+'>'+t+'</option>').join('')+'</select>';
   let fields='';
   if(op.type==='set_bit'){
     fields='<input class="sniff-input" style="width:55px" type="number" min="0" max="63" value="'+op.bit+'" title="bit (0-63)" onchange="peUpdateField('+i+','+j+',\'bit\',this.value)">'+
@@ -2217,13 +1984,6 @@ function peOpRow(i,j,op){
   }else if(op.type==='or_byte'||op.type==='and_byte'){
     fields='<input class="sniff-input" style="width:48px" type="number" min="0" max="7" value="'+op.byte+'" title="byte (0-7)" onchange="peUpdateField('+i+','+j+',\'byte\',this.value)">'+
       '<input class="sniff-input" style="width:70px" value="0x'+((op.val||0)&255).toString(16)+'" title="val (0-255)" onchange="peUpdateField('+i+','+j+',\'val\',this.value)">';
-  }else if(op.type==='counter'){
-    fields='<input class="sniff-input" style="width:48px" type="number" min="0" max="7" value="'+op.byte+'" title="byte (0-7)" onchange="peUpdateField('+i+','+j+',\'byte\',this.value)">'+
-      '<input class="sniff-input" style="width:70px" value="0x'+((op.mask===undefined?15:op.mask)&255).toString(16)+'" title="counter mask (contiguous bits)" onchange="peUpdateField('+i+','+j+',\'mask\',this.value)">'+
-      '<input class="sniff-input" style="width:58px" type="number" min="1" max="255" value="'+(op.step||1)+'" title="step" onchange="peUpdateField('+i+','+j+',\'step\',this.value)">';
-  }else if(op.type==='emit_periodic'){
-    fields='<input class="sniff-input" style="width:72px" type="number" min="10" max="5000" value="'+(op.interval||100)+'" title="interval ms" onchange="peUpdateField('+i+','+j+',\'interval\',this.value)">'+
-      '<label style="font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:4px"><input type="checkbox"'+(op.gtw_silent?' checked':'')+' onchange="peUpdateField('+i+','+j+',\'gtw_silent\',this.checked)"> GTW silent</label>';
   }else{
     fields='<span style="font-size:11px;color:var(--tx3);align-self:center;padding:0 4px">recalc byte 7 checksum</span>';
   }
@@ -2232,14 +1992,11 @@ function peOpRow(i,j,op){
 function peRuleBlock(i,r){
   const ops=r.ops.length?r.ops.map((op,j)=>peOpRow(i,j,op)).join(''):'<div style="font-size:11px;color:var(--tx3);padding:4px 0">No ops &mdash; add one below</div>';
   const hex=r.id?'0x'+r.id.toString(16).toUpperCase():'?';
-  const muxMask=r.mux_mask===undefined?peDefaultMuxMask(r.mux):r.mux_mask;
   return '<details open style="margin-bottom:10px;border:1px solid var(--bd);border-radius:6px;padding:8px;background:var(--bg2)">'+
-    '<summary style="cursor:pointer;font-size:12px;color:var(--tx);user-select:none">Rule '+(i+1)+' &mdash; CAN '+hex+(r.id?' ('+r.id+')':'')+(r.mux>=0?' mux='+r.mux:'')+(peBusLabel(r.bus)?' '+peBusLabel(r.bus):'')+' &middot; '+r.ops.length+' op'+(r.ops.length===1?'':'s')+'</summary>'+
+    '<summary style="cursor:pointer;font-size:12px;color:var(--tx);user-select:none">Rule '+(i+1)+' &mdash; CAN '+hex+(r.id?' ('+r.id+')':'')+(r.mux>=0?' mux='+r.mux:'')+' &middot; '+r.ops.length+' op'+(r.ops.length===1?'':'s')+'</summary>'+
     '<div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap">'+
       '<input class="sniff-input" style="width:110px" value="'+(r.id?('0x'+(r.id|0).toString(16).toUpperCase()):'')+'" placeholder="CAN / 0x7FF" onchange="peUpdateField('+i+',-1,\'id\',this.value)">'+
-      '<input class="sniff-input" style="width:100px" type="number" min="-1" max="255" value="'+r.mux+'" placeholder="mux (-1=any)" onchange="peUpdateField('+i+',-1,\'mux\',this.value)">'+
-      '<input class="sniff-input" style="width:82px" value="0x'+((muxMask||0)&255).toString(16)+'" placeholder="mux mask" title="mux mask, e.g. 0x7, 0xf, 0xff" onchange="peUpdateField('+i+',-1,\'mux_mask\',this.value)">'+
-      '<input class="sniff-input" style="width:96px" value="'+peBusLabel(r.bus)+'" placeholder="bus" title="CH, VEH, PARTY, or comma list" onchange="peUpdateField('+i+',-1,\'bus\',this.value)">'+
+      '<input class="sniff-input" style="width:100px" type="number" min="-1" max="7" value="'+r.mux+'" placeholder="mux (-1=any)" onchange="peUpdateField('+i+',-1,\'mux\',this.value)">'+
       '<label style="font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:4px"><input type="checkbox"'+(r.send?' checked':'')+' onchange="peUpdateField('+i+',-1,\'send\',this.checked)"> send</label>'+
       '<button class="sniff-btn" style="margin-left:auto" onclick="peRemoveRule('+i+')">Remove Rule</button>'+
     '</div>'+
@@ -2249,8 +2006,6 @@ function peRuleBlock(i,r){
       '<button class="sniff-btn" onclick="peAddOp('+i+',\'set_byte\')">+ set_byte</button>'+
       '<button class="sniff-btn" onclick="peAddOp('+i+',\'or_byte\')">+ or_byte</button>'+
       '<button class="sniff-btn" onclick="peAddOp('+i+',\'and_byte\')">+ and_byte</button>'+
-      '<button class="sniff-btn" onclick="peAddOp('+i+',\'counter\')">+ counter</button>'+
-      '<button class="sniff-btn" onclick="peAddOp('+i+',\'emit_periodic\')">+ emit_periodic</button>'+
       '<button class="sniff-btn" onclick="peAddOp('+i+',\'checksum\')">+ checksum</button>'+
     '</div>'+
   '</details>';
@@ -2271,17 +2026,12 @@ function peBuildObj(){
   obj.rules=peState.rules.map(r=>{
     const out={id:r.id|0};
     if(r.mux>=0)out.mux=r.mux|0;
-    const muxMask=r.mux_mask===undefined?peDefaultMuxMask(r.mux):r.mux_mask;
-    if(r.mux>=0&&muxMask&&muxMask!==peDefaultMuxMask(r.mux))out.mux_mask=muxMask|0;
-    if(peBusLabel(r.bus))out.bus=peBusLabel(r.bus);
     if(r.send===false)out.send=false;
     out.ops=r.ops.map(op=>{
       const o={type:op.type};
       if(op.type==='set_bit'){o.bit=op.bit|0;o.val=op.val?1:0;}
       else if(op.type==='set_byte'){o.byte=op.byte|0;o.val=(op.val|0)&255;if(op.mask!==undefined&&op.mask!==255)o.mask=op.mask|0;}
       else if(op.type==='or_byte'||op.type==='and_byte'){o.byte=op.byte|0;o.val=(op.val|0)&255;}
-      else if(op.type==='counter'){o.byte=op.byte|0;o.mask=(op.mask===undefined?15:op.mask)|0;o.step=op.step||1;}
-      else if(op.type==='emit_periodic'){o.interval=op.interval||100;if(op.gtw_silent)o.gtw_silent=true;}
       return o;
     });
     return out;
@@ -2322,7 +2072,7 @@ async function peLoadInstalledPlugin(idx){
   const p=installedPlugins[idx];if(!p)return;
   if(peHasContent()&&!await dashConfirm('Load installed plugin into the editor? Current editor contents will be replaced.','Load plugin','Load'))return;
   $('pe-name').value=p.name||'';$('pe-author').value=p.author||'';$('pe-version').value=p.version||'1.0';
-  peState={rules:(p.details||[]).map(r=>({id:r.id|0,mux:typeof r.mux==='number'?r.mux:-1,mux_mask:typeof r.mux_mask==='number'?r.mux_mask:peDefaultMuxMask(typeof r.mux==='number'?r.mux:-1),bus:peBusLabel(r.bus),send:r.send!==false,ops:(r.ops||[]).map(op=>{const out={type:op.type};if(op.type==='set_bit'){out.bit=op.bit|0;out.val=op.val?1:0;}else if(op.type==='set_byte'){out.byte=op.byte|0;out.val=(op.val|0)&255;out.mask=((typeof op.mask==='number'?op.mask:255)|0)&255;}else if(op.type==='or_byte'||op.type==='and_byte'){out.byte=op.byte|0;out.val=(op.val|0)&255;}else if(op.type==='counter'){out.byte=op.byte|0;out.mask=((typeof op.mask==='number'?op.mask:15)|0)&255;out.step=Math.max(1,((typeof op.step==='number'?op.step:1)|0)&255);}else if(op.type==='emit_periodic'){out.interval=Math.max(10,Math.min(5000,(typeof op.interval==='number'?op.interval:100)|0));out.gtw_silent=!!op.gtw_silent;}return out;})}))};
+  peState={rules:(p.details||[]).map(r=>({id:r.id|0,mux:typeof r.mux==='number'?r.mux:-1,send:r.send!==false,ops:(r.ops||[]).map(op=>{const out={type:op.type};if(op.type==='set_bit'){out.bit=op.bit|0;out.val=op.val?1:0;}else if(op.type==='set_byte'){out.byte=op.byte|0;out.val=(op.val|0)&255;out.mask=((typeof op.mask==='number'?op.mask:255)|0)&255;}else if(op.type==='or_byte'||op.type==='and_byte'){out.byte=op.byte|0;out.val=(op.val|0)&255;}return out;})}))};
   peLoadedPluginName=p.name||'';peStopTestPoll();peSetTestStatus('Idle','');peRender();peSetStatus('Loaded "'+p.name+'" into editor','ok');
   $('pe-name').scrollIntoView({behavior:'smooth',block:'center'});
 }
@@ -2334,8 +2084,7 @@ function peValidate(){
   for(let i=0;i<peState.rules.length;i++){
     const r=peState.rules[i];
     if(!r.id||r.id<1||r.id>2047)return 'Rule '+(i+1)+': CAN ID must be 1-2047';
-    if(r.mux<-1||r.mux>255)return 'Rule '+(i+1)+': mux must be -1..255';
-    if(r.mux>=0&&(r.mux_mask<1||r.mux_mask>255))return 'Rule '+(i+1)+': mux mask must be 1-255';
+    if(r.mux<-1||r.mux>7)return 'Rule '+(i+1)+': mux must be -1..7';
     if(!r.ops.length)return 'Rule '+(i+1)+': add at least one op';
     for(let j=0;j<r.ops.length;j++){
       const op=r.ops[j];
@@ -2343,16 +2092,6 @@ function peValidate(){
       else if(op.type==='set_byte'||op.type==='or_byte'||op.type==='and_byte'){
         if(op.byte<0||op.byte>7)return 'Rule '+(i+1)+' op '+(j+1)+': byte must be 0-7';
         if(op.val<0||op.val>255)return 'Rule '+(i+1)+' op '+(j+1)+': val must be 0-255';
-      }else if(op.type==='counter'){
-        if(op.byte<0||op.byte>7)return 'Rule '+(i+1)+' op '+(j+1)+': byte must be 0-7';
-        if(op.mask<1||op.mask>255)return 'Rule '+(i+1)+' op '+(j+1)+': mask must be 1-255';
-        if(op.step<1||op.step>255)return 'Rule '+(i+1)+' op '+(j+1)+': step must be 1-255';
-      }else if(op.type==='emit_periodic'){
-        if(r.id!==2047||r.mux!==3)return 'Rule '+(i+1)+' op '+(j+1)+': emit_periodic requires CAN 0x7FF mux 3';
-        if(r.send===false)return 'Rule '+(i+1)+' op '+(j+1)+': emit_periodic requires Send enabled';
-        if(op.interval<10||op.interval>5000)return 'Rule '+(i+1)+' op '+(j+1)+': interval must be 10-5000 ms';
-      }else if(op.type!=='checksum'){
-        return 'Rule '+(i+1)+' op '+(j+1)+': unsupported op';
       }
     }
   }
@@ -2425,7 +2164,7 @@ async function peReset(){
 }
 
 dashboardPollTimers.push(setInterval(poll,2000));dashboardPollTimers.push(setInterval(pollLog,5000));dashboardPollTimers.push(setInterval(pollSniffer,1000));dashboardPollTimers.push(setInterval(pollPlugins,10000));dashboardPollTimers.push(setInterval(loadWifiStatus,10000));dashboardPollTimers.push(setInterval(loadApStatus,10000));
-initCardMinimizers();initSubsectionMinimizers();updateHW4(1);updateProfileControls(1,0,true);updateSniffIdToggle();poll();pollRec();peRender();
+initCardMinimizers();initSubsectionMinimizers();updateHW4(1);updateProfileControls(1,0);updateSniffIdToggle();poll();pollRec();peRender();
 </script>
 </body>
 </html>

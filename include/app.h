@@ -183,8 +183,6 @@ static void appLoop()
     uint8_t framesThisLoop = 0;
     while (appDriver->read(frame))
     {
-        if (frame.bus == CAN_BUS_ANY)
-            frame.bus = CAN_BUS_DEFAULT;
 #if !(defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD) && defined(DASH_RGB_STATUS_LED))
         digitalWrite(PIN_LED, LOW);
 #endif

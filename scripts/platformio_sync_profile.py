@@ -21,9 +21,6 @@ OPTIONAL_DEFINES = (
     "NAG_KILLER",
     "ENHANCED_AUTOPILOT",
 )
-DASHBOARD_OPTION_DEFINES = ("INJECTION_AFTER_AP", "DASH_INJECTION_AFTER_AP")
-# Synced for dashboard builds only (defines with literal values).
-DASHBOARD_VALUE_DEFINES = ("PLUGIN_GTW_UDS_KEY_READY",)
 CREDENTIAL_DEFINES = ("DASH_SSID", "DASH_PASS", "DASH_OTA_USER", "DASH_OTA_PASS")
 CONFIG_RELATIVE_PATH = Path("platformio_profile.h")
 
@@ -54,21 +51,6 @@ def _string_define_values(text, names):
                 end = rest.find('"', 1)
                 if end != -1:
                     result[parts[1]] = rest[1:end]
-    return result
-
-
-def _literal_define_values(text, names):
-    """Parse #define NAME value lines from the shared PlatformIO profile."""
-    result = {}
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if not stripped.startswith("#define"):
-            continue
-        parts = stripped.split(None, 2)
-        if len(parts) >= 3 and parts[1] in names:
-            value = parts[2].split("//", 1)[0].strip()
-            if value:
-                result[parts[1]] = value
     return result
 
 
@@ -151,32 +133,7 @@ if uses_dashboard_hw:
     selected_vehicle = _pick_dashboard_default(active, VEHICLE_DEFINES, "HW3")
 else:
     selected_vehicle = _pick_one(active, VEHICLE_DEFINES, "vehicle define")
-selected_options = (
-    [] if uses_dashboard_hw else [name for name in OPTIONAL_DEFINES if name in active]
-)
-dashboard_flag_options = (
-    [name for name in DASHBOARD_OPTION_DEFINES if name in active]
-    if uses_dashboard_hw
-    else []
-)
-dashboard_values = (
-    _literal_define_values(config_text, DASHBOARD_VALUE_DEFINES)
-    if uses_dashboard_hw
-    else {}
-)
-dashboard_options = []
-if uses_dashboard_hw:
-    for name in DASHBOARD_VALUE_DEFINES:
-        if name not in active:
-            continue
-        if name in project_defines:
-            continue
-        if name not in dashboard_values:
-            raise UserError(
-                f"{CONFIG_RELATIVE_PATH.as_posix()} must define {name} with a byte value, "
-                f"for example: #define {name} 0x12."
-            )
-        dashboard_options.append((name, dashboard_values[name]))
+selected_options = [] if uses_dashboard_hw else [name for name in OPTIONAL_DEFINES if name in active]
 
 env_defines = _normalize_cppdefines(env.get("CPPDEFINES"))
 env_driver = [name for name in DRIVER_DEFINES if name in project_defines]
@@ -204,20 +161,13 @@ if not uses_dashboard_hw and env_vehicle and env_vehicle != [selected_vehicle]:
 if uses_dashboard_hw:
     dash_hw_val = _DASH_HW_MAP[selected_vehicle]
     _set_cppdefine(env, "DASH_DEFAULT_HW", dash_hw_val)
-    sync_defines = dashboard_flag_options + dashboard_options
+    sync_defines = selected_options
 else:
     sync_defines = [selected_vehicle] + selected_options
 
-missing_defines = []
-for item in sync_defines:
-    name = item[0] if isinstance(item, (tuple, list)) and item else item
-    if name not in env_defines:
-        missing_defines.append(item)
+missing_defines = [name for name in sync_defines if name not in env_defines]
 if missing_defines:
     env.Append(CPPDEFINES=missing_defines)
-
-# Make platformio_profile.h resolvable via #include "platformio_profile.h"
-env.Append(CPPPATH=[str(project_dir)])
 
 # Dashboard credential sync and placeholder check
 uses_dashboard = "ESP32_DASHBOARD" in project_defines
@@ -243,5 +193,7 @@ print(
         if uses_dashboard_hw
         else selected_vehicle
     )
-    + (f", {', '.join(selected_options)}" if selected_options else "")
+    + (
+        f", {', '.join(selected_options)}" if selected_options else ""
+    )
 )

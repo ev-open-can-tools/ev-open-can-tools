@@ -37,8 +37,6 @@ You can also use the helper script:
 python scripts/platformio_set_profile.py --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
 ```
 
-Add `--enable INJECTION_AFTER_AP` when `ENHANCED_AUTOPILOT` should wait until AP is active before mux 1 injection.
-
 For `DRIVER_TWAI` dashboard builds, the helper script intentionally enables all optional feature defines so the dashboard can control those options at runtime; the selected vehicle then becomes the default UI mode.
 
 ## Build

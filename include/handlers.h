@@ -17,10 +17,7 @@ inline LogRingBuffer logRing;
 struct CarManagerBase
 {
     Shared<int> speedProfile{1};
-    Shared<bool> speedProfileAuto{true};
     Shared<bool> ADEnabled{false};
-    Shared<bool> APActive{false};
-    Shared<bool> Parked{false};
     Shared<int> gatewayAutopilot{-1};
     Shared<bool> enablePrint{true};
     Shared<uint32_t> frameCount{0};
@@ -35,20 +32,6 @@ struct CarManagerBase
     bool (*checkIsa)() = nullptr;
     bool (*checkEvd)() = nullptr;
 
-    bool injectionGateOpen() const
-    {
-        return (bool)APActive || (bool)Parked;
-    }
-
-    bool shouldInjectSpeedProfile() const
-    {
-#if defined(ESP32_DASHBOARD)
-        return !speedProfileAuto;
-#else
-        return true;
-#endif
-    }
-
     virtual void handleMessage(CanFrame &frame, CanDriver &driver) = 0;
     virtual const uint32_t *filterIds() const = 0;
     virtual uint8_t filterIdCount() const = 0;
@@ -59,10 +42,10 @@ struct LegacyHandler : public CarManagerBase
 {
     const uint32_t *filterIds() const override
     {
-        static constexpr uint32_t ids[] = {69, 280, 390, 921, 1006};
+        static constexpr uint32_t ids[] = {69, 1006};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 5; }
+    uint8_t filterIdCount() const override { return 2; }
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
@@ -74,8 +57,6 @@ struct LegacyHandler : public CarManagerBase
         {
             if (frame.dlc < 2)
                 return;
-            if (!speedProfileAuto)
-                return;
             uint8_t pos = frame.data[1] >> 5;
             if (pos <= 1)
                 speedProfile = 2;
@@ -85,27 +66,6 @@ struct LegacyHandler : public CarManagerBase
                 speedProfile = 0;
             return;
         }
-        if (frame.id == 280)
-        {
-            if (frame.dlc < 3)
-                return;
-            Parked = isVehicleParked(readDIGear(frame));
-            return;
-        }
-        if (frame.id == 390)
-        {
-            if (frame.dlc < 8)
-                return;
-            Parked = isVehicleParked(readVehicleGear(frame));
-            return;
-        }
-        if (frame.id == 921)
-        {
-            if (frame.dlc < 1)
-                return;
-            APActive = isDASAutopilotActive(readDASAutopilotStatus(frame));
-            return;
-        }
         if (frame.id == 1006)
         {
             if (frame.dlc < 8)
@@ -113,14 +73,15 @@ struct LegacyHandler : public CarManagerBase
             auto index = readMuxID(frame);
             if (index == 0)
                 ADEnabled = isADSelectedInUI(frame) && (!checkAD || checkAD());
-            if (index == 0 && ADEnabled && shouldInjectSpeedProfile() && (!checkAD || checkAD()))
+            if (index == 0 && ADEnabled && (!checkAD || checkAD()))
             {
-                setSpeedProfileV12V13(frame, speedProfile);
+#if !defined(ESP32_DASHBOARD)
                 setBit(frame, 46, true);
                 framesSent++;
                 driver.send(frame);
                 if (onSend)
                     onSend(0, true);
+#endif
             }
             if (index == 1 && (!checkNag || checkNag()))
             {
@@ -156,34 +117,18 @@ struct HW3Handler : public CarManagerBase
 {
     const uint32_t *filterIds() const override
     {
-        static constexpr uint32_t ids[] = {280, 390, 921, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 6; }
+    uint8_t filterIdCount() const override { return 3; }
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
         if (onFrame)
             onFrame(frame);
-        if (frame.id == 280)
-        {
-            if (frame.dlc < 3)
-                return;
-            Parked = isVehicleParked(readDIGear(frame));
-            return;
-        }
-        if (frame.id == 390)
-        {
-            if (frame.dlc < 8)
-                return;
-            Parked = isVehicleParked(readVehicleGear(frame));
-            return;
-        }
         if (frame.id == 1016)
         {
             if (frame.dlc < 6)
-                return;
-            if (!speedProfileAuto)
                 return;
             uint8_t followDistance = (frame.data[5] & 0b11100000) >> 5;
             switch (followDistance)
@@ -200,13 +145,6 @@ struct HW3Handler : public CarManagerBase
             default:
                 break;
             }
-            return;
-        }
-        if (frame.id == 921)
-        {
-            if (frame.dlc < 1)
-                return;
-            APActive = isDASAutopilotActive(readDASAutopilotStatus(frame));
             return;
         }
         if (frame.id == 2047)
@@ -248,17 +186,7 @@ struct HW3Handler : public CarManagerBase
             if (index == 0 && ADEnabled && (!checkAD || checkAD()))
             {
                 speedOffset = std::max(std::min(((uint8_t)((frame.data[3] >> 1) & 0x3F) - 30) * 5, 100), 0);
-#if defined(ESP32_DASHBOARD)
-                if (shouldInjectSpeedProfile())
-                {
-                    setSpeedProfileV12V13(frame, speedProfile);
-                    setBit(frame, 46, true);
-                    framesSent++;
-                    driver.send(frame);
-                    if (onSend)
-                        onSend(0, true);
-                }
-#else
+#if !defined(ESP32_DASHBOARD)
                 setBit(frame, 46, true);
                 framesSent++;
                 driver.send(frame);
@@ -271,7 +199,7 @@ struct HW3Handler : public CarManagerBase
 #if !defined(ESP32_DASHBOARD)
                 bool modified = false;
 #if defined(ENHANCED_AUTOPILOT)
-                if (enhancedAutopilotRuntime && enhancedAutopilotInjectionAllowed(injectionGateOpen()))
+                if (enhancedAutopilotRuntime)
                 {
                     setBit(frame, 19, false);
                     setBit(frame, 46, true);
@@ -403,41 +331,21 @@ struct HW4Handler : public CarManagerBase
     const uint32_t *filterIds() const override
     {
 #if defined(ISA_SPEED_CHIME_SUPPRESS) && !defined(ESP32_DASHBOARD)
-        static constexpr uint32_t ids[] = {280, 390, 921, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {921, 1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 6; }
+    uint8_t filterIdCount() const override { return 4; }
 #else
-        static constexpr uint32_t ids[] = {280, 390, 921, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 6; }
+    uint8_t filterIdCount() const override { return 3; }
 #endif
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
         if (onFrame)
             onFrame(frame);
-        if (frame.id == 280)
-        {
-            if (frame.dlc < 3)
-                return;
-            Parked = isVehicleParked(readDIGear(frame));
-            return;
-        }
-        if (frame.id == 390)
-        {
-            if (frame.dlc < 8)
-                return;
-            Parked = isVehicleParked(readVehicleGear(frame));
-            return;
-        }
-        if (frame.id == 921)
-        {
-            if (frame.dlc < 1)
-                return;
-            APActive = isDASAutopilotActive(readDASAutopilotStatus(frame));
-        }
 #if defined(ISA_SPEED_CHIME_SUPPRESS) && !defined(ESP32_DASHBOARD)
         if (isaSpeedChimeSuppressRuntime && frame.id == 921)
         {
@@ -461,8 +369,6 @@ struct HW4Handler : public CarManagerBase
         if (frame.id == 1016)
         {
             if (frame.dlc < 6)
-                return;
-            if (!speedProfileAuto)
                 return;
             auto fd = (frame.data[5] & 0b11100000) >> 5;
             switch (fd)
@@ -535,20 +441,12 @@ struct HW4Handler : public CarManagerBase
                     onSend(0, true);
 #endif
             }
-            if (index == 2 && ADEnabled && !speedProfileAuto && (!checkAD || checkAD()))
-            {
-                setSpeedProfileHW4(frame, speedProfile);
-                framesSent++;
-                driver.send(frame);
-                if (onSend)
-                    onSend(2, true);
-            }
             if (index == 1)
             {
 #if !defined(ESP32_DASHBOARD)
                 bool modified = false;
 #if defined(ENHANCED_AUTOPILOT)
-                if (enhancedAutopilotRuntime && enhancedAutopilotInjectionAllowed(injectionGateOpen()))
+                if (enhancedAutopilotRuntime)
                 {
                     setBit(frame, 19, false);
                     setBit(frame, 47, true);

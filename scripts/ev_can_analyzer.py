@@ -41,7 +41,6 @@ UDS_SERVICE_NAMES = {
     0x22: "ReadDataByIdentifier",
     0x23: "ReadMemoryByAddress",
     0x27: "SecurityAccess",
-    0x28: "CommunicationControl",
     0x2E: "WriteDataByIdentifier",
     0x2F: "InputOutputControlByIdentifier",
     0x31: "RoutineControl",

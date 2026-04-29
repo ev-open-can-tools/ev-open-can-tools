@@ -26,7 +26,7 @@ void test_bypass_tlssc_helper_returns_true_when_bit_clear()
 void test_bypass_tlssc_helper_returns_true_when_bit_set()
 {
     CanFrame f = {};
-    f.data[4] = 0x20; // AD bit set
+    f.data[4] = 0x40; // AD bit set
     TEST_ASSERT_TRUE(isADSelectedInUI(f));
 }
 
