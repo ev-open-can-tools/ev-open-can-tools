@@ -20,12 +20,29 @@ struct CarManagerBase
     Shared<bool> speedProfileAuto{true};
     Shared<bool> ADEnabled{false};
     Shared<bool> APActive{false};
-    Shared<bool> Parked{false};
+    // Default Parked=true so the AP Injection Gate opens immediately on
+    // module boot when the DI is asleep (e.g. car locked with Sentry on,
+    // CAN ID 280 not broadcast). The first DI_systemStatus frame with a
+    // driving gear (R/N/D) flips this to false; if 280 never arrives,
+    // the car is asleep / parked and the gate stays open by design.
+    Shared<bool> Parked{true};
+    Shared<bool> Summoning{false};
     Shared<int> gatewayAutopilot{-1};
     Shared<bool> enablePrint{true};
     Shared<uint32_t> frameCount{0};
     Shared<uint32_t> framesSent{0};
     Shared<int> speedOffset{0};
+
+    unsigned long lastSummonActivityMs = 0;
+    // Summon-vs-AP/TACC discrimination state. ACA (DI_autonomyControlActive)
+    // alone is set during AP, TACC, and Smart Summon, so it cannot be the
+    // sole gate signal. We only treat ACA as "summon active" when we have
+    // also observed UI_selfParkRequest go non-zero during the current
+    // autonomy episode. ACA falling edge clears sprSeen so the next ACA
+    // rising edge (e.g. user engaging TACC after a completed summon) does
+    // not falsely keep the gate open.
+    bool sprSeen = false;
+    bool lastAca = false;
 
     void (*onFrame)(const CanFrame &) = nullptr;
     void (*onSend)(uint8_t mux, bool ok) = nullptr;
@@ -37,7 +54,67 @@ struct CarManagerBase
 
     bool injectionGateOpen() const
     {
-        return (bool)APActive || (bool)Parked;
+        return (bool)APActive || (bool)Parked || (bool)Summoning;
+    }
+
+    // Recompute Summoning from current sprSeen + lastAca state. Summoning
+    // requires both: ACA bit currently set AND we have seen at least one
+    // UI_selfParkRequest non-zero command in the current autonomy episode.
+    // This excludes plain TACC (ACA=1, no spr) and post-AP ACA tail
+    // (ACA blip with no fresh spr) from latching the gate.
+    void recomputeSummoning()
+    {
+        Summoning = lastAca && sprSeen;
+    }
+
+    // Update summon state from UI_driverAssistControl (CAN ID 1016).
+    // Tesla DBC: UI_selfParkRequest at byte 3 bits 4-7 (4=PRIME, 5=PAUSE,
+    // 7/8=AUTO_SUMMON_FWD/REV, 11=SMART_SUMMON, 0=NONE). Records that a
+    // summon command has been issued during the current autonomy episode.
+    void updateSummonFrom1016(const CanFrame &frame)
+    {
+        if (frame.dlc < 4)
+            return;
+        uint8_t spr = static_cast<uint8_t>((frame.data[3] >> 4) & 0x0F);
+        if (spr != 0)
+            sprSeen = true;
+        recomputeSummoning();
+    }
+
+    // Update summon state from DI_systemStatus (CAN ID 280).
+    // Tesla DBC: DI_autonomyControlActive at bit 50 (byte 6 bit 2). Held
+    // high while the DI is being driven by AP, TACC, Smart Summon, etc.
+    // ACA falling edge ends the autonomy episode and clears sprSeen so a
+    // subsequent TACC engagement (ACA=1 again) does not re-latch the gate.
+    void updateSummonFromDISystemStatus(const CanFrame &frame)
+    {
+        if (frame.dlc < 7)
+            return;
+        bool aca = (frame.data[6] & 0x04) != 0;
+        if (lastAca && !aca)
+            sprSeen = false;
+        lastAca = aca;
+        recomputeSummoning();
+    }
+
+    // Force Summoning off and reset sprSeen when the vehicle is observed
+    // in Park with no active autonomy episode, so a manual P->D shift
+    // afterwards correctly waits for AP. During Smart Summon startup the
+    // DI can report ACA=1 while gear is still P; keep sprSeen latched so
+    // it survives the pending shift out of Park.
+    void clearSummonOnPark()
+    {
+        Summoning = false;
+        sprSeen = false;
+#ifndef NATIVE_BUILD
+        lastSummonActivityMs = 0;
+#endif
+    }
+
+    void clearSummonOnParkIfAcaInactive(uint8_t gear)
+    {
+        if (gear == 1 && !lastAca)
+            clearSummonOnPark();
     }
 
     bool shouldInjectSpeedProfile() const
@@ -89,14 +166,29 @@ struct LegacyHandler : public CarManagerBase
         {
             if (frame.dlc < 3)
                 return;
-            Parked = isVehicleParked(readDIGear(frame));
+            {
+                uint8_t diGear = readDIGear(frame);
+                Parked = isVehicleParked(diGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions
+                // (e.g. during a Summon shift to Reverse) and would
+                // otherwise drop the gate mid-summon.
+                updateSummonFromDISystemStatus(frame);
+                clearSummonOnParkIfAcaInactive(diGear);
+            }
             return;
         }
         if (frame.id == 390)
         {
             if (frame.dlc < 8)
                 return;
-            Parked = isVehicleParked(readVehicleGear(frame));
+            {
+                uint8_t difGear = readVehicleGear(frame);
+                Parked = isVehicleParked(difGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions.
+                clearSummonOnParkIfAcaInactive(difGear);
+            }
             return;
         }
         if (frame.id == 921)
@@ -169,20 +261,36 @@ struct HW3Handler : public CarManagerBase
         {
             if (frame.dlc < 3)
                 return;
-            Parked = isVehicleParked(readDIGear(frame));
+            {
+                uint8_t diGear = readDIGear(frame);
+                Parked = isVehicleParked(diGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions
+                // (e.g. during a Summon shift to Reverse) and would
+                // otherwise drop the gate mid-summon.
+                updateSummonFromDISystemStatus(frame);
+                clearSummonOnParkIfAcaInactive(diGear);
+            }
             return;
         }
         if (frame.id == 390)
         {
             if (frame.dlc < 8)
                 return;
-            Parked = isVehicleParked(readVehicleGear(frame));
+            {
+                uint8_t difGear = readVehicleGear(frame);
+                Parked = isVehicleParked(difGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions.
+                clearSummonOnParkIfAcaInactive(difGear);
+            }
             return;
         }
         if (frame.id == 1016)
         {
             if (frame.dlc < 6)
                 return;
+            updateSummonFrom1016(frame);
             if (!speedProfileAuto)
                 return;
             uint8_t followDistance = (frame.data[5] & 0b11100000) >> 5;
@@ -422,14 +530,29 @@ struct HW4Handler : public CarManagerBase
         {
             if (frame.dlc < 3)
                 return;
-            Parked = isVehicleParked(readDIGear(frame));
+            {
+                uint8_t diGear = readDIGear(frame);
+                Parked = isVehicleParked(diGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions
+                // (e.g. during a Summon shift to Reverse) and would
+                // otherwise drop the gate mid-summon.
+                updateSummonFromDISystemStatus(frame);
+                clearSummonOnParkIfAcaInactive(diGear);
+            }
             return;
         }
         if (frame.id == 390)
         {
             if (frame.dlc < 8)
                 return;
-            Parked = isVehicleParked(readVehicleGear(frame));
+            {
+                uint8_t difGear = readVehicleGear(frame);
+                Parked = isVehicleParked(difGear);
+                // Only clear Summoning on a *definitive* Park (gear==1).
+                // SNA (7) and INVALID (0) can blip during gear transitions.
+                clearSummonOnParkIfAcaInactive(difGear);
+            }
             return;
         }
         if (frame.id == 921)
@@ -462,6 +585,7 @@ struct HW4Handler : public CarManagerBase
         {
             if (frame.dlc < 6)
                 return;
+            updateSummonFrom1016(frame);
             if (!speedProfileAuto)
                 return;
             auto fd = (frame.data[5] & 0b11100000) >> 5;

@@ -175,6 +175,26 @@ void test_isVehicleParked_false_for_drive()
     TEST_ASSERT_FALSE(isVehicleParked(4));
 }
 
+void test_isVehicleParked_true_for_sna()
+{
+    // SNA (7) reported by DI while car asleep / locked with Sentry: gate
+    // must still open so summon-unlock injection works on cold approach.
+    TEST_ASSERT_TRUE(isVehicleParked(7));
+}
+
+void test_isVehicleParked_true_for_invalid()
+{
+    // INVALID (0) reported by DI before it has fully come up: same
+    // rationale as SNA, treat as parked.
+    TEST_ASSERT_TRUE(isVehicleParked(0));
+}
+
+void test_isVehicleParked_false_for_reverse_neutral()
+{
+    TEST_ASSERT_FALSE(isVehicleParked(2));
+    TEST_ASSERT_FALSE(isVehicleParked(3));
+}
+
 // --- setSpeedProfileV12V13 ---
 
 void test_setSpeedProfileV12V13_sets_profile_0()
@@ -286,6 +306,9 @@ int main()
     RUN_TEST(test_readVehicleGear_extracts_dif_gear_bits);
     RUN_TEST(test_isVehicleParked_true_for_park);
     RUN_TEST(test_isVehicleParked_false_for_drive);
+    RUN_TEST(test_isVehicleParked_true_for_sna);
+    RUN_TEST(test_isVehicleParked_true_for_invalid);
+    RUN_TEST(test_isVehicleParked_false_for_reverse_neutral);
 
     RUN_TEST(test_setSpeedProfileV12V13_sets_profile_0);
     RUN_TEST(test_setSpeedProfileV12V13_sets_profile_1);
