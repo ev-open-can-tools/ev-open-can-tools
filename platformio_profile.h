@@ -7,12 +7,12 @@
 // Uncomment ONE of the following lines to match your board:
 // #define DRIVER_MCP2515           // Adafruit Feather RP2040 CAN (MCP2515 over SPI)
 // #define DRIVER_SAME51            // Adafruit Feather M4 CAN Express (native ATSAME51 CAN)
-// #define DRIVER_TWAI // ESP32 boards with built-in TWAI (CAN) peripheral
+#define DRIVER_TWAI // ESP32 boards with built-in TWAI (CAN) peripheral
 // #define DRIVER_ESP32_EXT_MCP2515 // ESP32-S3 + external MCP2515 via SPI (use esp32_ext_mcp2515 env)
 
 // ── VEHICLE HARDWARE SELECTION ───────────────────────────────────
 // Uncomment ONE of the following lines to match your vehicle:
-// #define LEGACY // HW3-retrofit
+#define LEGACY // HW3-retrofit
 // #define HW3 // HW3
 // #define HW4    // HW4
 
