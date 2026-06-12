@@ -1,0 +1,46 @@
+name: Set beta 3 metadata
+
+on:
+  pull_request:
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  set-beta-3-metadata:
+    if: github.event.pull_request.number == 72
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Update version metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          old = "3.0.2-beta.1"
+          new = "3.0.2-beta.3"
+          Path("VERSION").write_text(new, encoding="utf-8")
+
+          changelog = Path("CHANGELOG.md")
+          text = changelog.read_text(encoding="utf-8")
+          if f"## [{new}]" not in text:
+              if f"## [{old}]" not in text:
+                  raise SystemExit(f"Expected changelog heading for {old} not found")
+              text = text.replace(f"## [{old}]", f"## [{new}]", 1)
+              changelog.write_text(text, encoding="utf-8")
+
+          Path(".github/workflows/set-beta-3-metadata.yml").unlink()
+          PY
+
+      - name: Commit metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION CHANGELOG.md .github/workflows/set-beta-3-metadata.yml
+          git commit -m "Set version to v3.0.2-beta.3"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
