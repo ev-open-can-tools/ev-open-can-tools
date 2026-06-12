@@ -36,6 +36,36 @@
 #error "Define DRIVER_MCP2515, DRIVER_ESP32_EXT_MCP2515, DRIVER_SAME51, or DRIVER_TWAI in build_flags"
 #endif
 
+#if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD)
+static constexpr unsigned long kFsdActivationSettleMs = 2000;
+static unsigned long fsdActivationApStartedMs = 0;
+static bool fsdActivationLastAp = false;
+
+static void appGatedDashboardPluginProcess(const CanFrame &frame, CanDriver &driver)
+{
+    CarManagerBase *handler = appActiveHandler ? appActiveHandler : appHandler.get();
+    bool apActive = handler && (bool)handler->APActive;
+    unsigned long now = millis();
+
+    if (apActive != fsdActivationLastAp)
+    {
+        fsdActivationApStartedMs = apActive ? now : 0;
+        fsdActivationLastAp = apActive;
+    }
+
+    bool legacyFsdActivation = frame.id == 0x3EE && frame.dlc > 0 && readMuxID(frame) == 0;
+    if (apInjectionGate && legacyFsdActivation)
+    {
+        bool apStable = apActive && fsdActivationApStartedMs > 0 &&
+                        now - fsdActivationApStartedMs >= kFsdActivationSettleMs;
+        if (!apStable)
+            return;
+    }
+
+    dashPluginProcess(frame, driver);
+}
+#endif
+
 static void app_main_setup()
 {
 #ifdef DRIVER_MCP2515
@@ -77,6 +107,10 @@ static void app_main_setup()
 #ifdef ESP32_DASHBOARD
     mcpDashboardSetup(appHandler.get(), appDriver.get());
 #endif
+#endif
+
+#if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD)
+    appPluginProcess = appGatedDashboardPluginProcess;
 #endif
 }
 

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.2-beta.3] - 2026-06-12
+
+### Fixed
+
+- Legacy FSD activation injection on CAN `0x3EE` mux 0 now waits until Autopilot has remained active for 2 seconds when the AP Injection Gate is enabled, preventing false parked gate states and activation timing races from injecting during initial engagement.
 ## [3.0.2-beta.2] - 2026-05-28
 
 ### Fixed
