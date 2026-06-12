@@ -460,9 +460,49 @@ static bool dashCheckADEnabled()
     return canActive;
 }
 
+static constexpr unsigned long kDashApInjectionStableDelayMs = 1000;
+static unsigned long dashApStableStartedMs = 0;
+static bool dashApStableTracking = false;
+static bool dashLastApForLog = false;
+static bool dashLastGateLogValid = false;
+static bool dashLastGateAllowed = false;
+static bool dashLastGateAp = false;
+static bool dashLastGateParked = false;
+static bool dashLastGateSummoning = false;
+static String dashLastGateReason;
+
+static unsigned long dashTrackApStableMs(bool ap, unsigned long now)
+{
+    if (ap && !dashLastApForLog)
+    {
+        dashApStableStartedMs = now;
+        dashApStableTracking = true;
+        dashLog("[APGATE] AP rising edge");
+    }
+    else if (!ap && dashLastApForLog)
+    {
+        dashApStableStartedMs = 0;
+        dashApStableTracking = false;
+        dashLog("[APGATE] AP falling edge");
+    }
+    dashLastApForLog = ap;
+    return (ap && dashApStableTracking) ? now - dashApStableStartedMs : 0;
+}
+
 static bool dashApInjectionAllowed()
 {
-    return !apInjectionGate || (dashHandler && dashHandler->injectionGateOpen());
+    if (!apInjectionGate)
+        return true;
+    if (!dashHandler)
+        return false;
+
+    unsigned long now = millis();
+    bool ap = dashHandler->APActive;
+    bool parked = dashHandler->Parked;
+    bool summoning = dashHandler->Summoning;
+    unsigned long apStableMs = dashTrackApStableMs(ap, now);
+    return injectionGateOpenWithStableAp(ap, parked, summoning, apStableMs,
+                                         kDashApInjectionStableDelayMs);
 }
 
 static bool dashInjectionActive()
@@ -477,7 +517,8 @@ static long dashAgeMs(uint32_t seenMs, unsigned long now)
     return static_cast<long>(now - seenMs);
 }
 
-static const char *dashGateReason(bool enabled, bool allowed, bool ap, bool parked, bool summoning)
+static const char *dashGateReason(bool enabled, bool allowed, bool ap, bool parked,
+                                  bool summoning, unsigned long apStableMs)
 {
     if (!enabled)
         return "off";
@@ -495,33 +536,13 @@ static const char *dashGateReason(bool enabled, bool allowed, bool ap, bool park
             return "summoning";
         return "unknown";
     }
+    if (ap && apStableMs < kDashApInjectionStableDelayMs)
+        return "waiting_ap_stable";
     return "waiting_ap";
 }
 
-static unsigned long dashApStableStartedMs = 0;
-static bool dashLastApForLog = false;
-static bool dashLastGateLogValid = false;
-static bool dashLastGateAllowed = false;
-static bool dashLastGateAp = false;
-static bool dashLastGateParked = false;
-static bool dashLastGateSummoning = false;
-static String dashLastGateReason;
-
 static void dashLogGateStateIfChanged(bool allowed, const char *reason, bool ap, bool parked, bool summoning)
 {
-    unsigned long now = millis();
-    if (ap && !dashLastApForLog)
-    {
-        dashApStableStartedMs = now;
-        dashLog("[APGATE] AP rising edge");
-    }
-    else if (!ap && dashLastApForLog)
-    {
-        dashApStableStartedMs = 0;
-        dashLog("[APGATE] AP falling edge");
-    }
-    dashLastApForLog = ap;
-
     String reasonStr(reason);
     if (!dashLastGateLogValid || allowed != dashLastGateAllowed || ap != dashLastGateAp ||
         parked != dashLastGateParked || summoning != dashLastGateSummoning ||
@@ -545,10 +566,9 @@ static String dashGateDiagnosticsJson(unsigned long now)
     bool parked = dashHandler ? (bool)dashHandler->Parked : false;
     bool summoning = dashHandler ? (bool)dashHandler->Summoning : false;
     bool allowed = dashInjectionActive();
-    const char *reason = dashGateReason(apInjectionGate, allowed, ap, parked, summoning);
+    unsigned long apStableMs = (ap && dashApStableTracking) ? now - dashApStableStartedMs : 0;
+    const char *reason = dashGateReason(apInjectionGate, allowed, ap, parked, summoning, apStableMs);
     dashLogGateStateIfChanged(allowed, reason, ap, parked, summoning);
-
-    unsigned long apStableMs = (ap && dashApStableStartedMs > 0) ? now - dashApStableStartedMs : 0;
     int dasStatus = dashHandler ? (int)dashHandler->dasAutopilotStatus : -1;
 
     String j = "\"gate\":{\"enabled\":";

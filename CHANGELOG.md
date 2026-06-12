@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Legacy FSD activation injection on CAN `0x3EE` mux 0 now waits until Autopilot has remained active for 2 seconds when the AP Injection Gate is enabled, preventing false parked gate states and activation timing races from injecting during initial engagement.
+## [3.0.2-beta.2] - 2026-05-28
+
+### Fixed
+
+- Dashboard AP Injection Gate now waits for AP to remain stable for one second before allowing plugin injection through the AP path, reducing activation-edge injection during FSD/AP engagement transients while keeping Park and Summon injection behavior unchanged.
+
+## [3.0.2-beta.1] - 2026-05-26
+
+### Fixed
+
+- AP Injection Gate now treats live INVALID/SNA gear values as unknown instead of Park, preventing Start After AP plugin injection while AP is inactive unless the car is definitively in Park or Summoning.
 
 ## [3.0.1] - 2026-05-25
 

@@ -138,6 +138,28 @@ void test_hw3_enhanced_autopilot_stops_mux1_injection_when_shifted_to_drive()
     TEST_ASSERT_EQUAL(0, mock.sent.size());
 }
 
+void test_hw3_enhanced_autopilot_waits_when_live_gear_is_unknown()
+{
+    HW3Handler handler;
+    handler.enablePrint = false;
+
+    CanFrame invalidGear = gearFrame(0);
+    handler.handleMessage(invalidGear, mock);
+    TEST_ASSERT_FALSE(handler.APActive);
+    TEST_ASSERT_FALSE(handler.Summoning);
+    TEST_ASSERT_FALSE(handler.Parked);
+    TEST_ASSERT_FALSE(handler.injectionGateOpen());
+
+    CanFrame beforeAp = hw3Mux1Frame();
+    handler.handleMessage(beforeAp, mock);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+
+    CanFrame snaGear = gearFrame(7);
+    handler.handleMessage(snaGear, mock);
+    TEST_ASSERT_FALSE(handler.Parked);
+    TEST_ASSERT_FALSE(handler.injectionGateOpen());
+}
+
 void test_hw3_summon_request_survives_aca_while_still_in_park()
 {
     HW3Handler handler;
@@ -238,6 +260,28 @@ void test_hw4_enhanced_autopilot_stops_mux1_injection_when_shifted_to_drive()
     TEST_ASSERT_EQUAL(0, mock.sent.size());
 }
 
+void test_hw4_enhanced_autopilot_waits_when_live_gear_is_unknown()
+{
+    HW4Handler handler;
+    handler.enablePrint = false;
+
+    CanFrame invalidGear = gearFrame(0);
+    handler.handleMessage(invalidGear, mock);
+    TEST_ASSERT_FALSE(handler.APActive);
+    TEST_ASSERT_FALSE(handler.Summoning);
+    TEST_ASSERT_FALSE(handler.Parked);
+    TEST_ASSERT_FALSE(handler.injectionGateOpen());
+
+    CanFrame beforeAp = hw4Mux1Frame();
+    handler.handleMessage(beforeAp, mock);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+
+    CanFrame snaGear = gearFrame(7);
+    handler.handleMessage(snaGear, mock);
+    TEST_ASSERT_FALSE(handler.Parked);
+    TEST_ASSERT_FALSE(handler.injectionGateOpen());
+}
+
 void test_hw4_summon_request_survives_aca_while_still_in_park()
 {
     HW4Handler handler;
@@ -272,10 +316,12 @@ int main()
     RUN_TEST(test_hw3_enhanced_autopilot_waits_for_ap_before_mux1_injection);
     RUN_TEST(test_hw3_enhanced_autopilot_allows_mux1_injection_while_parked);
     RUN_TEST(test_hw3_enhanced_autopilot_stops_mux1_injection_when_shifted_to_drive);
+    RUN_TEST(test_hw3_enhanced_autopilot_waits_when_live_gear_is_unknown);
     RUN_TEST(test_hw3_summon_request_survives_aca_while_still_in_park);
     RUN_TEST(test_hw4_enhanced_autopilot_waits_for_ap_before_mux1_injection);
     RUN_TEST(test_hw4_enhanced_autopilot_allows_mux1_injection_while_parked);
     RUN_TEST(test_hw4_enhanced_autopilot_stops_mux1_injection_when_shifted_to_drive);
+    RUN_TEST(test_hw4_enhanced_autopilot_waits_when_live_gear_is_unknown);
     RUN_TEST(test_hw4_summon_request_survives_aca_while_still_in_park);
 
     return UNITY_END();

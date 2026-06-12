@@ -172,27 +172,62 @@ void test_isVehicleParked_true_for_park()
 
 void test_isVehicleParked_false_for_drive()
 {
+    TEST_ASSERT_FALSE(isVehicleParked(2));
+    TEST_ASSERT_FALSE(isVehicleParked(3));
     TEST_ASSERT_FALSE(isVehicleParked(4));
 }
 
-void test_isVehicleParked_true_for_sna()
+void test_isVehicleParked_false_for_sna()
 {
-    // SNA (7) reported by DI while car asleep / locked with Sentry: gate
-    // must still open so summon-unlock injection works on cold approach.
-    TEST_ASSERT_TRUE(isVehicleParked(7));
+    // SNA (7) in live DI/DIF gear traffic is unknown, not Park. Keep the AP
+    // Injection Gate fail-closed unless AP or Summoning opens it.
+    TEST_ASSERT_FALSE(isVehicleParked(7));
 }
 
-void test_isVehicleParked_true_for_invalid()
+void test_isVehicleParked_false_for_invalid()
 {
-    // INVALID (0) reported by DI before it has fully come up: same
-    // rationale as SNA, treat as parked.
-    TEST_ASSERT_TRUE(isVehicleParked(0));
+    // INVALID (0) in live DI/DIF gear traffic is unknown, not Park.
+    TEST_ASSERT_FALSE(isVehicleParked(0));
 }
 
-void test_isVehicleParked_false_for_reverse_neutral()
+void test_gear_helpers_classify_known_values()
 {
+    TEST_ASSERT_TRUE(isDefinitiveParkGear(1));
+    TEST_ASSERT_FALSE(isDefinitiveParkGear(0));
+    TEST_ASSERT_FALSE(isDefinitiveParkGear(7));
+
     TEST_ASSERT_FALSE(isVehicleParked(2));
-    TEST_ASSERT_FALSE(isVehicleParked(3));
+    TEST_ASSERT_TRUE(isDefinitiveDriveGear(2));
+    TEST_ASSERT_TRUE(isDefinitiveDriveGear(3));
+    TEST_ASSERT_TRUE(isDefinitiveDriveGear(4));
+    TEST_ASSERT_FALSE(isDefinitiveDriveGear(0));
+    TEST_ASSERT_FALSE(isDefinitiveDriveGear(1));
+    TEST_ASSERT_FALSE(isDefinitiveDriveGear(7));
+
+    TEST_ASSERT_TRUE(isKnownGear(1));
+    TEST_ASSERT_TRUE(isKnownGear(2));
+    TEST_ASSERT_TRUE(isKnownGear(3));
+    TEST_ASSERT_TRUE(isKnownGear(4));
+    TEST_ASSERT_FALSE(isKnownGear(0));
+    TEST_ASSERT_FALSE(isKnownGear(5));
+    TEST_ASSERT_FALSE(isKnownGear(6));
+    TEST_ASSERT_FALSE(isKnownGear(7));
+}
+
+void test_injection_gate_stable_ap_blocks_ap_rising_edge()
+{
+    TEST_ASSERT_FALSE(injectionGateOpenWithStableAp(true, false, false, 999, 1000));
+}
+
+void test_injection_gate_stable_ap_allows_after_delay()
+{
+    TEST_ASSERT_TRUE(injectionGateOpenWithStableAp(true, false, false, 1000, 1000));
+}
+
+void test_injection_gate_stable_ap_still_allows_park_and_summon()
+{
+    TEST_ASSERT_TRUE(injectionGateOpenWithStableAp(false, true, false, 0, 1000));
+    TEST_ASSERT_TRUE(injectionGateOpenWithStableAp(false, false, true, 0, 1000));
 }
 
 // --- setSpeedProfileV12V13 ---
@@ -306,9 +341,12 @@ int main()
     RUN_TEST(test_readVehicleGear_extracts_dif_gear_bits);
     RUN_TEST(test_isVehicleParked_true_for_park);
     RUN_TEST(test_isVehicleParked_false_for_drive);
-    RUN_TEST(test_isVehicleParked_true_for_sna);
-    RUN_TEST(test_isVehicleParked_true_for_invalid);
-    RUN_TEST(test_isVehicleParked_false_for_reverse_neutral);
+    RUN_TEST(test_isVehicleParked_false_for_sna);
+    RUN_TEST(test_isVehicleParked_false_for_invalid);
+    RUN_TEST(test_gear_helpers_classify_known_values);
+    RUN_TEST(test_injection_gate_stable_ap_blocks_ap_rising_edge);
+    RUN_TEST(test_injection_gate_stable_ap_allows_after_delay);
+    RUN_TEST(test_injection_gate_stable_ap_still_allows_park_and_summon);
 
     RUN_TEST(test_setSpeedProfileV12V13_sets_profile_0);
     RUN_TEST(test_setSpeedProfileV12V13_sets_profile_1);

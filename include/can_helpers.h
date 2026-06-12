@@ -60,6 +60,14 @@ inline bool enhancedAutopilotInjectionAllowed(bool adEnabled)
     return !kInjectionAfterApBuildEnabled || adEnabled;
 }
 
+inline bool injectionGateOpenWithStableAp(bool apActive, bool parked, bool summoning,
+                                          uint32_t apStableMs, uint32_t requiredApStableMs)
+{
+    if (parked || summoning)
+        return true;
+    return apActive && apStableMs >= requiredApStableMs;
+}
+
 inline uint8_t readMuxID(const CanFrame &frame)
 {
     return frame.data[0] & 0x07;
@@ -99,14 +107,29 @@ inline uint8_t readDIGear(const CanFrame &frame)
     return static_cast<uint8_t>((frame.data[2] >> 5) & 0x07);
 }
 
+inline bool isDefinitiveParkGear(uint8_t gear)
+{
+    return gear == 1;
+}
+
+inline bool isDefinitiveDriveGear(uint8_t gear)
+{
+    return gear >= 2 && gear <= 4;
+}
+
+inline bool isKnownGear(uint8_t gear)
+{
+    return isDefinitiveParkGear(gear) || isDefinitiveDriveGear(gear);
+}
+
 inline bool isVehicleParked(uint8_t gear)
 {
-    // Treat true Park (1) as parked. Also treat INVALID (0) and SNA (7) as
-    // parked: when the DI is asleep (e.g. car locked with Sentry on) it
-    // reports SNA, and we want the AP Injection Gate to open so summon-
-    // unlock injection runs on cold approach. Driving states (R=2, N=3,
-    // D=4) and unknown mid-range values are not parked.
-    return gear == 0 || gear == 1 || gear == 7;
+    // Only true Park opens the parked side of the AP Injection Gate.
+    // INVALID (0), SNA (7), and reserved values are unknown while live CAN
+    // traffic is present, so they must fail closed. Otherwise transient
+    // HW3/China DI/DIF gear values can allow plugin injection while AP is
+    // inactive.
+    return isDefinitiveParkGear(gear);
 }
 
 inline const char *describeGTWAutopilot(uint8_t value)
