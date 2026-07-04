@@ -52,6 +52,13 @@ jobs:
             artifact_name: firmware-esp32s2
             artifact_path: .pio/build/esp32s2_twai/firmware.bin
             extra_python_packages: littlefs-python fatfs-ng pyyaml intelhex
+          - env: esp32c6_twai
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+              --enable ENHANCED_AUTOPILOT
+            project_dir: .
+            artifact_name: firmware-esp32c6
+            artifact_path: .pio/build/esp32c6_twai/firmware.bin
+            extra_python_packages: littlefs-python fatfs-ng pyyaml intelhex
             
           - env: lilygo_tcan485_hw3
             profile: --driver DRIVER_TWAI --vehicle HW3 --enable EMERGENCY_VEHICLE_DETECTION
@@ -162,6 +169,7 @@ jobs:
             release-assets/firmware-esp32-featherwing.bin
             release-assets/firmware-esp32-ext-mcp2515.bin
             release-assets/firmware-esp32s2.bin
+            release-assets/firmware-esp32c6.bin
             release-assets/firmware-lilygo-tcan485-hw3.bin
             release-assets/firmware-m5stack-atoms3-mini.bin
             release-assets/firmware-waveshare-esp32-s3.bin
