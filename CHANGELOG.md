@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- ESP32-C6 support via the new `esp32c6_twai` PlatformIO environment (ESP-IDF, `DRIVER_TWAI` on GPIO5/GPIO4, `partitions_4mb_ota_1536k.csv`). Added to the Tests CI matrix and the Release workflow so automation builds and OTA release assets include the C6 board.
+
 ## [3.0.2-beta.3] - 2026-06-12
 
 ### Fixed

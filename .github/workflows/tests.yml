@@ -99,6 +99,11 @@ jobs:
               --enable ENHANCED_AUTOPILOT
             project_dir: .
             extra_python_packages: littlefs-python fatfs-ng pyyaml intelhex
+          - env: esp32c6_twai
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+              --enable ENHANCED_AUTOPILOT
+            project_dir: .
+            extra_python_packages: littlefs-python fatfs-ng pyyaml intelhex
           - env: lilygo_tcan485_hw3
             profile: --driver DRIVER_TWAI --vehicle HW3 --enable EMERGENCY_VEHICLE_DETECTION
               --enable ENHANCED_AUTOPILOT
