@@ -11,6 +11,7 @@ The project is PlatformIO-only. Pick the correct board environment in `platformi
 | `feather_rp2040_can` | Adafruit Feather RP2040 CAN | MCP2515-based build, no web dashboard |
 | `feather_m4_can` | Adafruit Feather M4 CAN Express | Native CAN build, no web dashboard |
 | `esp32_twai` | Generic ESP32 dev board | TWAI dashboard build |
+| `esp32c6_twai` | ESP32-C6 DevKitC-1 | TWAI dashboard build (single-core RISC-V); TWAI on GPIO5/GPIO4 |
 | `lilygo_tcan485_hw3` | LILYGO TCAN485 | TWAI dashboard build with board-specific default pins |
 | `m5stack-atomic-can-base` | M5Stack Atom CAN Base | TWAI dashboard build with RGB status LED |
 | `m5stack-atoms3-mini-can-base` | M5Stack AtomS3 Mini CAN Base | TWAI dashboard build with RGB status LED and built-in injection toggle button |
