@@ -158,6 +158,8 @@ GTW runs a UDS server on `0x684` (request) / `0x685` (response). A bare `TesterP
 Positive responses (`SID + 0x40`) advance the state. Negative responses (`0x7F <SID> <NRC>`) surface the NRC: `0x78 responsePending` extends the wait, anything else fails the sequence and schedules a retry after the back-off window. When the CAN filter is narrowed, `0x684` and `0x685` are automatically added so responses reach the state machine.
 
 > **Key requirement.** Tesla's SecurityAccess seed → key algorithm is proprietary and is **not** included in this repository. Without `PLUGIN_GTW_UDS_CUSTOM_KEY`, `gtw_silent: true` is parsed as disabled: the periodic emit still works, but the firmware does not send the gateway UDS silencing sequence or add `0x684`/`0x685` filters. To make `gtw_silent` actually silence GTW, define `PLUGIN_GTW_UDS_CUSTOM_KEY` at build time and supply a working `pluginGtwUdsComputeKey` implementation.
+>
+> **HW3 EU TSCLL lesson.** In the MITM variant where TSCLL-style MCU-side config-state spoofing is used, an MCU restart after enabling `TSCLL-Activation.json` is treated as evidence that the MCU accepted/applied the changed config-state. For Track Mode car-config spoofing, `GTW_performancePackage` must be `1=PERFORMANCE`; `3` decodes as `BASE_PLUS`.
 
 #### `checksum` — Recompute the vehicle checksum
 
