@@ -56,7 +56,7 @@ static void appGatedDashboardPluginProcess(const CanFrame &frame, CanDriver &dri
     bool legacyFsdActivation = frame.id == 0x3EE && frame.dlc > 0 && readMuxID(frame) == 0;
     if (apInjectionGate && legacyFsdActivation)
     {
-        bool apStable = apActive && fsdActivationApStartedMs > 0 &&
+        bool apStable = apActive &&
                         now - fsdActivationApStartedMs >= kFsdActivationSettleMs;
         if (!apStable)
             return;

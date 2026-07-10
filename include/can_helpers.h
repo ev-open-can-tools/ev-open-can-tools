@@ -92,7 +92,15 @@ inline uint8_t readDASAutopilotStatus(const CanFrame &frame)
 
 inline bool isDASAutopilotActive(uint8_t status)
 {
-    return status >= 3 && status <= 5;
+    // Standard DAS_autopilotState: 2=AVAILABLE (not engaged),
+    // 3=ACTIVE_NOMINAL (first engaged), 6=ACTIVE, 8/9=abort/fault.
+    // State 6 is the normal steady engaged state seen after 2 -> 3 -> 6.
+    return status >= 3 && status <= 6;
+}
+
+inline uint8_t readHW4DASAutopilotStatus(const CanFrame &frame)
+{
+    return static_cast<uint8_t>((frame.data[1] >> 4) & 0x0F);
 }
 
 inline uint8_t readVehicleGear(const CanFrame &frame)

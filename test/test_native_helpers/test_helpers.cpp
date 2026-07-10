@@ -149,11 +149,28 @@ void test_isDASAutopilotActive_true_for_active_states()
     TEST_ASSERT_TRUE(isDASAutopilotActive(3));
     TEST_ASSERT_TRUE(isDASAutopilotActive(4));
     TEST_ASSERT_TRUE(isDASAutopilotActive(5));
+    TEST_ASSERT_TRUE(isDASAutopilotActive(6));
+    TEST_ASSERT_FALSE(isDASAutopilotActive(7));
 }
 
 void test_isDASAutopilotActive_false_for_available_state()
 {
     TEST_ASSERT_FALSE(isDASAutopilotActive(2));
+}
+
+void test_isDASAutopilotActive_false_for_abort_states()
+{
+    TEST_ASSERT_FALSE(isDASAutopilotActive(8));
+    TEST_ASSERT_FALSE(isDASAutopilotActive(9));
+    TEST_ASSERT_FALSE(isDASAutopilotActive(14));
+    TEST_ASSERT_FALSE(isDASAutopilotActive(15));
+}
+
+void test_readHW4DASAutopilotStatus_extracts_byte1_high_nibble()
+{
+    CanFrame f = {};
+    f.data[1] = 0x6A;
+    TEST_ASSERT_EQUAL_UINT8(6, readHW4DASAutopilotStatus(f));
 }
 
 // --- Gear state ---
@@ -338,6 +355,8 @@ int main()
     RUN_TEST(test_readDASAutopilotStatus_extracts_lower_nibble);
     RUN_TEST(test_isDASAutopilotActive_true_for_active_states);
     RUN_TEST(test_isDASAutopilotActive_false_for_available_state);
+    RUN_TEST(test_isDASAutopilotActive_false_for_abort_states);
+    RUN_TEST(test_readHW4DASAutopilotStatus_extracts_byte1_high_nibble);
     RUN_TEST(test_readVehicleGear_extracts_dif_gear_bits);
     RUN_TEST(test_isVehicleParked_true_for_park);
     RUN_TEST(test_isVehicleParked_false_for_drive);

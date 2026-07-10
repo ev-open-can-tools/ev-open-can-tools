@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ESP32-C6 support via the new `esp32c6_twai` PlatformIO environment (ESP-IDF, `DRIVER_TWAI` on GPIO5/GPIO4, `partitions_4mb_ota_1536k.csv`). Added to the Tests CI matrix and the Release workflow so automation builds and OTA release assets include the C6 board.
 
+### Fixed
+
+- AP Injection Gate now keeps standard DAS `ACTIVE` state 6 engaged while rejecting `AVAILABLE` state 2 and abort/fault states 8/9.
+- HW4 AP state now comes from CAN `0x39B` byte 1 instead of misreading the HW4 `0x399` ISA frame, with the confirmed 2026.20 Highland byte-0 fallback after a three-frame latch.
+- Legacy activation stability timing now works when AP becomes active at the `millis()` zero epoch.
+
 ## [3.0.2-beta.3] - 2026-06-12
 
 ### Fixed

@@ -83,6 +83,13 @@ void test_twai_filter_hw3_rejects_unrelated_id()
 
 // --- HW4 filter (ISA + Autopilot IDs) ---
 
+void test_twai_filter_hw4_accepts_id_923()
+{
+    uint32_t ids[] = {280, 390, 923, 1016, 1021, 2047};
+    auto f = computeTwaiFilter(ids, 6);
+    TEST_ASSERT_TRUE(filterAccepts(f, 923));
+}
+
 void test_twai_filter_hw4_accepts_id_921()
 {
     uint32_t ids[] = {921, 1016, 1021, 2047};
@@ -203,6 +210,7 @@ int main()
     RUN_TEST(test_twai_filter_hw3_rejects_id_500);
     RUN_TEST(test_twai_filter_hw3_rejects_id_0);
 
+    RUN_TEST(test_twai_filter_hw4_accepts_id_923);
     RUN_TEST(test_twai_filter_hw4_accepts_id_921);
     RUN_TEST(test_twai_filter_hw4_accepts_id_1016);
     RUN_TEST(test_twai_filter_hw4_accepts_id_1021);

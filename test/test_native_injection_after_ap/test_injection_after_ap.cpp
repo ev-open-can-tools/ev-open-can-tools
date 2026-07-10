@@ -65,6 +65,15 @@ static void activateAp(CarManagerBase &handler)
     mock.reset();
 }
 
+static void advanceApToSteadyActive(CarManagerBase &handler)
+{
+    CanFrame f = {.id = 921};
+    f.data[0] = 0x06; // ACTIVE steady state
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_TRUE(handler.APActive);
+    mock.reset();
+}
+
 void test_hw3_enhanced_autopilot_waits_for_ap_before_mux1_injection()
 {
     HW3Handler handler;
@@ -91,6 +100,7 @@ void test_hw3_enhanced_autopilot_waits_for_ap_before_mux1_injection()
     TEST_ASSERT_EQUAL(0, mock.sent.size());
 
     activateAp(handler);
+    advanceApToSteadyActive(handler);
 
     CanFrame afterAp = hw3Mux1Frame();
     handler.handleMessage(afterAp, mock);
@@ -212,7 +222,15 @@ void test_hw4_enhanced_autopilot_waits_for_ap_before_mux1_injection()
     handler.handleMessage(stillBeforeAp, mock);
     TEST_ASSERT_EQUAL(0, mock.sent.size());
 
-    activateAp(handler);
+    CanFrame hw4Active = {.id = 923};
+    hw4Active.dlc = 8;
+    hw4Active.data[1] = 0x30;
+    handler.handleMessage(hw4Active, mock);
+    TEST_ASSERT_TRUE(handler.APActive);
+    hw4Active.data[1] = 0x60;
+    handler.handleMessage(hw4Active, mock);
+    TEST_ASSERT_TRUE(handler.APActive);
+    mock.reset();
 
     CanFrame afterAp = hw4Mux1Frame();
     handler.handleMessage(afterAp, mock);

@@ -38,6 +38,7 @@ struct CarManagerBase
     Shared<uint32_t> framesSent{0};
     Shared<int> speedOffset{0};
     Shared<uint32_t> last921Ms{0};
+    Shared<uint32_t> last923Ms{0};
     Shared<uint32_t> last280Ms{0};
     Shared<uint32_t> last390Ms{0};
     Shared<uint32_t> last1016Ms{0};
@@ -83,8 +84,10 @@ struct CarManagerBase
         if (frame.id == 921)
         {
             last921Ms = now;
-            if (frame.dlc >= 1)
-                dasAutopilotStatus = readDASAutopilotStatus(frame);
+        }
+        else if (frame.id == 923)
+        {
+            last923Ms = now;
         }
         else if (frame.id == 280)
             last280Ms = now;
@@ -235,7 +238,9 @@ struct LegacyHandler : public CarManagerBase
         {
             if (frame.dlc < 1)
                 return;
-            APActive = isDASAutopilotActive(readDASAutopilotStatus(frame));
+            uint8_t status = readDASAutopilotStatus(frame);
+            dasAutopilotStatus = status;
+            APActive = isDASAutopilotActive(status);
             return;
         }
         if (frame.id == 1006)
@@ -355,7 +360,9 @@ struct HW3Handler : public CarManagerBase
         {
             if (frame.dlc < 1)
                 return;
-            APActive = isDASAutopilotActive(readDASAutopilotStatus(frame));
+            uint8_t status = readDASAutopilotStatus(frame);
+            dasAutopilotStatus = status;
+            APActive = isDASAutopilotActive(status);
             return;
         }
         if (frame.id == 2047)
@@ -549,15 +556,25 @@ struct NagHandler : public CarManagerBase
 
 struct HW4Handler : public CarManagerBase
 {
+    // Some 2026.20 Highland cars keep the standard byte-1 AP state pinned at
+    // 1 and carry it in byte 0 instead. Latch that variant only after three
+    // matching frames; any standard byte-1 movement permanently disqualifies
+    // the fallback for this session.
+    bool dasHw4UseByte0 = false;
+    bool dasHw4Byte1Moved = false;
+    uint8_t dasHw4Byte0PinCount = 0;
+
     const uint32_t *filterIds() const override
     {
 #if defined(ISA_SPEED_CHIME_SUPPRESS) && !defined(ESP32_DASHBOARD)
-        static constexpr uint32_t ids[] = {280, 390, 921, 1016, 1021, 2047};
+        // MCP2515 has six hardware filters. Keep 0x399 for ISA suppression
+        // and use DI_systemStatus (0x118) as the gear source in this build.
+        static constexpr uint32_t ids[] = {280, 921, 923, 1016, 1021, 2047};
         return ids;
     }
     uint8_t filterIdCount() const override { return 6; }
 #else
-        static constexpr uint32_t ids[] = {280, 390, 921, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {280, 390, 923, 1016, 1021, 2047};
         return ids;
     }
     uint8_t filterIdCount() const override { return 6; }
@@ -597,11 +614,27 @@ struct HW4Handler : public CarManagerBase
             }
             return;
         }
-        if (frame.id == 921)
+        if (frame.id == 923)
         {
-            if (frame.dlc < 1)
+            if (frame.dlc < 2)
                 return;
-            APActive = isDASAutopilotActive(readDASAutopilotStatus(frame));
+            uint8_t standardState = readHW4DASAutopilotStatus(frame);
+            uint8_t byte0State = readDASAutopilotStatus(frame);
+            if (standardState != 1)
+            {
+                dasHw4Byte1Moved = true;
+                dasHw4Byte0PinCount = 0;
+            }
+            else if (!dasHw4UseByte0 && !dasHw4Byte1Moved && byte0State >= 2)
+            {
+                if (dasHw4Byte0PinCount < 3)
+                    dasHw4Byte0PinCount++;
+                if (dasHw4Byte0PinCount >= 3)
+                    dasHw4UseByte0 = true;
+            }
+            uint8_t status = dasHw4UseByte0 ? byte0State : standardState;
+            dasAutopilotStatus = status;
+            APActive = isDASAutopilotActive(status);
         }
 #if defined(ISA_SPEED_CHIME_SUPPRESS) && !defined(ESP32_DASHBOARD)
         if (isaSpeedChimeSuppressRuntime && frame.id == 921)
