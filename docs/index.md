@@ -9,6 +9,7 @@ This section backs the GitHub Pages site for the project and collects the living
 - [Dashboard Guide](dashboard.md) explains every major dashboard card, what is persisted, and which functions are ESP32-only
 - [Build & Flash](building.md) covers supported PlatformIO environments, profile selection, and first-boot flow
 - [Nag Suppression](nag-killer.md) covers Party CAN wiring scope, startup safety gates, target IDs, and runtime checks
+- [ESP32 Runtime Optimization](esp32-optimization.md) records applied reductions, measurement methods, and hardware-gated tuning options
 - [Plugin System](plugins.md) documents the JSON format, install paths, limits, examples, and dashboard workflow
 - [Release Notes](../CHANGELOG.md) tracks shipped features and fixes per version
 

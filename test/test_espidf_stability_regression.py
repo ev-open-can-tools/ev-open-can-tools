@@ -16,6 +16,7 @@ class EspIdfStabilityRegressionTests(unittest.TestCase):
         cls.dashboard = (ROOT / "include/web/mcp2515_dashboard.h").read_text(encoding="utf-8")
         cls.ui = (ROOT / "include/web/mcp2515_dashboard_ui.src.h").read_text(encoding="utf-8")
         cls.gvret = (ROOT / "include/gvret_serial.h").read_text(encoding="utf-8")
+        cls.optimization_doc = (ROOT / "docs/esp32-optimization.md").read_text(encoding="utf-8")
 
     def test_dashboard_starts_before_twai_and_wake_delay(self) -> None:
         twai_branch = self.main[self.main.index("#elif defined(DRIVER_TWAI)") :]
@@ -55,9 +56,70 @@ class EspIdfStabilityRegressionTests(unittest.TestCase):
     def test_gvret_is_bounded_read_only_and_nonblocking(self) -> None:
         self.assertIn("kMaxRunMs = 10UL * 60UL * 1000UL", self.gvret)
         self.assertIn("kClientIdleMs = 15000", self.gvret)
-        self.assertIn("vTaskDelay(pdMS_TO_TICKS(10))", self.gvret)
+        self.assertIn("active ? 10 : 250", self.gvret)
         self.assertNotIn("twai_transmit", self.gvret)
         self.assertNotIn("sendMessage", self.gvret)
+
+    def test_support_is_bottom_on_demand_and_single_endpoint(self) -> None:
+        support_position = self.ui.index('id="support-card"')
+        self.assertGreater(support_position, self.ui.index("Firmware update"))
+        self.assertLess(support_position, self.ui.index('class="footer"'))
+        self.assertIn('<details class="card" id="support-card"', self.ui)
+        self.assertIn("requestText('/support')", self.ui)
+        self.assertIn("locked('support'", self.ui)
+        self.assertIn('server.on("/support", HTTP_GET, handleSupport)', self.dashboard)
+        self.assertNotIn("setInterval(loadSupport", self.ui)
+
+    def test_support_report_has_required_sections_without_secrets(self) -> None:
+        support = self.dashboard[
+            self.dashboard.index("static void handleSupport()") :
+            self.dashboard.index("static void handleConfigGet()")
+        ]
+        for section in (
+            "[Firmware]",
+            "[Memory]",
+            "[Tasks]",
+            "[WiFi]",
+            "[Configuration]",
+            "[CAN]",
+            "[Last Write Check]",
+            "[Safety]",
+            "[NVS]",
+            "[USB Serial / SavvyCAN]",
+            "[Web]",
+        ):
+            self.assertIn(section, support)
+        for secret in ("apPass", "staPass", "DASH_OTA_PASS", "DASH_OTA_USER", "wifiNetworks", "private", "token"):
+            self.assertNotIn(secret, support)
+
+    def test_runtime_optimizations_are_bounded_and_reduce_idle_polling(self) -> None:
+        status = self.dashboard[
+            self.dashboard.index("static void handleStatus()") :
+            self.dashboard.index("static const char *dashWriteProbeStateName")
+        ]
+        self.assertIn("char response[2304]", status)
+        self.assertIn("BoundedTextWriter", status)
+        self.assertNotIn("String j", status)
+        self.assertNotIn("setInterval(loadPlugins", self.ui)
+        self.assertIn("setInterval(pollRuntime,3000)", self.ui)
+        self.assertIn("setInterval(loadWifi,30000)", self.ui)
+        self.assertIn("pdMS_TO_TICKS(250)", self.dashboard)
+        self.assertIn("active ? 10 : 250", self.gvret)
+
+    def test_optimization_document_covers_hardware_gated_tuning(self) -> None:
+        for topic in (
+            "Task stacks",
+            "Heap fragmentation",
+            "Task priorities",
+            "Dashboard polling",
+            "NVS wear",
+            "CAN queue pressure",
+            "ESP-IDF heap tools",
+            "Compiler optimization",
+            "Firmware/partition size",
+            "CPU profiling",
+        ):
+            self.assertIn(topic, self.optimization_doc)
 
 
 if __name__ == "__main__":

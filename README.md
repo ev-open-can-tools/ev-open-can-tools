@@ -131,6 +131,7 @@ For a fuller setup flow and board-specific notes, see [Build & Flash](https://ev
 - [Build and flash guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html)
 - [Plugin system reference](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/plugins.html)
 - [Nag suppression and Party CAN](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/nag-killer.html)
+- [ESP32 runtime optimization](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/esp32-optimization.html)
 - [Release notes](CHANGELOG.md)
 
 ## Community

@@ -586,6 +586,9 @@ public:
     bool authenticate(const char *user, const char *pass);
     void requestAuthentication();
     HTTPUpload &upload() { return upload_; }
+    uint32_t requestCount() const { return requestCount_.load(std::memory_order_relaxed); }
+    uint32_t responseBytes() const { return responseBytes_.load(std::memory_order_relaxed); }
+    uint32_t maxResponseBytes() const { return maxResponseBytes_.load(std::memory_order_relaxed); }
 
 private:
     struct Route
@@ -612,6 +615,9 @@ private:
     std::vector<std::pair<std::string, std::string>> headers_;
     std::vector<Route> routes_;
     HTTPUpload upload_;
+    std::atomic<uint32_t> requestCount_{0};
+    std::atomic<uint32_t> responseBytes_{0};
+    std::atomic<uint32_t> maxResponseBytes_{0};
 };
 
 class ESPClass

@@ -170,7 +170,8 @@ inline void task(void *)
             setClientConnected(false);
             Serial.println("[GVRET] stopped after maximum 10-minute session");
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        const bool active = enabled.load(std::memory_order_relaxed);
+        vTaskDelay(pdMS_TO_TICKS(active ? 10 : 250));
     }
 }
 

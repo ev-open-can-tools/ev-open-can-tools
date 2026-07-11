@@ -169,12 +169,16 @@ extern "C" void app_main(void)
     if (!GvretSerial::begin())
         Serial.println("[WARN] GVRET serial task failed to start");
 
-    esp_err_t nvsErr = nvs_flash_init();
+    const esp_err_t nvsInitialErr = nvs_flash_init();
+    esp_err_t nvsErr = nvsInitialErr;
+    bool nvsRecovered = false;
     if (nvsErr == ESP_ERR_NVS_NO_FREE_PAGES || nvsErr == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
         ESP_ERROR_CHECK(nvs_flash_erase());
         nvsErr = nvs_flash_init();
+        nvsRecovered = nvsErr == ESP_OK;
     }
+    RuntimeDiagnostics::noteNvsInitialization(nvsInitialErr, nvsErr, nvsRecovered);
     ESP_ERROR_CHECK(nvsErr);
 
     app_main_setup();

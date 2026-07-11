@@ -17,6 +17,7 @@
 #include <new>
 #include <soc/soc_caps.h>
 #ifdef ESP_PLATFORM
+#include <esp_mac.h>
 #include <freertos/semphr.h>
 #endif
 #ifndef ESP_PLATFORM
@@ -24,6 +25,7 @@
 #include <SPIFFS.h>
 #endif
 #include "handlers.h"
+#include "bounded_text_writer.h"
 #include "can_helpers.h"
 #include "plugin_engine.h"
 #if defined(DRIVER_ESP32_EXT_MCP2515)
@@ -331,6 +333,7 @@ static void dashRotateAndConnect();
 static void dashSwapHandler(uint8_t mode);
 static void dashApplyFilters();
 static void dashReapplyFiltersWithPlugins();
+static uint8_t dashCollectMergedFilterIds(uint32_t *ids, uint8_t maxIds);
 static void dashApplyRuntimeState();
 static void dashRestorePluginStates();
 static void dashClearLegacyOptionPrefs();
@@ -1158,6 +1161,17 @@ static void dashCheckBusHealth()
 }
 #endif
 static WebServer server(80);
+static TaskHandle_t webTaskHandle = nullptr;
+
+static void dashSendBuffer(int code, const char *contentType, const char *data, size_t length)
+{
+#ifdef ESP_PLATFORM
+    server.sendRaw(code, contentType, data, length);
+#else
+    (void)length;
+    server.send(code, contentType, data);
+#endif
+}
 
 static void handleRoot()
 {
@@ -1189,60 +1203,382 @@ static void handleStatus()
     if (dashDriver)
         dashDriver->diagnosticsJson(driverJson, sizeof(driverJson));
 
-    String j = "{\"can\":";
-    j += canOnlineSnapshot ? "true" : "false";
-    j += ",\"ia\":";
-    j += dashInjectionActive() ? "true" : "false";
-    j += ",\"ready\":";
-    j += appInjectionReady() ? "true" : "false";
+    char response[2304];
+    BoundedTextWriter json(response, sizeof(response));
+    json.appendf("{\"can\":%s,\"ia\":%s,\"ready\":%s",
+                 canOnlineSnapshot ? "true" : "false",
+                 dashInjectionActive() ? "true" : "false",
+                 appInjectionReady() ? "true" : "false");
 #ifdef ESP_PLATFORM
-    j += ",\"runtime\":{\"uptimeMs\":" + String(now);
-    j += ",\"canFrames\":" + String(RuntimeDiagnostics::canFrames.load(std::memory_order_relaxed));
-    j += ",\"canAgeMs\":" + String(RuntimeDiagnostics::canAgeMs(now));
-    j += ",\"txOk\":" + String(RuntimeDiagnostics::txOk.load(std::memory_order_relaxed));
-    j += ",\"txFail\":" + String(RuntimeDiagnostics::txFail.load(std::memory_order_relaxed));
-    j += ",\"freeHeap\":" + String(esp_get_free_heap_size());
-    j += ",\"delayRemainingMs\":" + String(RuntimeDiagnostics::injectionDelayRemainingMs(now));
-    j += ",\"frameThreshold\":" + String(CAN_LIVE_FRAME_THRESHOLD);
-    j += "}";
+    json.appendf(
+        ",\"runtime\":{\"uptimeMs\":%lu,\"canFrames\":%lu,\"canAgeMs\":%lu,"
+        "\"txOk\":%lu,\"txFail\":%lu,\"freeHeap\":%lu,\"delayRemainingMs\":%lu,"
+        "\"frameThreshold\":%lu}",
+        now,
+        static_cast<unsigned long>(RuntimeDiagnostics::canFrames.load(std::memory_order_relaxed)),
+        static_cast<unsigned long>(RuntimeDiagnostics::canAgeMs(now)),
+        static_cast<unsigned long>(RuntimeDiagnostics::txOk.load(std::memory_order_relaxed)),
+        static_cast<unsigned long>(RuntimeDiagnostics::txFail.load(std::memory_order_relaxed)),
+        static_cast<unsigned long>(esp_get_free_heap_size()),
+        static_cast<unsigned long>(RuntimeDiagnostics::injectionDelayRemainingMs(now)),
+        static_cast<unsigned long>(CAN_LIVE_FRAME_THRESHOLD));
 #endif
-    j += ",\"driver\":";
-    j += driverJson;
-    j += ",\"probe\":{\"active\":";
-    j += writeProbeSnapshot.active ? "true" : "false";
-    j += ",\"state\":";
-    j += writeProbeSnapshot.state;
-    j += ",\"id\":";
-    j += writeProbeSnapshot.id;
-    j += ",\"mux\":";
-    j += writeProbeSnapshot.mux;
-    j += ",\"txa\":";
-    j += writeProbeSnapshot.active ? String(now - writeProbeSnapshot.txMs) : String(0);
-    j += ",\"rxa\":";
-    j += writeProbeSnapshot.hasRx ? String(now - writeProbeSnapshot.rxMs) : String(0);
-    j += ",\"txdlc\":";
-    j += writeProbeSnapshot.txDlc;
-    j += ",\"rxdlc\":";
-    j += writeProbeSnapshot.rxDlc;
-    j += ",\"hasrx\":";
-    j += writeProbeSnapshot.hasRx ? "true" : "false";
-    j += ",\"tx\":[";
+    json.appendf(",\"driver\":%s,\"probe\":{\"active\":%s,\"state\":%u,\"id\":%lu,"
+                 "\"mux\":%d,\"txa\":%lu,\"rxa\":%lu,\"txdlc\":%u,\"rxdlc\":%u,"
+                 "\"hasrx\":%s,\"tx\":[",
+                 driverJson, writeProbeSnapshot.active ? "true" : "false",
+                 static_cast<unsigned int>(writeProbeSnapshot.state),
+                 static_cast<unsigned long>(writeProbeSnapshot.id),
+                 static_cast<int>(writeProbeSnapshot.mux),
+                 writeProbeSnapshot.active ? now - writeProbeSnapshot.txMs : 0,
+                 writeProbeSnapshot.hasRx ? now - writeProbeSnapshot.rxMs : 0,
+                 static_cast<unsigned int>(writeProbeSnapshot.txDlc),
+                 static_cast<unsigned int>(writeProbeSnapshot.rxDlc),
+                 writeProbeSnapshot.hasRx ? "true" : "false");
     for (uint8_t i = 0; i < writeProbeSnapshot.txDlc; i++)
     {
         if (i)
-            j += ",";
-        j += String(writeProbeSnapshot.txData[i]);
+            json.append(",");
+        json.appendf("%u", static_cast<unsigned int>(writeProbeSnapshot.txData[i]));
     }
-    j += "],\"rx\":[";
+    json.append("],\"rx\":[");
     for (uint8_t i = 0; i < writeProbeSnapshot.rxDlc; i++)
     {
         if (i)
-            j += ",";
-        j += String(writeProbeSnapshot.rxData[i]);
+            json.append(",");
+        json.appendf("%u", static_cast<unsigned int>(writeProbeSnapshot.rxData[i]));
     }
-    j += "]}}";
-    server.send(200, "application/json", j);
+    json.append("]}}");
+    if (!json.complete())
+    {
+        server.send(500, "application/json", "{\"error\":\"Status response overflow\"}");
+        return;
+    }
+#ifdef ESP_PLATFORM
+    RuntimeDiagnostics::lastStatusBytes.store(static_cast<uint32_t>(json.size()),
+                                              std::memory_order_relaxed);
+#endif
+    dashSendBuffer(200, "application/json", json.data(), json.size());
 }
+
+#ifdef ESP_PLATFORM
+static const char *dashWriteProbeStateName(uint8_t state)
+{
+    switch (state)
+    {
+    case kDashWriteProbePending:
+        return "waiting for matching frame";
+    case kDashWriteProbeMatch:
+        return "matching frame seen";
+    case kDashWriteProbeDifferent:
+        return "bus frame differs from write";
+    case kDashWriteProbeFailed:
+        return "transmit failed";
+    default:
+        return "no write recorded";
+    }
+}
+
+static void dashAppendFrameBytes(BoundedTextWriter &report, const uint8_t *data, uint8_t dlc)
+{
+    if (!data || dlc == 0)
+    {
+        report.append("unavailable");
+        return;
+    }
+    for (uint8_t i = 0; i < dlc && i < 8; i++)
+        report.appendf("%s%02X", i ? " " : "", static_cast<unsigned int>(data[i]));
+}
+
+static void dashAppendStackWatermark(BoundedTextWriter &report, const char *label,
+                                     TaskHandle_t taskHandle)
+{
+    if (!taskHandle)
+    {
+        report.appendf("%s: unavailable\n", label);
+        return;
+    }
+    report.appendf("%s: %lu bytes (ESP-IDF high-water mark)\n", label,
+                   static_cast<unsigned long>(uxTaskGetStackHighWaterMark(taskHandle)));
+}
+
+static void handleSupport()
+{
+    RuntimeDiagnostics::supportRequests.fetch_add(1, std::memory_order_relaxed);
+    const uint32_t now = millis();
+    bool canOnlineSnapshot = false;
+    DashWriteProbe writeProbeSnapshot = {};
+    {
+        DashDataGuard guard;
+        canOnlineSnapshot = canOnline && now - lastFrameMs <= 10000;
+        writeProbeSnapshot = dashWriteProbe;
+    }
+
+    char driverSummary[768] = "CAN driver diagnostics unavailable";
+    char canConfiguration[128] = "bitrate=500000 pins=unavailable";
+    if (dashDriver)
+    {
+        dashDriver->diagnosticsSummary(driverSummary, sizeof(driverSummary));
+        dashDriver->configurationSummary(canConfiguration, sizeof(canConfiguration));
+    }
+
+    wifi_ap_record_t wifiRecord = {};
+    const bool wifiConnected = dashStaConnectedSnapshot() &&
+                               esp_wifi_sta_get_ap_info(&wifiRecord) == ESP_OK;
+    char wifiSsid[33] = {};
+    if (wifiConnected)
+        memcpy(wifiSsid, wifiRecord.ssid, sizeof(wifiSsid) - 1);
+    else
+    {
+        DashWifiGuard guard;
+        strlcpy(wifiSsid, staSSID, sizeof(wifiSsid));
+    }
+    String ipAddress = wifiConnected ? WiFi.localIP().toString() : String("unavailable");
+    uint8_t mac[6] = {};
+    const bool hasMac = esp_read_mac(mac, ESP_MAC_WIFI_STA) == ESP_OK;
+
+    uint32_t configuredIds[160] = {};
+    const uint8_t configuredIdCount =
+        dashCollectMergedFilterIds(configuredIds, sizeof(configuredIds) / sizeof(configuredIds[0]));
+    struct SupportPluginSummary
+    {
+        char name[32];
+        uint8_t priority;
+        uint8_t ruleCount;
+    };
+    SupportPluginSummary enabledPlugins[PLUGIN_MAX] = {};
+    uint8_t enabledPluginCount = 0;
+    {
+        PluginLockGuard guard;
+        for (uint8_t i = 0; i < pluginCount && enabledPluginCount < PLUGIN_MAX; i++)
+        {
+            if (!pluginStore[i].enabled)
+                continue;
+            SupportPluginSummary &summary = enabledPlugins[enabledPluginCount++];
+            strlcpy(summary.name, pluginStore[i].name, sizeof(summary.name));
+            summary.priority = pluginStore[i].priority;
+            summary.ruleCount = pluginStore[i].ruleCount;
+        }
+    }
+
+    const size_t freeInternal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const size_t largestInternal =
+        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const size_t freePsram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    const uint32_t minimumHeap = esp_get_minimum_free_heap_size();
+    const uint32_t txFailures = RuntimeDiagnostics::txFail.load(std::memory_order_relaxed);
+    const bool nvsError = RuntimeDiagnostics::nvsState.load(std::memory_order_relaxed) ==
+                          RuntimeDiagnostics::NvsState::Error;
+    const bool busOff = strstr(driverSummary, "state=bus_off") != nullptr;
+    const bool lowHeap = minimumHeap < 32768 || largestInternal < 16384;
+    const bool warning = !canOnlineSnapshot || !appInjectionReady() || txFailures > 0 || lowHeap ||
+                         RuntimeDiagnostics::nvsState.load(std::memory_order_relaxed) ==
+                             RuntimeDiagnostics::NvsState::Recovered;
+    const char *overall = nvsError || busOff ? "ERROR" : warning ? "WARNING"
+                                                                 : "OK";
+
+    char response[6144];
+    BoundedTextWriter report(response, sizeof(response));
+    report.append("ev-open-can-tools support report\n");
+    report.append("Report schema: 1\n");
+    report.appendf("Overall: %s\n", overall);
+    report.appendf("Captured uptime: %lu ms\n\n", static_cast<unsigned long>(now));
+
+    report.append("[Firmware]\n");
+    report.appendf("Name: ev-open-can-tools\nVersion: %s\n", FIRMWARE_VERSION);
+    report.appendf("Build date: %s %s\n", __DATE__, __TIME__);
+#if defined(CONFIG_COMPILER_OPTIMIZATION_DEBUG)
+    report.append("Build type: debug\n");
+#elif defined(CONFIG_COMPILER_OPTIMIZATION_SIZE)
+    report.append("Build type: release (size optimized)\n");
+#else
+    report.append("Build type: release\n");
+#endif
+    report.appendf("ESP-IDF: %s\nTarget: %s\nChip revision: %u\nCPU cores: %u\n",
+                   esp_get_idf_version(), CONFIG_IDF_TARGET,
+                   static_cast<unsigned int>(RuntimeDiagnostics::systemInfo.chip.revision),
+                   static_cast<unsigned int>(RuntimeDiagnostics::systemInfo.chip.cores));
+    report.appendf("Flash size: %lu bytes\nReset reason: %d (%s)\nRTC boot count: %lu\n\n",
+                   static_cast<unsigned long>(RuntimeDiagnostics::systemInfo.flashBytes),
+                   static_cast<int>(RuntimeDiagnostics::bootResetReason),
+                   RuntimeDiagnostics::resetReasonName(RuntimeDiagnostics::bootResetReason),
+                   static_cast<unsigned long>(RuntimeDiagnostics::rtcBootCount));
+
+    report.append("[Memory]\n");
+    report.appendf("Health: %s\nFree heap: %lu bytes\nMinimum free heap: %lu bytes\n",
+                   lowHeap ? "[WARN] low-water threshold crossed" : "[OK]",
+                   static_cast<unsigned long>(esp_get_free_heap_size()),
+                   static_cast<unsigned long>(minimumHeap));
+    report.appendf("Largest internal block: %lu bytes\nInternal RAM: %lu free / %lu total bytes\n",
+                   static_cast<unsigned long>(largestInternal),
+                   static_cast<unsigned long>(freeInternal),
+                   static_cast<unsigned long>(RuntimeDiagnostics::systemInfo.internalRamBytes));
+    if (RuntimeDiagnostics::systemInfo.psramBytes)
+        report.appendf("PSRAM: %lu free / %lu total bytes\n",
+                       static_cast<unsigned long>(freePsram),
+                       static_cast<unsigned long>(RuntimeDiagnostics::systemInfo.psramBytes));
+    else
+        report.append("PSRAM: unavailable\n");
+
+    report.append("\n[Tasks]\n");
+    dashAppendStackWatermark(report, "Main/CAN task", RuntimeDiagnostics::mainTaskHandle);
+    dashAppendStackWatermark(report, "Web maintenance task", webTaskHandle);
+    dashAppendStackWatermark(report, "HTTP server task", xTaskGetCurrentTaskHandle());
+    dashAppendStackWatermark(report, "GVRET task", GvretSerial::taskHandle);
+    report.appendf("Main loop wakes: %lu\nCAN loop wakes: %lu\nCAN RX heartbeat: %lu\n",
+                   static_cast<unsigned long>(RuntimeDiagnostics::mainHeartbeat.load(std::memory_order_relaxed)),
+                   static_cast<unsigned long>(RuntimeDiagnostics::canHeartbeat.load(std::memory_order_relaxed)),
+                   static_cast<unsigned long>(RuntimeDiagnostics::canRxHeartbeat.load(std::memory_order_relaxed)));
+    report.appendf("Web maintenance wakes: %lu\nHeartbeat reports: %lu\nNo-CAN warnings: %lu\n",
+                   static_cast<unsigned long>(RuntimeDiagnostics::webHeartbeat.load(std::memory_order_relaxed)),
+                   static_cast<unsigned long>(RuntimeDiagnostics::heartbeatLogs.load(std::memory_order_relaxed)),
+                   static_cast<unsigned long>(RuntimeDiagnostics::noCanWarnings.load(std::memory_order_relaxed)));
+    if (now > 0)
+        report.appendf(
+            "Average wake rates: main=%llu/s can=%llu/s web=%llu/s\nAverage CAN RX rate: %llu frames/s\n",
+            static_cast<unsigned long long>(RuntimeDiagnostics::mainHeartbeat.load(std::memory_order_relaxed)) *
+                1000ULL / now,
+            static_cast<unsigned long long>(RuntimeDiagnostics::canHeartbeat.load(std::memory_order_relaxed)) *
+                1000ULL / now,
+            static_cast<unsigned long long>(RuntimeDiagnostics::webHeartbeat.load(std::memory_order_relaxed)) *
+                1000ULL / now,
+            static_cast<unsigned long long>(RuntimeDiagnostics::canFrames.load(std::memory_order_relaxed)) *
+                1000ULL / now);
+
+    report.append("\n[WiFi]\n");
+    report.appendf("State: %s\nSSID: ", wifiConnected ? "connected" : "disconnected");
+    report.appendSafe(wifiSsid[0] ? wifiSsid : "unavailable", sizeof(wifiSsid) - 1);
+    report.appendf("\nIP address: %s\nRSSI: ", ipAddress.c_str());
+    if (wifiConnected)
+        report.appendf("%d dBm\n", static_cast<int>(wifiRecord.rssi));
+    else
+        report.append("unavailable\n");
+    if (hasMac)
+        report.appendf("MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n", mac[0], mac[1], mac[2],
+                       mac[3], mac[4], mac[5]);
+    else
+        report.append("MAC address: unavailable\n");
+    report.appendf("AP clients: %d\n", WiFi.softAPgetStationNum());
+
+    report.append("\n[Configuration]\n");
+    report.appendf("Hardware mode: %s\nSpeed profile: %u (%s)\nPlugin replay: %u\n",
+                   hwMode == 0 ? "Legacy" : hwMode == 1 ? "HW3"
+                                                        : "HW4",
+                   static_cast<unsigned int>(dashManualSpeedProfile),
+                   dashSpeedProfileAuto ? "automatic" : "manual",
+                   static_cast<unsigned int>(pluginGetReplayCount()));
+    report.appendf("AP injection gate: %s\nOffset slew: %s",
+                   apInjectionGate ? "enabled" : "disabled",
+                   hw3OffsetSlew ? "enabled" : "disabled");
+    if (hw3OffsetSlew)
+        report.appendf(" at %u%%/s", static_cast<unsigned int>(hw3SlewRate));
+    report.appendf("\nUpdate channel: %s\nAutomatic update: %s\nEnabled plugins (%u): ",
+                   updateBetaChannel ? "beta" : "stable",
+                   autoUpdateEnabled ? "enabled" : "disabled",
+                   static_cast<unsigned int>(enabledPluginCount));
+    if (!enabledPluginCount)
+        report.append("none");
+    for (uint8_t i = 0; i < enabledPluginCount; i++)
+    {
+        report.appendf("%s#%u ", i ? ", " : "", static_cast<unsigned int>(enabledPlugins[i].priority));
+        report.appendSafe(enabledPlugins[i].name, sizeof(enabledPlugins[i].name) - 1);
+        report.appendf(" (%u rules)", static_cast<unsigned int>(enabledPlugins[i].ruleCount));
+    }
+    report.append("\n");
+
+    report.append("\n[CAN]\n");
+    report.appendf("Health: %s\nState: %s\nConfiguration: %s\nDriver: %s\n",
+                   busOff ? "[ERROR] bus-off" : canOnlineSnapshot ? "[OK]"
+                                                                  : "[WARN] offline",
+                   canOnlineSnapshot ? "online" : "offline", canConfiguration, driverSummary);
+    report.appendf("Total received frames: %lu\nLast frame age: ",
+                   static_cast<unsigned long>(RuntimeDiagnostics::canFrames.load(std::memory_order_relaxed)));
+    const uint32_t canAge = RuntimeDiagnostics::canAgeMs(now);
+    if (canAge == UINT32_MAX)
+        report.append("unavailable\n");
+    else
+        report.appendf("%lu ms\n", static_cast<unsigned long>(canAge));
+    report.appendf("TX successful: %lu\nTX failed: %lu\n",
+                   static_cast<unsigned long>(RuntimeDiagnostics::txOk.load(std::memory_order_relaxed)),
+                   static_cast<unsigned long>(txFailures));
+    report.appendf("Active firmware mode: %s\nConfigured CAN IDs (%u): ",
+                   hwMode == 0 ? "Legacy" : hwMode == 1 ? "HW3"
+                                                        : "HW4",
+                   static_cast<unsigned int>(configuredIdCount));
+    if (!configuredIdCount)
+        report.append("none");
+    for (uint8_t i = 0; i < configuredIdCount; i++)
+        report.appendf("%s0x%03lX", i ? "," : "", static_cast<unsigned long>(configuredIds[i]));
+    report.appendf("\nDriver-wake delay: %lu ms\nPost-CAN injection delay: %lu ms\n",
+                   DRIVER_WAKE_DELAY_MS, INJECTION_DELAY_MS);
+    report.appendf("CAN-seen gate: %s (%lu frames, requires >%lu)\n",
+                   RuntimeDiagnostics::canFrames.load(std::memory_order_relaxed) > CAN_LIVE_FRAME_THRESHOLD
+                       ? "passed"
+                       : "blocked",
+                   static_cast<unsigned long>(RuntimeDiagnostics::canFrames.load(std::memory_order_relaxed)),
+                   static_cast<unsigned long>(CAN_LIVE_FRAME_THRESHOLD));
+    report.appendf("Injection configured: %s\nInjection state: %s\n",
+                   canActive ? "armed" : "stopped", dashInjectionActive() ? "enabled" : "blocked");
+
+    report.append("\n[Last Write Check]\n");
+    report.appendf("State: %s\n", dashWriteProbeStateName(writeProbeSnapshot.state));
+    if (writeProbeSnapshot.active)
+    {
+        report.appendf("CAN ID: 0x%03lX\nMux: %d\nWrite age: %lu ms\nWrite payload: ",
+                       static_cast<unsigned long>(writeProbeSnapshot.id),
+                       static_cast<int>(writeProbeSnapshot.mux), now - writeProbeSnapshot.txMs);
+        dashAppendFrameBytes(report, writeProbeSnapshot.txData, writeProbeSnapshot.txDlc);
+        report.append("\nBus payload: ");
+        dashAppendFrameBytes(report, writeProbeSnapshot.rxData, writeProbeSnapshot.rxDlc);
+        if (writeProbeSnapshot.hasRx)
+            report.appendf("\nBus payload age: %lu ms", now - writeProbeSnapshot.rxMs);
+        report.append("\n");
+    }
+
+    report.append("\n[Safety]\n");
+    report.appendf("Hard torque cap: -1.80 to +1.80 Nm\nRaw torque bounds: 0x%03X to 0x%03X\n",
+                   static_cast<unsigned int>(TORQUE_RAW_MIN),
+                   static_cast<unsigned int>(TORQUE_RAW_MAX));
+    report.append("Extended/RTR modification frames: rejected\n");
+
+    report.append("\n[NVS]\n");
+    report.appendf("State: %s%s\nInitial result: %ld (%s)\nFinal result: %ld (%s)\n",
+                   nvsError ? "[ERROR] " : RuntimeDiagnostics::nvsState.load(std::memory_order_relaxed) == RuntimeDiagnostics::NvsState::Recovered ? "[WARN] "
+                                                                                                                                                   : "[OK] ",
+                   RuntimeDiagnostics::nvsStateName(),
+                   static_cast<long>(RuntimeDiagnostics::nvsInitialError.load(std::memory_order_relaxed)),
+                   esp_err_to_name(RuntimeDiagnostics::nvsInitialError.load(std::memory_order_relaxed)),
+                   static_cast<long>(RuntimeDiagnostics::nvsFinalError.load(std::memory_order_relaxed)),
+                   esp_err_to_name(RuntimeDiagnostics::nvsFinalError.load(std::memory_order_relaxed)));
+
+    report.append("\n[USB Serial / SavvyCAN]\n");
+    report.appendf("GVRET armed: %s\nGVRET connected: %s\nFrames sent: %lu\nFrames dropped: %lu\nBytes sent: %lu\nSession age: %lu ms\n",
+                   GvretSerial::enabled.load(std::memory_order_relaxed) ? "yes" : "no",
+                   GvretSerial::clientConnected.load(std::memory_order_relaxed) ? "yes" : "no",
+                   static_cast<unsigned long>(GvretSerial::framesSent.load(std::memory_order_relaxed)),
+                   static_cast<unsigned long>(GvretSerial::framesDropped.load(std::memory_order_relaxed)),
+                   static_cast<unsigned long>(GvretSerial::bytesSent.load(std::memory_order_relaxed)),
+                   static_cast<unsigned long>(GvretSerial::runtimeMs()));
+
+    report.append("\n[Web]\n");
+    report.appendf("HTTP requests: %lu\nHTTP response bytes: %lu (wraps at 4 GiB)\nLargest response: %lu bytes\nSupport requests: %lu\nPrevious support report: %lu bytes\nLast status JSON: %lu bytes\n",
+                   static_cast<unsigned long>(server.requestCount()),
+                   static_cast<unsigned long>(server.responseBytes()),
+                   static_cast<unsigned long>(server.maxResponseBytes()),
+                   static_cast<unsigned long>(RuntimeDiagnostics::supportRequests.load(std::memory_order_relaxed)),
+                   static_cast<unsigned long>(RuntimeDiagnostics::lastSupportBytes.load(std::memory_order_relaxed)),
+                   static_cast<unsigned long>(RuntimeDiagnostics::lastStatusBytes.load(std::memory_order_relaxed)));
+
+    if (!report.complete())
+    {
+        server.send(500, "text/plain", "Support report exceeded fixed buffer; report not sent.");
+        return;
+    }
+    RuntimeDiagnostics::lastSupportBytes.store(static_cast<uint32_t>(report.size()),
+                                               std::memory_order_relaxed);
+    dashSendBuffer(200, "text/plain; charset=utf-8", report.data(), report.size());
+}
+#endif
 
 static void handleConfigGet()
 {
@@ -1545,16 +1881,23 @@ static void dashReapplyFiltersWithPlugins()
 {
     if (!dashHandler || !dashDriver)
         return;
-    // Merge handler + plugin filter IDs
-    static constexpr uint8_t kDashMergedFilterMax = 160;
-    uint32_t mergedIds[kDashMergedFilterMax];
+    uint32_t mergedIds[160];
+    const uint8_t count =
+        dashCollectMergedFilterIds(mergedIds, sizeof(mergedIds) / sizeof(mergedIds[0]));
+    dashDriver->setFilters(mergedIds, count);
+}
+
+static uint8_t dashCollectMergedFilterIds(uint32_t *ids, uint8_t maxIds)
+{
+    if (!dashHandler || !ids || maxIds == 0)
+        return 0;
     uint8_t count = 0;
     const uint32_t *hIds = dashHandler->filterIds();
     uint8_t hCount = dashHandler->filterIdCount();
-    for (uint8_t i = 0; i < hCount && count < kDashMergedFilterMax; i++)
-        mergedIds[count++] = hIds[i];
-    count += pluginGetFilterIds(mergedIds + count, kDashMergedFilterMax - count);
-    dashDriver->setFilters(mergedIds, count);
+    for (uint8_t i = 0; i < hCount && count < maxIds; i++)
+        ids[count++] = hIds[i];
+    count += pluginGetFilterIds(ids + count, maxIds - count);
+    return count;
 }
 
 static void handlePluginList()
@@ -3534,9 +3877,10 @@ static void webTask(void *)
         {
 #ifdef ESP_PLATFORM
             RuntimeDiagnostics::noteWebLoop();
-#endif
+#else
             ArduinoOTA.handle();
             server.handleClient();
+#endif
             dashCheckWifi();
         }
         catch (const std::bad_alloc &)
@@ -3551,7 +3895,9 @@ static void webTask(void *)
         {
             Serial.println("[ERR] Web task request failed");
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        // ESP-IDF HTTP server is event-driven in its own task. WiFi rotation,
+        // OTA eligibility, and persistence deadlines only need coarse checks.
+        vTaskDelay(pdMS_TO_TICKS(250));
     }
 }
 
@@ -3685,6 +4031,9 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
 
     server.on("/", HTTP_GET, handleRoot);
     server.on("/status", HTTP_GET, handleStatus);
+#ifdef ESP_PLATFORM
+    server.on("/support", HTTP_GET, handleSupport);
+#endif
     server.on("/config", HTTP_GET, handleConfigGet);
     server.on("/config", HTTP_POST, handleConfig);
     server.on("/led_brightness", HTTP_POST, handleLedBrightness);
@@ -3715,6 +4064,7 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     server.on("/wifi_delete", HTTP_POST, handleWifiDelete);
     server.on("/update_check", HTTP_GET, handleUpdateCheck);
     server.on("/update_install", HTTP_POST, handleUpdateInstall);
+    server.on("/update_beta", HTTP_GET, handleUpdateBeta);
     server.on("/update_beta", HTTP_POST, handleUpdateBeta);
     server.on("/auto_update", HTTP_GET, handleAutoUpdate);
     server.on("/auto_update", HTTP_POST, handleAutoUpdate);
@@ -3725,9 +4075,10 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     if (strlen(staSSID) > 0)
         dashScheduleSTAConnect(kDashStaBootDelayMs);
 #if SOC_CPU_CORES_NUM == 1
-    BaseType_t webTaskResult = xTaskCreate(webTask, "web", 12288, nullptr, 1, nullptr);
+    BaseType_t webTaskResult = xTaskCreate(webTask, "web", 12288, nullptr, 1, &webTaskHandle);
 #else
-    BaseType_t webTaskResult = xTaskCreatePinnedToCore(webTask, "web", 12288, nullptr, 1, nullptr, 1);
+    BaseType_t webTaskResult =
+        xTaskCreatePinnedToCore(webTask, "web", 12288, nullptr, 1, &webTaskHandle, 1);
 #endif
     if (webTaskResult != pdPASS)
         dashLog("[ERR] Web maintenance task failed to start");

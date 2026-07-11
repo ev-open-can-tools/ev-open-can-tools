@@ -4,6 +4,9 @@
 
 #include <atomic>
 #include <esp_attr.h>
+#include <esp_chip_info.h>
+#include <esp_flash.h>
+#include <esp_heap_caps.h>
 #include <esp_system.h>
 
 #include "drivers/can_driver.h"
@@ -17,6 +20,22 @@ static const uint32_t CAN_LIVE_FRAME_THRESHOLD = 1000;
 
 namespace RuntimeDiagnostics
 {
+enum class NvsState : uint8_t
+{
+    Unknown,
+    Ready,
+    Recovered,
+    Error,
+};
+
+struct StaticSystemInfo
+{
+    esp_chip_info_t chip = {};
+    uint32_t flashBytes = 0;
+    size_t internalRamBytes = 0;
+    size_t psramBytes = 0;
+};
+
 inline std::atomic<uint32_t> mainHeartbeat{0};
 inline std::atomic<uint32_t> canHeartbeat{0};
 inline std::atomic<uint32_t> canRxHeartbeat{0};
@@ -26,8 +45,19 @@ inline std::atomic<uint32_t> lastCanFrameMs{0};
 inline std::atomic<uint32_t> canInitializedMs{0};
 inline std::atomic<uint32_t> txOk{0};
 inline std::atomic<uint32_t> txFail{0};
+inline std::atomic<uint32_t> heartbeatLogs{0};
+inline std::atomic<uint32_t> noCanWarnings{0};
+inline std::atomic<uint32_t> supportRequests{0};
+inline std::atomic<uint32_t> lastSupportBytes{0};
+inline std::atomic<uint32_t> lastStatusBytes{0};
+inline std::atomic<NvsState> nvsState{NvsState::Unknown};
+inline std::atomic<int32_t> nvsInitialError{ESP_OK};
+inline std::atomic<int32_t> nvsFinalError{ESP_OK};
 inline uint32_t lastHeartbeatLogMs = 0;
 inline uint32_t lastNoCanWarningMs = 0;
+inline esp_reset_reason_t bootResetReason = ESP_RST_UNKNOWN;
+inline StaticSystemInfo systemInfo;
+inline TaskHandle_t mainTaskHandle = nullptr;
 RTC_DATA_ATTR inline uint32_t rtcBootCount = 0;
 
 inline const char *resetReasonName(esp_reset_reason_t reason)
@@ -61,13 +91,43 @@ inline const char *resetReasonName(esp_reset_reason_t reason)
 
 inline void begin()
 {
+    mainTaskHandle = xTaskGetCurrentTaskHandle();
     rtcBootCount++;
-    const esp_reset_reason_t reason = esp_reset_reason();
-    Serial.printf("[BOOT] reset=%d (%s) rtcBootCount=%lu\n", static_cast<int>(reason),
-                  resetReasonName(reason), static_cast<unsigned long>(rtcBootCount));
-    if (reason == ESP_RST_BROWNOUT)
+    bootResetReason = esp_reset_reason();
+    esp_chip_info(&systemInfo.chip);
+    esp_flash_get_size(esp_flash_default_chip, &systemInfo.flashBytes);
+    systemInfo.internalRamBytes = heap_caps_get_total_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    systemInfo.psramBytes = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+    Serial.printf("[BOOT] reset=%d (%s) rtcBootCount=%lu\n", static_cast<int>(bootResetReason),
+                  resetReasonName(bootResetReason), static_cast<unsigned long>(rtcBootCount));
+    if (bootResetReason == ESP_RST_BROWNOUT)
         Serial.println("[WARN] Previous reset was caused by brownout");
     Serial.printf("[BOOT] ESP-IDF %s\n", esp_get_idf_version());
+}
+
+inline void noteNvsInitialization(esp_err_t initialError, esp_err_t finalError, bool recovered)
+{
+    nvsInitialError.store(initialError, std::memory_order_relaxed);
+    nvsFinalError.store(finalError, std::memory_order_relaxed);
+    nvsState.store(finalError != ESP_OK ? NvsState::Error
+                   : recovered          ? NvsState::Recovered
+                                        : NvsState::Ready,
+                   std::memory_order_relaxed);
+}
+
+inline const char *nvsStateName()
+{
+    switch (nvsState.load(std::memory_order_relaxed))
+    {
+    case NvsState::Ready:
+        return "ready";
+    case NvsState::Recovered:
+        return "recovered";
+    case NvsState::Error:
+        return "error";
+    default:
+        return "unknown";
+    }
 }
 
 inline void noteMainLoop() { mainHeartbeat.fetch_add(1, std::memory_order_relaxed); }
@@ -120,6 +180,7 @@ inline void logHeartbeat(const CanDriver *driver)
     if (now - lastHeartbeatLogMs < 5000)
         return;
     lastHeartbeatLogMs = now;
+    heartbeatLogs.fetch_add(1, std::memory_order_relaxed);
 
     const uint32_t totalFrames = canFrames.load(std::memory_order_relaxed);
     const uint32_t age = canAgeMs(now);
@@ -148,6 +209,7 @@ inline void logHeartbeat(const CanDriver *driver)
         now - lastNoCanWarningMs >= 5000)
     {
         lastNoCanWarningMs = now;
+        noCanWarnings.fetch_add(1, std::memory_order_relaxed);
         Serial.println("[WARN] No CAN frames yet, staying alive.");
     }
 }

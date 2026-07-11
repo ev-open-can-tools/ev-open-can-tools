@@ -232,10 +232,12 @@ public:
         bool hasStatus = driverInstalled_ && twai_get_status_info(&status) == ESP_OK;
         const twai_status_info_t &s = hasStatus ? status : lastStatus_;
         snprintf(out, outLen,
-                 "{\"type\":\"twai\",\"txPin\":%d,\"rxPin\":%d,\"ok\":%s,\"installed\":%s,\"state\":\"%s\",\"stateCode\":%d,\"msgsToTx\":%u,\"msgsToRx\":%u,\"txErrCounter\":%u,\"rxErrCounter\":%u,\"txFailed\":%u,\"rxMissed\":%u,\"rxOverrun\":%u,\"arbLost\":%u,\"busErrors\":%u,\"recoveries\":%u,\"rxErrors\":%u,\"txErrors\":%u,\"rejected\":%u,\"lastInstallErr\":%d,\"lastStartErr\":%d,\"lastRxErr\":%d,\"lastTxErr\":%d}",
+                 "{\"type\":\"twai\",\"txPin\":%d,\"rxPin\":%d,\"ok\":%s,\"installed\":%s,\"state\":\"%s\",\"stateCode\":%d,\"msgsToTx\":%u,\"msgsToRx\":%u,\"maxMsgsToTx\":%u,\"maxMsgsToRx\":%u,\"txErrCounter\":%u,\"rxErrCounter\":%u,\"txFailed\":%u,\"rxMissed\":%u,\"rxOverrun\":%u,\"arbLost\":%u,\"busErrors\":%u,\"recoveries\":%u,\"rxErrors\":%u,\"txErrors\":%u,\"rejected\":%u,\"lastInstallErr\":%d,\"lastStartErr\":%d,\"lastRxErr\":%d,\"lastTxErr\":%d}",
                  static_cast<int>(txPin_), static_cast<int>(rxPin_), driverOK_ ? "true" : "false",
                  driverInstalled_ ? "true" : "false", twaiStateName(s.state), static_cast<int>(s.state),
                  static_cast<unsigned int>(s.msgs_to_tx), static_cast<unsigned int>(s.msgs_to_rx),
+                 static_cast<unsigned int>(maxTxQueueDepth_),
+                 static_cast<unsigned int>(maxRxQueueDepth_),
                  static_cast<unsigned int>(s.tx_error_counter), static_cast<unsigned int>(s.rx_error_counter),
                  static_cast<unsigned int>(s.tx_failed_count), static_cast<unsigned int>(s.rx_missed_count),
                  static_cast<unsigned int>(s.rx_overrun_count), static_cast<unsigned int>(s.arb_lost_count),
@@ -257,10 +259,12 @@ public:
         bool hasStatus = driverInstalled_ && twai_get_status_info(&status) == ESP_OK;
         const twai_status_info_t &s = hasStatus ? status : lastStatus_;
         snprintf(out, outLen,
-                 "TWAI tx=%d rx=%d ok=%s installed=%s state=%s msgsToRx=%u msgsToTx=%u txErrCounter=%u rxErrCounter=%u txFailed=%u rxMissed=%u rxOverrun=%u arbLost=%u busErrors=%u recoveries=%u rxErrors=%u txErrors=%u rejected=%u lastInstallErr=%d lastStartErr=%d lastRxErr=%d lastTxErr=%d",
+                 "TWAI tx=%d rx=%d ok=%s installed=%s state=%s msgsToRx=%u msgsToTx=%u maxMsgsToRx=%u maxMsgsToTx=%u txErrCounter=%u rxErrCounter=%u txFailed=%u rxMissed=%u rxOverrun=%u arbLost=%u busErrors=%u recoveries=%u rxErrors=%u txErrors=%u rejected=%u lastInstallErr=%d lastStartErr=%d lastRxErr=%d lastTxErr=%d",
                  static_cast<int>(txPin_), static_cast<int>(rxPin_), driverOK_ ? "yes" : "no",
                  driverInstalled_ ? "yes" : "no", twaiStateName(s.state),
                  static_cast<unsigned int>(s.msgs_to_rx), static_cast<unsigned int>(s.msgs_to_tx),
+                 static_cast<unsigned int>(maxRxQueueDepth_),
+                 static_cast<unsigned int>(maxTxQueueDepth_),
                  static_cast<unsigned int>(s.tx_error_counter), static_cast<unsigned int>(s.rx_error_counter),
                  static_cast<unsigned int>(s.tx_failed_count), static_cast<unsigned int>(s.rx_missed_count),
                  static_cast<unsigned int>(s.rx_overrun_count), static_cast<unsigned int>(s.arb_lost_count),
@@ -270,6 +274,14 @@ public:
                  static_cast<int>(lastStartErr_), static_cast<int>(lastReceiveErr_),
                  static_cast<int>(lastTransmitErr_));
         unlock();
+    }
+
+    void configurationSummary(char *out, size_t outLen) const override
+    {
+        if (!out || outLen == 0)
+            return;
+        snprintf(out, outLen, "bitrate=500000 txGPIO=%d rxGPIO=%d",
+                 static_cast<int>(txPin_), static_cast<int>(rxPin_));
     }
 
 private:
@@ -316,6 +328,10 @@ private:
         if (twai_get_status_info(&status) != ESP_OK)
             return true;
         lastStatus_ = status;
+        if (status.msgs_to_rx > maxRxQueueDepth_)
+            maxRxQueueDepth_ = status.msgs_to_rx;
+        if (status.msgs_to_tx > maxTxQueueDepth_)
+            maxTxQueueDepth_ = status.msgs_to_tx;
         if (status.state == TWAI_STATE_RUNNING)
         {
             recoveryInProgress_ = false;
@@ -436,6 +452,8 @@ private:
     uint32_t transmitErrors_ = 0;
     uint32_t rejectedFrames_ = 0;
     uint32_t recoveries_ = 0;
+    uint32_t maxRxQueueDepth_ = 0;
+    uint32_t maxTxQueueDepth_ = 0;
     bool recoveryInProgress_ = false;
     uint32_t lastTxFailLogMs_ = 0;
     bool monitorAll_ = false;

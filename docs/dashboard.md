@@ -50,3 +50,9 @@ Firmware exposes one read-only 500 kbit/s CAN bus using reference GVRET framing.
 ## Dashboard Source Ownership
 
 [`include/web/mcp2515_dashboard_ui.src.h`](../include/web/mcp2515_dashboard_ui.src.h) is authoritative HTML/CSS/JavaScript source. [`include/web/mcp2515_dashboard_ui.h`](../include/web/mcp2515_dashboard_ui.h) is generated raw/gzip firmware data. Dashboard PlatformIO builds regenerate it through `scripts/minify_dashboard.py`; generator uses Python standard library and fixed gzip timestamp for reproducible output. Edit source file, never generated header directly.
+
+## Support Diagnostics
+
+Collapsed **Support diagnostics** section is final dashboard card. Expanding it makes one on-demand `/support` request; it never polls. Report covers firmware/build/chip/flash/reset, heap and stack watermarks, WiFi identity and signal, CAN/TWAI state and queue pressure, filters and safety gates, Last Write Check, NVS recovery, GVRET, and web/request counters. It intentionally excludes passwords, OTA credentials, tokens, keys, and plugin payloads. Use **Refresh report** for new snapshot and **Copy report** before opening GitHub issue.
+
+See [ESP32 Runtime Optimization](esp32-optimization.md) for measured overhead reductions and further hardware-gated tuning guidance.

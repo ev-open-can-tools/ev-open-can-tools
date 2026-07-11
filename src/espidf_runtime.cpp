@@ -1391,6 +1391,7 @@ bool WebServer::readUpload(httpd_req_t *req, const Route &route)
 
 esp_err_t WebServer::handle(httpd_req_t *req)
 {
+    requestCount_.fetch_add(1, std::memory_order_relaxed);
     currentReq_ = req;
     try
     {
@@ -1490,6 +1491,13 @@ void WebServer::sendRaw(int code, const char *type, const char *body, size_t len
 {
     if (!currentReq_)
         return;
+    responseBytes_.fetch_add(len, std::memory_order_relaxed);
+    uint32_t previousMax = maxResponseBytes_.load(std::memory_order_relaxed);
+    while (len > previousMax &&
+           !maxResponseBytes_.compare_exchange_weak(previousMax, static_cast<uint32_t>(len),
+                                                    std::memory_order_relaxed))
+    {
+    }
     const char *status = "500 Internal Server Error";
     switch (code)
     {

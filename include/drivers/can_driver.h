@@ -36,5 +36,12 @@ struct CanDriver
         snprintf(out, outLen, "CAN driver diagnostics unavailable");
     }
 
+    virtual void configurationSummary(char *out, size_t outLen) const
+    {
+        if (!out || outLen == 0)
+            return;
+        snprintf(out, outLen, "bitrate=500000 pins=unavailable");
+    }
+
     virtual ~CanDriver() = default;
 };

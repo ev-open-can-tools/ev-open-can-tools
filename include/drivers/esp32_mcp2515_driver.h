@@ -16,7 +16,7 @@ class ESP32_MCP2515Driver : public CanDriver
 public:
     static constexpr bool kSupportsISR = false;
 
-    explicit ESP32_MCP2515Driver(uint8_t csPin) : mcp_(csPin)
+    explicit ESP32_MCP2515Driver(uint8_t csPin) : mcp_(csPin), csPin_(csPin)
     {
 #ifdef ESP_PLATFORM
         mutex_ = xSemaphoreCreateMutex();
@@ -272,6 +272,14 @@ public:
 
     MCP2515 &mcp() { return mcp_; }
 
+    void configurationSummary(char *out, size_t outLen) const override
+    {
+        if (!out || outLen == 0)
+            return;
+        snprintf(out, outLen, "bitrate=500000 mcp2515CsGPIO=%u",
+                 static_cast<unsigned int>(csPin_));
+    }
+
 #ifdef ESP_PLATFORM
     uint8_t errorFlags()
     {
@@ -419,6 +427,7 @@ private:
     }
 
     MCP2515 mcp_;
+    uint8_t csPin_ = 0;
 #ifdef ESP_PLATFORM
     mutable SemaphoreHandle_t mutex_ = nullptr;
     uint32_t exactFilterIds_[kMaxExactFilters] = {};
