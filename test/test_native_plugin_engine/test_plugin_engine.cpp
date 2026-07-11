@@ -251,6 +251,37 @@ void test_hw3_fsd_activation_rule_reports_diagnostics()
     TEST_ASSERT_EQUAL_HEX8(0x41, rule.diag.lastModified[5]);
 }
 
+void test_invalid_plugin_fields_fail_closed()
+{
+    PluginData plugin = {};
+    TEST_ASSERT_FALSE(pluginParseJson(
+        R"JSON({"name":"wrapped byte","rules":[{"id":100,"ops":[{"type":"set_byte","byte":256,"val":1}]}]})JSON",
+        plugin));
+    TEST_ASSERT_FALSE(pluginParseJson(
+        R"JSON({"name":"unknown op","rules":[{"id":100,"ops":[{"type":"typo","byte":0,"val":1}]}]})JSON",
+        plugin));
+    TEST_ASSERT_FALSE(pluginParseJson(
+        R"JSON({"name":"bad bus","rules":[{"id":100,"bus":"VEHICLE","ops":[{"type":"set_bit","bit":0}]}]})JSON",
+        plugin));
+    TEST_ASSERT_FALSE(pluginParseJson(
+        R"JSON({"name":"bad periodic","rules":[{"id":100,"mux":3,"ops":[{"type":"emit_periodic","interval":100}]}]})JSON",
+        plugin));
+}
+
+void test_operation_outside_frame_dlc_is_not_sent()
+{
+    installPlugin(R"JSON({
+      "name":"short frame",
+      "rules":[{"id":321,"ops":[{"type":"set_byte","byte":7,"val":1}]}]
+    })JSON");
+
+    MockDriver driver;
+    CanFrame frame = {.id = 321};
+    frame.dlc = 4;
+    TEST_ASSERT_TRUE(pluginProcessFrame(frame, driver));
+    TEST_ASSERT_EQUAL_size_t(0, driver.sent.size());
+}
+
 int main()
 {
     UNITY_BEGIN();
@@ -261,5 +292,7 @@ int main()
     RUN_TEST(test_byte_match_gates_0x370_counter_duplicate_plugin);
     RUN_TEST(test_or_and_byte_ops_apply_expected_values);
     RUN_TEST(test_hw3_fsd_activation_rule_reports_diagnostics);
+    RUN_TEST(test_invalid_plugin_fields_fail_closed);
+    RUN_TEST(test_operation_outside_frame_dlc_is_not_sent);
     return UNITY_END();
 }

@@ -1,47 +1,52 @@
 # Dashboard Guide
 
-[Project Home](../) | [Documentation](index.md) | [Build & Flash](building.md) | [Plugin System](plugins.md) | [Release Notes](../CHANGELOG.md)
+[Project Home](../) | [Documentation](index.md) | [Build & Flash](building.md) | [Nag Suppression](nag-killer.md) | [Plugin System](plugins.md) | [Release Notes](../CHANGELOG.md)
 
-The dashboard is available on ESP32 builds that include `ESP32_DASHBOARD`. It runs from the device itself and is intended for local management at `http://192.168.4.1/` while connected to the device hotspot.
-![Dashboard](img/dashboard.png)
+ESP32 builds with `ESP32_DASHBOARD` serve a local dashboard at `http://192.168.4.1/` while connected to device hotspot. Dashboard starts before CAN initialization, so WiFi, configuration, and diagnostics remain available during driver wake-up, CAN failure, and bus recovery.
 
-## Core Runtime Controls
+## Runtime Status And Safety
 
-- **Hardware**: switch the active runtime mode between `Legacy`, `HW3`, and `HW4`
-- **Speed Profile**: follow the stalk automatically or lock a manual profile; HW4 adds `Max` and `Sloth`
-- **Features**: only `Enable Logging` remains on the main card; the other vehicle overrides are no longer exposed there
-- **Injection control**: stop or resume CAN injection without reflashing, then reboot from the UI when needed
+- **Runtime status** shows CAN availability, injection state, received-frame count, last-frame age, successful/failed transmissions, TWAI state, free heap, and uptime.
+- TWAI state colors are green for running, red for bus-off, and yellow for stopped or recovering.
+- **Last Write Check** compares latest write attempt with next received frame having same CAN ID and mux. It can reveal later overwrites. It does not prove an ECU accepted a write.
+- TWAI builds wait 10 seconds before initializing CAN. All ESP-IDF injection remains blocked for 15 seconds after actual CAN initialization and until more than 1,000 valid CAN frames have arrived.
+- Missing CAN traffic never reboots firmware. Dashboard stays online and serial emits throttled `No CAN frames yet, staying alive.` warnings.
+- A bus-off state starts ESP-IDF TWAI recovery. Runtime status and five-second serial heartbeat expose recovery state and counters.
 
-## CAN Tools
+## Configuration
 
-- **CAN Sniffer**: live frame view with filtering by ID or known frame name
-- **Wire / DBC ID toggle**: switch between on-wire 11-bit IDs and prefixed DBC-style IDs
-- **CAN Recorder**: capture up to 2000 frames and export them as CSV
-- **CAN Controller**: inspect per-mux RX/TX/error counters and controller error flags
-- **Live Log**: view firmware log output directly in the dashboard
-
-## Connectivity And Updates
-
-- **WiFi Hotspot**: change AP name and password, optionally hide the SSID, and keep the values across reboots and firmware updates
-- **WiFi Internet**: scan for networks, connect as STA, and optionally store a static IP/gateway/mask/DNS configuration
-- **Firmware Update**: check GitHub releases, switch between stable and beta channel, enable auto-update on boot, or upload a local `.bin` manually
-- **CAN Pins**: override TWAI TX/RX GPIO pins at runtime for supported boards; settings are stored in NVS
-- **Settings Backup**: export and restore AP, WiFi, CAN pin, update, and plugin replay settings as JSON
+- Select live hardware mode: `Legacy`, `HW3`, or `HW4`.
+- Use automatic speed profile or select compatible manual profile. `Max` and `Sloth` require HW4.
+- Configure plugin replay, AP injection gate, HW3/HW4 offset slew, and status LED brightness.
+- Stop or arm injection and reboot device.
+- Mode changes reset pending injection sequence state inside CAN decision path. Saved configuration cannot consume transition early.
 
 ## Plugins
 
-- **Plugins card**: install from URL, upload a `.json`, or paste JSON directly when offline
-- **Plugin list**: inspect rules, enable or disable plugins, remove them, and spot priority overlaps between enabled plugins
-- **Plugin Editor**: create plugins without hand-writing JSON, preview the result live, load an installed plugin back into the editor, download the generated file, and add a quick rule from shorthand such as `0x7FF mux=2 byte[5] = 0x4C`
-- **Rule Test**: wait for a matching live CAN frame, apply one editor rule to that frame, then send the result repeatedly with a chosen count and interval
-- **Plugin Replay**: set how many modified GTW 2047 (`0x7FF`) plugin frames are sent for each observed GTW frame
-- **Periodic emit plugins**: use `emit_periodic` rules to keep the last modified GTW mux 3 value on the bus, optionally with GTW UDS silent-mode keep-alives
-- Plugin-based overrides such as nag suppression and Summon unlock can live here instead of on the main Features card
-- Dashboard builds only inject automatically through enabled plugins; built-in vehicle handlers stay observational
-- Dashboard cards can be collapsed individually with `Hide` / `Show` to keep the page shorter on mobile
+- Install plugin from HTTPS URL, uploaded `.json`, or pasted JSON.
+- Enable, disable, prioritize, or remove installed plugins.
+- Dashboard builds use enabled plugins for automatic CAN injection; built-in vehicle handlers remain observational.
+- Installed plugins and their enabled state persist on SPIFFS.
 
-## Persistence Notes
+See [Plugin System](plugins.md) for JSON schema and safety rules.
 
-- WiFi hotspot settings, WiFi internet settings, update flags, CAN pins, and several runtime defaults are stored in NVS
-- Installed plugins live on SPIFFS, start disabled after install, and restore their enabled or disabled state on boot
-- On AtomS3 Mini builds, the built-in button can toggle injection and that state is also persisted
+## SavvyCAN USB Serial
+
+1. Open dashboard **SavvyCAN USB serial** card and select **Arm GVRET**.
+2. Connect board USB port to computer.
+3. In SavvyCAN, choose **Connection → Add Connection → Serial Connection (GVRET)**.
+4. Select board serial port and `115200` baud.
+
+Firmware exposes one read-only 500 kbit/s CAN bus using reference GVRET framing. Valid GVRET device-info, bus-count, bus-parameter, and keep-alive commands are supported. CAN transmit commands are not advertised or invented. When SavvyCAN handshake succeeds, text logs are suppressed on that transport so binary frames remain clean. Disconnect, 15 seconds without a command, manual stop, or 10-minute session limit releases serial ownership. CAN, web, and main loops remain nonblocking.
+
+## Connectivity And Updates
+
+- Change hotspot SSID/password and visibility.
+- Save multiple WiFi networks with DHCP or validated static IPv4 settings.
+- Override supported TWAI TX/RX GPIO pins.
+- Export or restore settings with OTA authentication.
+- Check stable/beta GitHub releases, configure automatic updates, or upload board-specific `.bin` firmware.
+
+## Dashboard Source Ownership
+
+[`include/web/mcp2515_dashboard_ui.src.h`](../include/web/mcp2515_dashboard_ui.src.h) is authoritative HTML/CSS/JavaScript source. [`include/web/mcp2515_dashboard_ui.h`](../include/web/mcp2515_dashboard_ui.h) is generated raw/gzip firmware data. Dashboard PlatformIO builds regenerate it through `scripts/minify_dashboard.py`; generator uses Python standard library and fixed gzip timestamp for reproducible output. Edit source file, never generated header directly.

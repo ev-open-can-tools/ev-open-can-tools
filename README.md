@@ -55,9 +55,9 @@ Not everyone needs to write code to be useful here. Testing, documenting, sharin
 Depending on your hardware and build, the project can provide:
 
 - Vehicle-side features you can activate via [plugins](https://github.com/ev-open-can-tools/ev-open-can-tools-plugins)
-- A local ESP32 dashboard with runtime hardware mode switching, live status, CAN sniffer, CAN recorder, controller stats, live log, stop or resume injection, and reboot control
+- A local ESP32 dashboard with runtime hardware mode switching, concise CAN/TWAI status, Last Write Check, plugin controls, SavvyCAN USB logging, stop/resume injection, and reboot control
 - WiFi and OTA features including hotspot mode, WiFi internet, GitHub release updates, beta channel support, auto-update on boot, and manual `.bin` upload
-- A plugin system that supports install by URL, file upload, or pasted JSON, plus a browser-based Plugin Editor and rule testing tools
+- A plugin system that supports install by URL, file upload, or pasted JSON, with enable/disable, priority, and removal controls
 - Persistent runtime settings for dashboard-related configuration
 
 ## Best Starting Point
@@ -130,6 +130,7 @@ For a fuller setup flow and board-specific notes, see [Build & Flash](https://ev
 - [Dashboard guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/dashboard.html)
 - [Build and flash guide](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html)
 - [Plugin system reference](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/plugins.html)
+- [Nag suppression and Party CAN](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/nag-killer.html)
 - [Release notes](CHANGELOG.md)
 
 ## Community

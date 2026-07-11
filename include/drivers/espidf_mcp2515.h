@@ -68,14 +68,17 @@ public:
 
     ERROR reset()
     {
-        ensureBus();
+        ioError_ = false;
+        if (!ensureBus())
+            return ERROR_FAILINIT;
         uint8_t cmd = INSTRUCTION_RESET;
-        transfer(&cmd, nullptr, 1);
+        if (!transfer(&cmd, nullptr, 1))
+            return ERROR_FAILINIT;
         delay(10);
         writeReg(MCP_CANINTE, CANINTF_RX0IF | CANINTF_RX1IF | CANINTF_ERRIF | CANINTF_MERRF);
         bitModify(MCP_RXB0CTRL, RXBnCTRL_RXM_MASK | RXB0CTRL_BUKT | RXB0CTRL_FILHIT_MASK, RXBnCTRL_RXM_STDEXT | RXB0CTRL_BUKT | RXB0CTRL_FILHIT);
         bitModify(MCP_RXB1CTRL, RXBnCTRL_RXM_MASK | RXB1CTRL_FILHIT_MASK, RXBnCTRL_RXM_STDEXT | RXB1CTRL_FILHIT);
-        return ERROR_OK;
+        return ioError_ ? ERROR_FAILINIT : ERROR_OK;
     }
 
     ERROR setBitrate(CAN_SPEED, CAN_CLOCK clock)
@@ -99,7 +102,7 @@ public:
         writeReg(MCP_CNF1, cfg1);
         writeReg(MCP_CNF2, cfg2);
         writeReg(MCP_CNF3, cfg3);
-        return ERROR_OK;
+        return ioError_ ? ERROR_FAILINIT : ERROR_OK;
     }
 
     ERROR setConfigMode() { return setMode(CANCTRL_REQOP_CONFIG); }
@@ -113,24 +116,31 @@ public:
         uint8_t data[4];
         prepareId(data, ext, id);
         writeRegs(mask == MASK0 ? MCP_RXM0SIDH : MCP_RXM1SIDH, data, sizeof(data));
-        return ERROR_OK;
+        return ioError_ ? ERROR_FAIL : ERROR_OK;
     }
 
     ERROR setFilter(RXF filter, bool ext, uint32_t id)
     {
         static constexpr uint8_t regs[] = {MCP_RXF0SIDH, MCP_RXF1SIDH, MCP_RXF2SIDH, MCP_RXF3SIDH, MCP_RXF4SIDH, MCP_RXF5SIDH};
+        if (filter < RXF0 || filter > RXF5)
+            return ERROR_FAIL;
         ERROR err = setConfigMode();
         if (err != ERROR_OK)
             return err;
         uint8_t data[4];
         prepareId(data, ext, id);
         writeRegs(regs[filter], data, sizeof(data));
-        return ERROR_OK;
+        return ioError_ ? ERROR_FAIL : ERROR_OK;
     }
 
     ERROR readMessage(can_frame *frame)
     {
+        if (!frame)
+            return ERROR_FAIL;
+        ioError_ = false;
         uint8_t status = readStatus();
+        if (ioError_)
+            return ERROR_FAIL;
         if (status & STAT_RX0IF)
             return readRx(MCP_RXB0CTRL, MCP_RXB0SIDH, MCP_RXB0DATA, CANINTF_RX0IF, frame);
         if (status & STAT_RX1IF)
@@ -140,6 +150,9 @@ public:
 
     ERROR sendMessage(const can_frame *frame)
     {
+        if (!frame)
+            return ERROR_FAILTX;
+        ioError_ = false;
         static constexpr uint8_t ctrl[] = {MCP_TXB0CTRL, MCP_TXB1CTRL, MCP_TXB2CTRL};
         static constexpr uint8_t sidh[] = {MCP_TXB0SIDH, MCP_TXB1SIDH, MCP_TXB2SIDH};
         for (int i = 0; i < 3; i++)
@@ -150,7 +163,11 @@ public:
         return ERROR_ALLTXBUSY;
     }
 
-    uint8_t getErrorFlags() { return readReg(MCP_EFLG); }
+    uint8_t getErrorFlags()
+    {
+        ioError_ = false;
+        return readReg(MCP_EFLG);
+    }
 
 private:
     static constexpr uint8_t INSTRUCTION_WRITE = 0x02;
@@ -218,90 +235,116 @@ private:
     static constexpr uint8_t MCP_CANSTAT = 0x0E;
     static constexpr uint8_t MCP_CANCTRL = 0x0F;
 
-    void ensureBus()
+    bool ensureBus()
     {
         if (device_)
-            return;
+            return true;
         spi_bus_config_t bus = {};
         bus.mosi_io_num = SPI_MOSI;
         bus.miso_io_num = SPI_MISO;
         bus.sclk_io_num = SPI_SCK;
         bus.quadwp_io_num = -1;
         bus.quadhd_io_num = -1;
-        spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
+        esp_err_t err = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
+        if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
+            return false;
         spi_device_interface_config_t dev = {};
         dev.clock_speed_hz = 8000000;
         dev.mode = 0;
         dev.spics_io_num = csPin_;
         dev.queue_size = 1;
-        spi_bus_add_device(SPI2_HOST, &dev, &device_);
+        return spi_bus_add_device(SPI2_HOST, &dev, &device_) == ESP_OK;
     }
 
-    void transfer(const uint8_t *tx, uint8_t *rx, size_t len)
+    bool transfer(const uint8_t *tx, uint8_t *rx, size_t len)
     {
-        ensureBus();
+        if (!ensureBus())
+            return false;
         spi_transaction_t t = {};
         t.length = len * 8;
         t.tx_buffer = tx;
         t.rx_buffer = rx;
-        spi_device_transmit(device_, &t);
+        return spi_device_transmit(device_, &t) == ESP_OK;
     }
 
     uint8_t readReg(uint8_t reg)
     {
         uint8_t tx[3] = {INSTRUCTION_READ, reg, 0};
         uint8_t rx[3] = {};
-        transfer(tx, rx, sizeof(tx));
+        if (!transfer(tx, rx, sizeof(tx)))
+            ioError_ = true;
         return rx[2];
     }
 
     void readRegs(uint8_t reg, uint8_t *data, size_t len)
     {
+        if (!data || len > 14)
+        {
+            ioError_ = true;
+            return;
+        }
         uint8_t tx[16] = {};
         uint8_t rx[16] = {};
         tx[0] = INSTRUCTION_READ;
         tx[1] = reg;
-        transfer(tx, rx, len + 2);
+        if (!transfer(tx, rx, len + 2))
+        {
+            ioError_ = true;
+            memset(data, 0, len);
+            return;
+        }
         memcpy(data, rx + 2, len);
     }
 
     void writeReg(uint8_t reg, uint8_t value)
     {
         uint8_t tx[3] = {INSTRUCTION_WRITE, reg, value};
-        transfer(tx, nullptr, sizeof(tx));
+        if (!transfer(tx, nullptr, sizeof(tx)))
+            ioError_ = true;
     }
 
     void writeRegs(uint8_t reg, const uint8_t *data, size_t len)
     {
+        if (!data || len > 14)
+        {
+            ioError_ = true;
+            return;
+        }
         uint8_t tx[16] = {};
         tx[0] = INSTRUCTION_WRITE;
         tx[1] = reg;
         memcpy(tx + 2, data, len);
-        transfer(tx, nullptr, len + 2);
+        if (!transfer(tx, nullptr, len + 2))
+            ioError_ = true;
     }
 
     void bitModify(uint8_t reg, uint8_t mask, uint8_t data)
     {
         uint8_t tx[4] = {INSTRUCTION_BITMOD, reg, mask, data};
-        transfer(tx, nullptr, sizeof(tx));
+        if (!transfer(tx, nullptr, sizeof(tx)))
+            ioError_ = true;
     }
 
     uint8_t readStatus()
     {
         uint8_t tx[2] = {INSTRUCTION_READ_STATUS, 0};
         uint8_t rx[2] = {};
-        transfer(tx, rx, sizeof(tx));
+        if (!transfer(tx, rx, sizeof(tx)))
+            ioError_ = true;
         return rx[1];
     }
 
     ERROR setMode(uint8_t mode)
     {
+        ioError_ = false;
         bitModify(MCP_CANCTRL, CANCTRL_REQOP, mode);
-        uint32_t end = millis() + 10;
-        while (millis() < end)
+        uint32_t started = millis();
+        while (millis() - started < 10)
         {
-            if ((readReg(MCP_CANSTAT) & CANSTAT_OPMOD) == mode)
+            if (!ioError_ && (readReg(MCP_CANSTAT) & CANSTAT_OPMOD) == mode)
                 return ERROR_OK;
+            if (ioError_)
+                return ERROR_FAIL;
         }
         return ERROR_FAIL;
     }
@@ -342,13 +385,15 @@ private:
         writeRegs(sidh, data, 5 + frame->can_dlc);
         bitModify(ctrl, TXB_TXREQ, TXB_TXREQ);
         uint8_t result = readReg(ctrl);
-        return (result & (TXB_ABTF | TXB_MLOA | TXB_TXERR)) ? ERROR_FAILTX : ERROR_OK;
+        return ioError_ || (result & (TXB_ABTF | TXB_MLOA | TXB_TXERR)) ? ERROR_FAILTX : ERROR_OK;
     }
 
     ERROR readRx(uint8_t ctrlReg, uint8_t sidhReg, uint8_t dataReg, uint8_t flag, can_frame *frame)
     {
         uint8_t header[5] = {};
         readRegs(sidhReg, header, sizeof(header));
+        if (ioError_)
+            return ERROR_FAIL;
         uint32_t id = (header[MCP_SIDH] << 3) + (header[MCP_SIDL] >> 5);
         if ((header[MCP_SIDL] & TXB_EXIDE_MASK) == TXB_EXIDE_MASK)
         {
@@ -359,7 +404,10 @@ private:
         }
         uint8_t dlc = header[MCP_DLC] & DLC_MASK;
         if (dlc > CAN_MAX_DLEN)
+        {
+            bitModify(MCP_CANINTF, flag, 0);
             return ERROR_FAIL;
+        }
         if (readReg(ctrlReg) & RXBnCTRL_RTR)
             id |= CAN_RTR_FLAG;
         frame->can_id = id;
@@ -367,9 +415,10 @@ private:
         memset(frame->data, 0, sizeof(frame->data));
         readRegs(dataReg, frame->data, dlc);
         bitModify(MCP_CANINTF, flag, 0);
-        return ERROR_OK;
+        return ioError_ ? ERROR_FAIL : ERROR_OK;
     }
 
     uint8_t csPin_;
     spi_device_handle_t device_ = nullptr;
+    bool ioError_ = false;
 };

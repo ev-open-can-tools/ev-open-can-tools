@@ -14,10 +14,8 @@ The plugin system allows you to create and share CAN frame modification rules as
 ## Dashboard workflow
 
 - Use the **Plugins** card to install a plugin from URL, upload a `.json`, or paste JSON directly
-- New installs start disabled so you can review conflicts and priority before enabling them
-- Use the **Plugin Editor** to build a plugin from form fields instead of editing raw JSON by hand
-- Load an installed plugin back into the editor when you want to adjust an existing rule set and reinstall it
-- Use **Rule Test** to wait for the next matching live CAN frame, apply one editor rule to that frame, and send the result a chosen number of times
+- New installs start disabled so plugin JSON and priority can be reviewed before enabling them
+- Use enable/disable, up/down priority, and remove controls for installed plugins
 
 ## Plugin JSON format
 
@@ -130,7 +128,7 @@ Clears specific bits without affecting others. `data[byte] &= val`
 | `mask` | 1-255 | Contiguous bitmask for the counter field. Defaults to `15` (0x0F, lower nibble). |
 | `step` | 1-255 | Amount to add before wrapping inside the masked field. Defaults to `1`. |
 
-The counter is read from the masked bits, incremented modulo the field width, and written back into the same bits. Place `counter` before `checksum` when the frame also uses the byte 7 vehicle checksum. Replayed GTW 2047 frames, repeated Rule Test sends, and periodic emits advance the counter again before each extra send.
+The counter is read from masked bits, incremented modulo field width, and written back into same bits. Place `counter` before `checksum` when frame also uses byte 7 vehicle checksum. Replayed GTW 2047 frames and periodic emits advance counter again before each extra send.
 
 #### `emit_periodic` — Periodically emit the cached GTW mux 3 frame
 
@@ -223,8 +221,8 @@ This rule listens for CAN ID `0x370` (`880`) and only matches frames where byte 
 
 1. Open the dashboard at `192.168.4.1`
 2. Scroll to the **Plugins** card
-3. Click **Scan** to find available WiFi networks, then select yours — or type the SSID manually
-4. Enter the WiFi password and click **Connect**
+3. In **Connectivity → WiFi internet**, click **Scan**, then select network or type SSID manually
+4. Enter WiFi password and click **Save network**
 5. Optionally expand **Static IP** to configure a fixed IP address, gateway, subnet mask and DNS
 6. Wait for the "Connected" status
 7. Paste the plugin URL (e.g. a GitHub raw link) and click **Install**
@@ -234,7 +232,7 @@ This rule listens for CAN ID `0x370` (`880`) and only matches frames where byte 
 1. Download the plugin `.json` file to your phone or laptop
 2. Open the dashboard at `192.168.4.1`
 3. Scroll to the **Plugins** card
-4. Click **Upload .json** and select the file
+4. Select `.json` file and click **Install JSON**
 
 ### Via paste JSON (offline)
 
@@ -244,15 +242,15 @@ No internet, no file picker — works completely offline:
 2. Open the dashboard at `192.168.4.1`
 3. Scroll to the **Plugins** card
 4. Paste the JSON into the **Paste JSON (offline)** textarea
-5. Click **Install from JSON**
+5. Click **Install JSON**
 
 The JSON is validated client-side before sending. If the JSON is invalid, an error message is shown immediately.
 
 ### Managing plugins
 
-- **Enable/Disable**: Toggle the switch next to each plugin
-- **Priority**: Use the priority selector next to each plugin to choose which plugin wins overlapping bit writes. `#1` is evaluated first.
-- **Remove**: Click the **X** button
+- **Enable/Disable**: use button beside each plugin
+- **Priority**: use up/down buttons. First plugin is evaluated first.
+- **Remove**: use **Remove** button
 - Plugins persist across reboots (stored on SPIFFS)
 - Enabled/disabled state and priority order are preserved
 
@@ -265,19 +263,9 @@ Host your plugin JSON file anywhere accessible via HTTP/HTTPS:
 - **GitHub Gist**: Create a gist and use the raw URL
 - **Any web server**: Just serve the `.json` file with the correct content type
 
-## Plugin detail view
-
-Click on any installed plugin name in the dashboard to expand its detail view. This shows:
-
-- **CAN IDs** targeted by each rule (hex and decimal)
-- **Bus pin and mux value/mask** if the rule is bus- or mux-specific
-- **Operations** listed in execution order (e.g. `set_bit(46, true)`, `counter(0, mask=0xf, step=1)`, `emit_periodic(100 ms)`, `checksum(byte 7)`)
-
-This lets you inspect exactly what a plugin does before enabling it.
-
 ## Conflict detection
 
-When two enabled plugins target the same bit on the same CAN ID and mux, the dashboard shows a **Priority overlap** warning. The lower-priority plugin's overlapping bit is ignored at runtime, and the detail view shows which higher-priority plugin wins.
+When two enabled plugins target same bit on same CAN ID and mux, lower-priority write is ignored at runtime. Review plugin JSON before installation; simplified dashboard no longer exposes rule diagnostics.
 
 ## Important notes
 
@@ -285,7 +273,6 @@ When two enabled plugins target the same bit on the same CAN ID and mux, the das
 - Enabled plugin rules for the same CAN ID, bus, and mux are merged into one injected frame per incoming frame; GTW 2047 can be repeated by the configured plugin replay count, and GTW mux 3 can also be kept alive with `emit_periodic`.
 - If two plugins write the same bit, the lower-priority plugin's write is ignored for that bit. Default priority is install order, with the first installed plugin at `#1`.
 - Plugin-required CAN IDs are automatically added to the hardware filter list.
-- Rule Test is a manual dashboard action that sends the preview frame only when you start it.
 - The ESP32 must be connected to the CAN bus for plugin rules to take effect.
 - Incorrect CAN modifications can cause dangerous vehicle behavior. Test plugins carefully on a bench setup before using them in a vehicle.
 

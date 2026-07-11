@@ -18,6 +18,18 @@
 
 inline LogRingBuffer logRing;
 
+// Nag suppression torque is safety-clamped in firmware. Configuration and
+// dashboard values must never expand these bounds.
+[[maybe_unused]] static const float TORQUE_NM_MAX = +1.80f;
+[[maybe_unused]] static const float TORQUE_NM_MIN = -1.80f;
+static const uint16_t TORQUE_RAW_MAX = 0x08B6;
+static const uint16_t TORQUE_RAW_MIN = 0x074E;
+
+static uint16_t clampNagTorqueRaw(uint16_t value)
+{
+    return std::max(TORQUE_RAW_MIN, std::min(TORQUE_RAW_MAX, value));
+}
+
 struct CarManagerBase
 {
     Shared<int> speedProfile{1};
@@ -254,10 +266,11 @@ struct LegacyHandler : public CarManagerBase
             {
                 setSpeedProfileV12V13(frame, speedProfile);
                 setBit(frame, 46, true);
-                framesSent++;
-                driver.send(frame);
+                bool ok = driver.send(frame);
+                if (ok)
+                    framesSent++;
                 if (onSend)
-                    onSend(0, true);
+                    onSend(0, ok);
             }
             if (index == 1 && (!checkNag || checkNag()))
             {
@@ -409,10 +422,11 @@ struct HW3Handler : public CarManagerBase
                 {
                     setSpeedProfileV12V13(frame, speedProfile);
                     setBit(frame, 46, true);
-                    framesSent++;
-                    driver.send(frame);
+                    bool ok = driver.send(frame);
+                    if (ok)
+                        framesSent++;
                     if (onSend)
-                        onSend(0, true);
+                        onSend(0, ok);
                 }
 #else
                 setBit(frame, 46, true);
@@ -481,7 +495,7 @@ struct HW3Handler : public CarManagerBase
  * - The real EPAS frame with the same counter arrives AFTER -> rejected as duplicate
  *
  * Tested: Model Y Performance 2022 HW3, Basic Autopilot
- * Bus: X179 pin 2/3 (CAN bus 4)
+ * Bus: Party CAN only. Connector/pins vary by vehicle; see docs/nag-killer.md.
  *
  * Enable with build flag: -D NAG_KILLER
  */
@@ -503,8 +517,15 @@ struct NagHandler : public CarManagerBase
             return;
 
         uint8_t handsOn = (frame.data[4] >> 6) & 0x03;
+        uint16_t torqueRaw = static_cast<uint16_t>((frame.data[2] & 0x0F) << 8) |
+                             frame.data[3];
 
-        if (!nagKillerActive || !nagKillerRuntime || handsOn != 0)
+        // Compare the complete configured 12-bit torque value. A byte-3-only
+        // comparison can mistake unrelated negative/positive values for our
+        // own echo.
+        bool isOwnEcho = handsOn == 1 && torqueRaw == TORQUE_RAW_MAX;
+
+        if (!nagKillerActive || !nagKillerRuntime || isOwnEcho || handsOn != 0)
             return;
 
         CanFrame echo;
@@ -513,11 +534,12 @@ struct NagHandler : public CarManagerBase
 
         echo.data[0] = frame.data[0];
         echo.data[1] = frame.data[1];
-        echo.data[2] = (frame.data[2] & 0xF0) | 0x08;
+        const uint16_t torque = clampNagTorqueRaw(TORQUE_RAW_MAX);
+        echo.data[2] = static_cast<uint8_t>((frame.data[2] & 0xF0) | ((torque >> 8) & 0x0F));
         echo.data[5] = frame.data[5];
 
         // Fixed torque = 1.80 Nm (tRaw = 0x08B6)
-        echo.data[3] = 0xB6;
+        echo.data[3] = static_cast<uint8_t>(torque & 0xFF);
 
         // handsOnLevel = 1
         echo.data[4] = frame.data[4] | 0x40;
@@ -531,9 +553,14 @@ struct NagHandler : public CarManagerBase
         uint16_t sum = echo.data[0] + echo.data[1] + echo.data[2] + echo.data[3] + echo.data[4] + echo.data[5] + echo.data[6];
         echo.data[7] = static_cast<uint8_t>((sum + 0x73) & 0xFF);
 
-        framesSent++;
-        nagEchoCount++;
-        driver.send(echo);
+        bool ok = driver.send(echo);
+        if (ok)
+        {
+            framesSent++;
+            nagEchoCount++;
+        }
+        if (onSend)
+            onSend(0, ok);
 
         if (enablePrint && (nagEchoCount % 500 == 1))
         {
@@ -737,10 +764,11 @@ struct HW4Handler : public CarManagerBase
             if (index == 2 && ADEnabled && !speedProfileAuto && (!checkAD || checkAD()))
             {
                 setSpeedProfileHW4(frame, speedProfile);
-                framesSent++;
-                driver.send(frame);
+                bool ok = driver.send(frame);
+                if (ok)
+                    framesSent++;
                 if (onSend)
-                    onSend(2, true);
+                    onSend(2, ok);
             }
             if (index == 1)
             {

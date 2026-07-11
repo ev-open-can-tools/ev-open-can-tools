@@ -7,15 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.2-beta.5] - 2026-07-11
+
+### Added
+
+- ESP-IDF startup/runtime diagnostics: reset reason, RTC boot count, brownout warning, IDF version, five-second loop/CAN/web heartbeats, CAN age, TX results, free heap, uptime, and detailed TWAI state/error/recovery status.
+- Read-only SavvyCAN USB serial logging through reference GVRET framing, with explicit dashboard arming, clean binary-log ownership, one 500 kbit/s bus, validated standard frames, idle/disconnect handling, and bounded nonblocking sessions.
+- Nag-suppression guide covering Party CAN placement, startup gates, torque limits, target IDs, SavvyCAN observation, and Tesla electrical-reference lookup.
+
+### Changed
+
+- Dashboard now starts before TWAI, TWAI waits 10 seconds before initialization, and injection waits 15 seconds from actual CAN initialization plus more than 1,000 valid received frames.
+- Dashboard diagnostics are reduced to runtime status and Last Write Check. Sniffer, recorder, controller/mux views, live log, rule-test/editor diagnostics, obsolete endpoints, and backing state were removed while configuration, plugins, connectivity, safety, backup, and updates remain.
+- Dashboard configuration and statistics now use separate responses, with retry/error handling, request overlap guards, null-safe rendering, and disabled controls until configuration loads.
+- Dashboard source header is authoritative; generated raw/gzip header now comes from deterministic standard-library generation during dashboard builds.
+
+### Fixed
+
+- Missing CAN traffic no longer causes restart; firmware/dashboard stay alive and emit throttled warnings. TWAI bus-off now uses ESP-IDF recovery API, and TX failure logs are throttled while preserving two-millisecond transmit wait.
+- Dashboard TWAI states and colors now map stopped/running/bus-off/recovering correctly.
+- Nag echo handling validates DLC, detects self frames using full 12-bit torque, enforces raw and `-1.80 Nm` to `+1.80 Nm` hard bounds, resets injection sequence state on live mode changes, and counts only successful transmissions.
+- NVS recovery erases storage only for no-free-pages or new-version initialization errors.
+- ESP-IDF image headers now follow each board's declared 4 MB or 8 MB flash size; generic `esp32_twai` also uses project 4 MB OTA partition layout, matching current firmware size.
+
+## [3.0.2-beta.4] - 2026-07-11
+
 ### Added
 
 - ESP32-C6 support via the new `esp32c6_twai` PlatformIO environment (ESP-IDF, `DRIVER_TWAI` on GPIO5/GPIO4, `partitions_4mb_ota_1536k.csv`). Added to the Tests CI matrix and the Release workflow so automation builds and OTA release assets include the C6 board.
+- Board-specific OTA artifact selection for every supported ESP-IDF environment.
+- Verified HTTPS downloads using the ESP-IDF certificate bundle and SNTP-backed certificate-time validation.
 
 ### Fixed
 
 - AP Injection Gate now keeps standard DAS `ACTIVE` state 6 engaged while rejecting `AVAILABLE` state 2 and abort/fault states 8/9.
 - HW4 AP state now comes from CAN `0x39B` byte 1 instead of misreading the HW4 `0x399` ISA frame, with the confirmed 2026.20 Highland byte-0 fallback after a three-frame latch.
 - Legacy activation stability timing now works when AP becomes active at the `millis()` zero epoch.
+- ESP-IDF HTTP response streaming, query-route matching, URL decoding, response status codes, bounded request handling, and authenticated multipart firmware uploads now work correctly without buffering firmware in RAM.
+- GitHub OTA now selects only the current board artifact, rejects artifact substitutions and HTTPS downgrades, supports chunked transfers, reports install failures accurately, validates the completed image, and serializes concurrent update attempts.
+- Settings backup no longer exposes WiFi credentials without authentication, now exports live AP and multi-network state, and preserves dashboard, CAN, plugin, update, and HW3 settings during restore.
+- Static-IP configuration is validated and applied through ESP-NETIF, with DHCP fallback on runtime failure; malformed SSIDs, indexes, pins, and configuration values now fail closed instead of truncating or coercing.
+- TWAI and external MCP2515 drivers now reject invalid, extended, and RTR frames, preserve all handler/plugin acceptance IDs across mode changes, recover after initialization and bus faults, and synchronize diagnostics, filtering, receive, transmit, and recovery operations.
+- ESP-IDF now uses 1 kHz FreeRTOS ticks and a true scheduler yield, preserving millisecond CAN timeouts and preventing the main loop from sleeping 10 ms on every pass.
+- The native MCP2515 SPI implementation now propagates bus/device/transaction errors, bounds register transfers and DLC values, clears invalid receive buffers, and handles timer rollover safely.
+- Plugin JSON parsing now enforces schema types, numeric ranges, bus tokens, CAN IDs, frame DLC, operation limits, periodic-emission scope, and counter masks instead of wrapping or silently ignoring malformed rules.
+- Plugin execution, diagnostics, tests, persistence, priority changes, and periodic/UDS state are synchronized across the CAN, HTTP, and maintenance tasks; counters advance only after successful sends.
+- Plugin updates now use a reset-recoverable temp/backup swap compatible with SPIFFS rename semantics, and interrupted saves are repaired on boot.
+- Dashboard logs, recorder state, WiFi state, preferences, handler publication, LED output, OTA state, and plugin-test state no longer race across FreeRTOS tasks or report failed writes as successful.
+- NVS writes are committed once per preference session, write and erase errors propagate to callers, invalid stored values fall back safely, and multi-key changes restore runtime state when persistence fails.
 
 ## [3.0.2-beta.3] - 2026-06-12
 

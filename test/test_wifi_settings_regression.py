@@ -96,15 +96,20 @@ class WifiSettingsRegressionTests(unittest.TestCase):
 
     def test_wifi_settings_backup_roundtrip_fields_exist(self) -> None:
         expected_export_import_fields = [
-            '\\"wifi\\":{\\"ssid\\"',
+            '\\"wifi\\":{\\"networks\\":[',
             'doc["wifi"].is<JsonObject>()',
-            'doc["wifi"]["ssid"]',
-            'doc["wifi"]["pass"]',
-            'doc["wifi"]["static"]',
-            'doc["wifi"]["ip"]',
-            'doc["wifi"]["gw"]',
-            'doc["wifi"]["mask"]',
-            'doc["wifi"]["dns"]',
+            'JsonArray networks = wifi["networks"]',
+            'item["ssid"]',
+            'item["pass"]',
+            'item["static"]',
+            'item["ip"]',
+            'item["gw"]',
+            'item["mask"]',
+            'item["dns"]',
+            '\\"dashboard\\":{\\"hw\\"',
+            '\\"autoUpdate\\"',
+            'doc["dashboard"].is<JsonObject>()',
+            'doc["autoUpdate"]',
         ]
 
         for field in expected_export_import_fields:
@@ -168,6 +173,27 @@ class WifiSettingsRegressionTests(unittest.TestCase):
         self.assertIn("resetOtaCredentials()", self.ui)
         self.assertRegex(self.ui, r"localStorage\.removeItem\([\"']otaU[\"']\)")
         self.assertRegex(self.ui, r"localStorage\.removeItem\([\"']otaP[\"']\)")
+
+    def test_each_espidf_environment_has_its_release_artifact(self) -> None:
+        expected = {
+            "esp32_twai": "firmware-esp32.bin",
+            "esp32s2_twai": "firmware-esp32s2.bin",
+            "esp32c6_twai": "firmware-esp32c6.bin",
+            "lilygo_tcan485_hw3": "firmware-lilygo-tcan485-hw3.bin",
+            "m5stack-atomic-can-base": "firmware-m5stack.bin",
+            "m5stack-atoms3-mini-can-base": "firmware-m5stack-atoms3-mini.bin",
+            "esp32_feather_v2_mcp2515": "firmware-esp32-featherwing.bin",
+            "esp32_ext_mcp2515": "firmware-esp32-ext-mcp2515.bin",
+            "waveshare_ESP32_S3_RS485_CAN": "firmware-waveshare-esp32-s3.bin",
+        }
+        for environment, artifact in expected.items():
+            with self.subTest(environment=environment):
+                self.assertIn(f'"{environment}": "{artifact}"', self.sync)
+
+    def test_espidf_sdkconfig_flash_size_tracks_board(self) -> None:
+        self.assertIn("def _sync_sdkconfig_flash_size", self.sync)
+        self.assertIn('BoardConfig().get("upload.flash_size", "4MB")', self.sync)
+        self.assertIn("CONFIG_ESPTOOLPY_FLASHSIZE_", self.sync)
 
 
 if __name__ == "__main__":

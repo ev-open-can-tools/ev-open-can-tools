@@ -173,12 +173,13 @@ inline void setSpeedProfileHW4(CanFrame &frame, int profile)
 
 inline uint8_t computeVehicleChecksum(const CanFrame &frame, uint8_t checksumByteIndex = 7)
 {
-    if (checksumByteIndex >= frame.dlc)
+    uint8_t dlc = frame.dlc <= 8 ? frame.dlc : 8;
+    if (checksumByteIndex >= dlc)
         return 0;
 
     uint16_t sum = static_cast<uint16_t>(frame.id & 0xFF) +
                    static_cast<uint16_t>((frame.id >> 8) & 0xFF);
-    for (uint8_t i = 0; i < frame.dlc; ++i)
+    for (uint8_t i = 0; i < dlc; ++i)
     {
         if (i == checksumByteIndex)
             continue;

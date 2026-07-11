@@ -8,6 +8,7 @@
 using String = std::string;
 #elif defined(ESP_PLATFORM)
 #include "platform/espidf_runtime.h"
+#include <freertos/semphr.h>
 #else
 #include <SPIFFS.h>
 #endif
@@ -35,7 +36,7 @@ using String = std::string;
 #define PLUGIN_GTW_UDS_KEEPALIVE_MS 2000 // TesterPresent cadence once session is active
 #define PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS 400
 #define PLUGIN_GTW_UDS_RETRY_BACKOFF_MS 5000 // after NRC or timeout, wait before retrying sequence
-#define PLUGIN_GTW_UDS_SEED_MAX 6
+#define PLUGIN_GTW_UDS_SEED_MAX 5            // ISO-TP single frame: SID + subfunction + up to 5 seed/key bytes
 
 enum PluginOpType : uint8_t
 {
@@ -147,6 +148,49 @@ static PluginPeriodicEmitState pluginPeriodicEmit = {};
 static bool (*pluginBeforeSend)(CanFrame &modified, const CanFrame &original) = nullptr;
 static void (*pluginDiagnosticsLog)(const char *message) = nullptr;
 
+class PluginLockGuard
+{
+public:
+    explicit PluginLockGuard(bool wait = true)
+    {
+#ifdef ESP_PLATFORM
+        initialize();
+        if (pluginMutex_)
+            locked_ = xSemaphoreTakeRecursive(pluginMutex_, wait ? portMAX_DELAY : 0) == pdTRUE;
+#else
+        (void)wait;
+        locked_ = true;
+#endif
+    }
+
+    ~PluginLockGuard()
+    {
+#ifdef ESP_PLATFORM
+        if (locked_)
+            xSemaphoreGiveRecursive(pluginMutex_);
+#endif
+    }
+
+    explicit operator bool() const { return locked_; }
+
+    static bool initialize()
+    {
+#ifdef ESP_PLATFORM
+        if (!pluginMutex_)
+            pluginMutex_ = xSemaphoreCreateRecursiveMutex();
+        return pluginMutex_ != nullptr;
+#else
+        return true;
+#endif
+    }
+
+private:
+#ifdef ESP_PLATFORM
+    inline static SemaphoreHandle_t pluginMutex_ = nullptr;
+#endif
+    bool locked_ = false;
+};
+
 static uint8_t pluginClampReplayCount(int32_t count)
 {
     if (count < 1)
@@ -162,6 +206,7 @@ static void pluginResetDiagnostics();
 
 static void pluginSetReplayCount(int32_t count)
 {
+    PluginLockGuard guard;
     pluginReplayCount = pluginClampReplayCount(count);
 }
 
@@ -178,6 +223,7 @@ static void pluginLogDiagnosticsEvent(const char *message)
 
 static uint8_t pluginGetReplayCount()
 {
+    PluginLockGuard guard;
     return pluginReplayCount;
 }
 
@@ -192,6 +238,7 @@ static uint16_t pluginClampPeriodicInterval(int32_t intervalMs)
 
 static void pluginResetPeriodicEmit()
 {
+    PluginLockGuard guard;
     pluginPeriodicEmit = {};
 }
 
@@ -285,7 +332,7 @@ static bool pluginGtwUdsHandleResponse(PluginGtwUdsMachine &m, const CanFrame &f
         return false;
 
     uint8_t len = frame.data[0] & 0x0F;
-    if (len < 1 || len > 7)
+    if (len < 1 || len > 7 || frame.dlc < static_cast<uint8_t>(len + 1))
         return false;
 
     uint8_t sid = frame.data[1];
@@ -366,7 +413,11 @@ static void pluginGtwUdsTick(PluginGtwUdsMachine &m, CanDriver &driver, unsigned
     case GTW_UDS_IDLE:
     {
         const uint8_t payload[] = {0x10, 0x03}; // DiagnosticSessionControl → ExtendedSession
-        driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus));
+        if (!driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus)))
+        {
+            pluginGtwUdsFail(m, 0xFD, now);
+            break;
+        }
         pluginGtwUdsEnter(m, GTW_UDS_SESSION_REQ, now, PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS);
         break;
     }
@@ -379,7 +430,11 @@ static void pluginGtwUdsTick(PluginGtwUdsMachine &m, CanDriver &driver, unsigned
         if (m.stateEnteredAt == m.nextActionAt)
         {
             const uint8_t payload[] = {0x27, 0x01}; // SecurityAccess requestSeed
-            driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus));
+            if (!driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus)))
+            {
+                pluginGtwUdsFail(m, 0xFD, now);
+                break;
+            }
             m.nextActionAt = now + PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS;
         }
         else if ((long)(now - m.stateEnteredAt) >= PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS)
@@ -407,7 +462,11 @@ static void pluginGtwUdsTick(PluginGtwUdsMachine &m, CanDriver &driver, unsigned
             payload[1] = 0x02;
             for (uint8_t i = 0; i < keyLen; i++)
                 payload[2 + i] = key[i];
-            driver.send(pluginMakeUdsRequest(payload, 2 + keyLen, m.bus));
+            if (!driver.send(pluginMakeUdsRequest(payload, 2 + keyLen, m.bus)))
+            {
+                pluginGtwUdsFail(m, 0xFD, now);
+                break;
+            }
             m.nextActionAt = now + PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS;
         }
         else if ((long)(now - m.stateEnteredAt) >= PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS)
@@ -419,7 +478,11 @@ static void pluginGtwUdsTick(PluginGtwUdsMachine &m, CanDriver &driver, unsigned
         {
             // 0x28 CommunicationControl: enableRxAndDisableTx (0x01), normalCommunication (0x01)
             const uint8_t payload[] = {0x28, 0x01, 0x01};
-            driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus));
+            if (!driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus)))
+            {
+                pluginGtwUdsFail(m, 0xFD, now);
+                break;
+            }
             m.nextActionAt = now + PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS;
         }
         else if ((long)(now - m.stateEnteredAt) >= PLUGIN_GTW_UDS_RESPONSE_TIMEOUT_MS)
@@ -429,7 +492,11 @@ static void pluginGtwUdsTick(PluginGtwUdsMachine &m, CanDriver &driver, unsigned
     case GTW_UDS_ACTIVE:
     {
         const uint8_t payload[] = {0x3E, 0x00}; // TesterPresent
-        driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus));
+        if (!driver.send(pluginMakeUdsRequest(payload, sizeof(payload), m.bus)))
+        {
+            pluginGtwUdsFail(m, 0xFD, now);
+            break;
+        }
         m.nextActionAt = now + PLUGIN_GTW_UDS_KEEPALIVE_MS;
         break;
     }
@@ -452,7 +519,10 @@ static uint8_t pluginDefaultMuxMask(int16_t mux)
 
 static bool pluginBusTokenEquals(const char *token, uint8_t len, const char *expected)
 {
-    for (uint8_t i = 0; i < len || expected[i] != '\0'; i++)
+    size_t expectedLen = strlen(expected);
+    if (len != expectedLen)
+        return false;
+    for (uint8_t i = 0; i < len; i++)
     {
         char a = i < len ? token[i] : '\0';
         if (a >= 'a' && a <= 'z')
@@ -464,25 +534,32 @@ static bool pluginBusTokenEquals(const char *token, uint8_t len, const char *exp
     return true;
 }
 
-static uint8_t pluginBusMaskForToken(const char *token, uint8_t len)
+static bool pluginBusMaskForToken(const char *token, uint8_t len, uint8_t &mask)
 {
     if (len == 0 || pluginBusTokenEquals(token, len, "ANY"))
-        return CAN_BUS_ANY;
+        mask = CAN_BUS_ANY;
     if (pluginBusTokenEquals(token, len, "CH"))
-        return CAN_BUS_CH;
-    if (pluginBusTokenEquals(token, len, "VEH"))
-        return CAN_BUS_VEH;
-    if (pluginBusTokenEquals(token, len, "PARTY"))
-        return CAN_BUS_PARTY;
-    return CAN_BUS_ANY;
+        mask = CAN_BUS_CH;
+    else if (pluginBusTokenEquals(token, len, "VEH"))
+        mask = CAN_BUS_VEH;
+    else if (pluginBusTokenEquals(token, len, "PARTY"))
+        mask = CAN_BUS_PARTY;
+    else if (len != 0 && !pluginBusTokenEquals(token, len, "ANY"))
+        return false;
+    return true;
 }
 
-static uint8_t pluginParseBusString(const char *bus)
+static bool pluginParseBusString(const char *bus, uint8_t &mask)
 {
     if (!bus)
-        return CAN_BUS_ANY;
+    {
+        mask = CAN_BUS_ANY;
+        return true;
+    }
 
-    uint8_t mask = CAN_BUS_ANY;
+    mask = CAN_BUS_ANY;
+    bool sawToken = false;
+    bool sawAny = false;
     const char *token = nullptr;
     uint8_t len = 0;
     for (const char *p = bus;; p++)
@@ -499,32 +576,64 @@ static uint8_t pluginParseBusString(const char *bus)
         }
         if (token)
         {
-            mask |= pluginBusMaskForToken(token, len);
+            uint8_t tokenMask = CAN_BUS_ANY;
+            if (!pluginBusMaskForToken(token, len, tokenMask))
+                return false;
+            sawToken = true;
+            sawAny |= tokenMask == CAN_BUS_ANY;
+            if (!sawAny)
+                mask |= tokenMask;
             token = nullptr;
             len = 0;
         }
         if (c == '\0')
             break;
     }
-    return mask;
+    if (!sawToken)
+        return false;
+    if (sawAny)
+        mask = CAN_BUS_ANY;
+    return true;
 }
 
-static uint8_t pluginParseBus(JsonVariant value)
+static bool pluginParseBus(JsonVariant value, uint8_t &mask)
 {
     if (value.isNull())
-        return CAN_BUS_ANY;
+    {
+        mask = CAN_BUS_ANY;
+        return true;
+    }
     if (value.is<uint8_t>())
-        return value.as<uint8_t>() & (CAN_BUS_CH | CAN_BUS_VEH | CAN_BUS_PARTY);
+    {
+        uint8_t raw = value.as<uint8_t>();
+        mask = raw & (CAN_BUS_CH | CAN_BUS_VEH | CAN_BUS_PARTY);
+        return raw == mask;
+    }
     if (value.is<const char *>())
-        return pluginParseBusString(value.as<const char *>());
+        return pluginParseBusString(value.as<const char *>(), mask);
     if (value.is<JsonArray>())
     {
-        uint8_t mask = CAN_BUS_ANY;
-        for (JsonVariant item : value.as<JsonArray>())
-            mask |= pluginParseBus(item);
-        return mask;
+        JsonArray values = value.as<JsonArray>();
+        if (values.size() == 0)
+            return false;
+        mask = CAN_BUS_ANY;
+        bool sawAny = false;
+        for (JsonVariant item : values)
+        {
+            if (item.isNull())
+                return false;
+            uint8_t itemMask = CAN_BUS_ANY;
+            if (!pluginParseBus(item, itemMask))
+                return false;
+            sawAny |= itemMask == CAN_BUS_ANY;
+            if (!sawAny)
+                mask |= itemMask;
+        }
+        if (sawAny)
+            mask = CAN_BUS_ANY;
+        return true;
     }
-    return CAN_BUS_ANY;
+    return false;
 }
 
 static bool pluginRuleMatchesBus(const PluginRule &rule, const CanFrame &frame)
@@ -561,16 +670,83 @@ static bool pluginRuleMuxIncludes(const PluginRule &rule, uint8_t mux)
     return (static_cast<uint8_t>(rule.mux) & mask) == (mux & mask);
 }
 
+static bool pluginReadByte(JsonVariant value, uint8_t defaultValue, uint8_t &out)
+{
+    if (value.isNull())
+    {
+        out = defaultValue;
+        return true;
+    }
+    if (!value.is<int>())
+        return false;
+    int parsed = value.as<int>();
+    if (parsed < 0 || parsed > 255)
+        return false;
+    out = static_cast<uint8_t>(parsed);
+    return true;
+}
+
+static bool pluginReadBitValue(JsonVariant value, uint8_t defaultValue, uint8_t &out)
+{
+    if (value.isNull())
+    {
+        out = defaultValue;
+        return true;
+    }
+    if (value.is<bool>())
+    {
+        out = value.as<bool>() ? 1 : 0;
+        return true;
+    }
+    if (!value.is<int>())
+        return false;
+    int parsed = value.as<int>();
+    if (parsed < 0 || parsed > 1)
+        return false;
+    out = static_cast<uint8_t>(parsed);
+    return true;
+}
+
+static bool pluginReadBool(JsonVariant value, bool defaultValue, bool &out)
+{
+    if (value.isNull())
+    {
+        out = defaultValue;
+        return true;
+    }
+    if (!value.is<bool>())
+        return false;
+    out = value.as<bool>();
+    return true;
+}
+
 static bool pluginParseJson(const String &json, PluginData &out)
 {
+    if (json.length() > 32 * 1024)
+        return false;
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, json);
     if (err)
         return false;
 
-    strlcpy(out.name, doc["name"] | "Unknown", sizeof(out.name));
-    strlcpy(out.version, doc["version"] | "1.0", sizeof(out.version));
-    strlcpy(out.author, doc["author"] | "", sizeof(out.author));
+    const char *name = doc["name"] | "Unknown";
+    const char *version = doc["version"] | "1.0";
+    const char *author = doc["author"] | "";
+    if (*name == '\0' || *version == '\0' || strlen(name) >= sizeof(out.name) ||
+        strlen(version) >= sizeof(out.version) ||
+        strlen(author) >= sizeof(out.author))
+        return false;
+    for (const char *text : {name, version, author})
+    {
+        for (const unsigned char *p = reinterpret_cast<const unsigned char *>(text); *p; p++)
+        {
+            if (*p < 0x20 || *p == 0x7F)
+                return false;
+        }
+    }
+    strlcpy(out.name, name, sizeof(out.name));
+    strlcpy(out.version, version, sizeof(out.version));
+    strlcpy(out.author, author, sizeof(out.author));
     out.filename[0] = '\0';
     out.sourceUrl[0] = '\0';
     out.enabled = true;
@@ -579,7 +755,7 @@ static bool pluginParseJson(const String &json, PluginData &out)
     out.filterIdCount = 0;
 
     JsonArray rules = doc["rules"];
-    if (!rules)
+    if (!rules || rules.size() == 0 || rules.size() > PLUGIN_RULES_MAX)
         return false;
 
     for (JsonObject rule : rules)
@@ -588,32 +764,42 @@ static bool pluginParseJson(const String &json, PluginData &out)
             break;
         PluginRule &r = out.rules[out.ruleCount];
         r = {};
-        r.canId = rule["id"] | (uint32_t)0;
-        int mux = rule["mux"] | (int)-1;
-        if (mux < -1)
-            mux = -1;
-        if (mux > 255)
-            mux = 255;
+        JsonVariant canIdValue = rule["id"];
+        if (!canIdValue.is<uint32_t>())
+            return false;
+        r.canId = canIdValue.as<uint32_t>();
+        if (r.canId > 0x7FF)
+            return false;
+        JsonVariant muxValue = rule["mux"];
+        if (!muxValue.isNull() && !muxValue.is<int>())
+            return false;
+        int mux = muxValue.isNull() ? -1 : muxValue.as<int>();
+        if (mux < -1 || mux > 255)
+            return false;
         r.mux = static_cast<int16_t>(mux);
         JsonVariant muxMaskValue = rule["mux_mask"];
         if (muxMaskValue.isNull())
             muxMaskValue = rule["muxMask"];
-        r.muxMask = muxMaskValue | pluginDefaultMuxMask(r.mux);
+        if (!pluginReadByte(muxMaskValue, pluginDefaultMuxMask(r.mux), r.muxMask))
+            return false;
         if (r.mux >= 0 && r.muxMask == 0)
             r.muxMask = pluginDefaultMuxMask(r.mux);
-        r.busMask = pluginParseBus(rule["bus"]);
+        if (!pluginParseBus(rule["bus"], r.busMask))
+            return false;
         r.matchByte = 0;
         r.matchMask = 0;
         r.matchValue = 0;
         JsonVariant match = rule["match"];
         if (match.is<JsonObject>())
         {
-            r.matchByte = match["byte"] | (uint8_t)0;
-            r.matchMask = match["mask"] | (uint8_t)0xFF;
+            if (!pluginReadByte(match["byte"], 0, r.matchByte) ||
+                !pluginReadByte(match["mask"], 0xFF, r.matchMask))
+                return false;
             JsonVariant matchValue = match["val"];
             if (matchValue.isNull())
                 matchValue = match["value"];
-            r.matchValue = matchValue | (uint8_t)0;
+            if (!pluginReadByte(matchValue, 0, r.matchValue))
+                return false;
         }
         JsonVariant matchByte = rule["match_byte"];
         if (matchByte.isNull())
@@ -626,18 +812,20 @@ static bool pluginParseJson(const String &json, PluginData &out)
             matchValue = rule["match_value"];
         if (matchValue.isNull())
             matchValue = rule["matchValue"];
-        if (!matchByte.isNull())
-            r.matchByte = matchByte | (uint8_t)0;
-        if (!matchMask.isNull())
-            r.matchMask = matchMask | (uint8_t)0;
-        if (!matchValue.isNull())
-            r.matchValue = matchValue | (uint8_t)0;
-        if (r.matchByte > 7)
-            r.matchMask = 0;
-        r.sendAfter = rule["send"] | true;
+        if (!pluginReadByte(matchByte, r.matchByte, r.matchByte) ||
+            !pluginReadByte(matchMask, r.matchMask, r.matchMask) ||
+            !pluginReadByte(matchValue, r.matchValue, r.matchValue))
+            return false;
+        if (r.matchByte > 7 && r.matchMask != 0)
+            return false;
+        if (!pluginReadBool(rule["send"], true, r.sendAfter))
+            return false;
         r.opCount = 0;
 
         JsonArray ops = rule["ops"];
+        if (!ops || ops.size() == 0 || ops.size() > PLUGIN_OPS_MAX)
+            return false;
+        bool hasPeriodicEmit = false;
         if (ops)
         {
             for (JsonObject op : ops)
@@ -654,27 +842,31 @@ static bool pluginParseJson(const String &json, PluginData &out)
                 if (strcmp(type, "set_bit") == 0)
                 {
                     o.type = OP_SET_BIT;
-                    o.index = op["bit"] | (uint8_t)0;
-                    o.value = op["val"] | (uint8_t)1;
+                    if (!pluginReadByte(op["bit"], 0, o.index) ||
+                        !pluginReadBitValue(op["val"], 1, o.value))
+                        return false;
                 }
                 else if (strcmp(type, "set_byte") == 0)
                 {
                     o.type = OP_SET_BYTE;
-                    o.index = op["byte"] | (uint8_t)0;
-                    o.mask = op["mask"] | (uint8_t)0xFF;
-                    o.value = op["val"] | (uint8_t)0;
+                    if (!pluginReadByte(op["byte"], 0, o.index) ||
+                        !pluginReadByte(op["mask"], 0xFF, o.mask) ||
+                        !pluginReadByte(op["val"], 0, o.value))
+                        return false;
                 }
                 else if (strcmp(type, "or_byte") == 0)
                 {
                     o.type = OP_OR_BYTE;
-                    o.index = op["byte"] | (uint8_t)0;
-                    o.value = op["val"] | (uint8_t)0;
+                    if (!pluginReadByte(op["byte"], 0, o.index) ||
+                        !pluginReadByte(op["val"], 0, o.value))
+                        return false;
                 }
                 else if (strcmp(type, "and_byte") == 0)
                 {
                     o.type = OP_AND_BYTE;
-                    o.index = op["byte"] | (uint8_t)0;
-                    o.value = op["val"] | (uint8_t)0xFF;
+                    if (!pluginReadByte(op["byte"], 0, o.index) ||
+                        !pluginReadByte(op["val"], 0xFF, o.value))
+                        return false;
                 }
                 else if (strcmp(type, "checksum") == 0)
                 {
@@ -683,21 +875,31 @@ static bool pluginParseJson(const String &json, PluginData &out)
                 else if (strcmp(type, "counter") == 0)
                 {
                     o.type = OP_COUNTER;
-                    o.index = op["byte"] | (uint8_t)0;
-                    o.mask = op["mask"] | (uint8_t)0x0F;
-                    o.value = op["step"] | (uint8_t)1;
-                    if (o.value == 0)
-                        o.value = 1;
+                    if (!pluginReadByte(op["byte"], 0, o.index) ||
+                        !pluginReadByte(op["mask"], 0x0F, o.mask) ||
+                        !pluginReadByte(op["step"], 1, o.value) || o.value == 0)
+                        return false;
                 }
                 else if (strcmp(type, "emit_periodic") == 0)
                 {
                     o.type = OP_EMIT_PERIODIC;
-                    o.intervalMs =
-                        pluginClampPeriodicInterval(op["interval"] | PLUGIN_PERIODIC_INTERVAL_DEFAULT_MS);
-                    bool requestedSilent = op["gtw_silent"] | false;
-                    if (!requestedSilent)
-                        requestedSilent = op["silent"] | false;
+                    JsonVariant intervalValue = op["interval"];
+                    if (!intervalValue.isNull() && !intervalValue.is<int>())
+                        return false;
+                    int interval = intervalValue.isNull() ? PLUGIN_PERIODIC_INTERVAL_DEFAULT_MS
+                                                          : intervalValue.as<int>();
+                    if (interval < PLUGIN_PERIODIC_INTERVAL_MIN_MS ||
+                        interval > PLUGIN_PERIODIC_INTERVAL_MAX_MS)
+                        return false;
+                    o.intervalMs = static_cast<uint16_t>(interval);
+                    bool requestedSilent = false;
+                    if (!pluginReadBool(op["gtw_silent"], false, requestedSilent))
+                        return false;
+                    if (!requestedSilent && !op["silent"].isNull() &&
+                        !pluginReadBool(op["silent"], false, requestedSilent))
+                        return false;
                     o.gtwSilent = requestedSilent && pluginGtwSilentSupported();
+                    hasPeriodicEmit = true;
 
                     // When gtw_silent is requested, ensure the hardware CAN filter
                     // accepts UDS traffic so the state machine can see responses.
@@ -723,11 +925,29 @@ static bool pluginParseJson(const String &json, PluginData &out)
                 }
                 else
                 {
-                    continue;
+                    return false;
+                }
+                if (o.type == OP_SET_BIT && o.index >= 64)
+                    return false;
+                if ((o.type == OP_SET_BYTE || o.type == OP_OR_BYTE || o.type == OP_AND_BYTE ||
+                     o.type == OP_COUNTER) &&
+                    o.index >= 8)
+                    return false;
+                if (o.type == OP_COUNTER)
+                {
+                    uint8_t shift = 0;
+                    while (shift < 8 && (o.mask & (1U << shift)) == 0)
+                        shift++;
+                    uint8_t shiftedMask = o.mask >> shift;
+                    if (o.mask == 0 || (shiftedMask & static_cast<uint8_t>(shiftedMask + 1)) != 0)
+                        return false;
                 }
                 r.opCount++;
             }
         }
+        if (hasPeriodicEmit &&
+            (r.canId != 2047 || !pluginRuleMuxIncludes(r, 3) || !r.sendAfter))
+            return false;
 
         // Deduplicate filter IDs
         bool found = false;
@@ -758,16 +978,69 @@ static String pluginFilePath(const char *filename)
 
 static bool pluginSaveToSpiffs(const String &json, const char *filename)
 {
-    File f = SPIFFS.open(pluginFilePath(filename), "w");
+    const String tempPath = "/.plugin.tmp";
+    const String targetPath = pluginFilePath(filename);
+    const String backupPath = String("/b_") + filename;
+    File f = SPIFFS.open(tempPath, "w");
     if (!f)
         return false;
-    f.print(json);
-    f.close();
-    return true;
+    bool ok = f.print(json) == json.length();
+    ok = f.close() && ok;
+    bool hadTarget = ok && SPIFFS.exists(targetPath);
+    if (ok && hadTarget)
+    {
+        if (SPIFFS.exists(backupPath))
+            SPIFFS.remove(backupPath);
+        ok = SPIFFS.rename(targetPath, backupPath);
+    }
+    if (ok)
+    {
+        ok = SPIFFS.rename(tempPath, targetPath);
+        if (!ok && hadTarget)
+            SPIFFS.rename(backupPath, targetPath);
+    }
+    if (ok && hadTarget)
+        SPIFFS.remove(backupPath);
+    if (!ok)
+        SPIFFS.remove(tempPath);
+    return ok;
+}
+
+static void pluginRecoverInterruptedSaves()
+{
+    String backups[PLUGIN_MAX];
+    uint8_t backupCount = 0;
+    {
+        File root = SPIFFS.open("/");
+        File f = root.openNextFile();
+        while (f && backupCount < PLUGIN_MAX)
+        {
+            String name = f.name();
+            if (name.startsWith("/"))
+                name = name.substring(1);
+            if (name.startsWith("b_") && name.endsWith(".json"))
+                backups[backupCount++] = name;
+            f = root.openNextFile();
+        }
+    }
+
+    for (uint8_t i = 0; i < backupCount; i++)
+    {
+        String backupPath = "/" + backups[i];
+        String targetPath = "/p_" + backups[i].substring(2);
+        if (SPIFFS.exists(targetPath))
+            SPIFFS.remove(backupPath);
+        else
+            SPIFFS.rename(backupPath, targetPath);
+    }
+    if (SPIFFS.exists("/.plugin.tmp"))
+        SPIFFS.remove("/.plugin.tmp");
 }
 
 static void pluginLoadAll()
 {
+    PluginLockGuard guard;
+    pluginRecoverInterruptedSaves();
     pluginResetPeriodicEmit();
     pluginsLocked = true;
     pluginCount = 0;
@@ -793,6 +1066,7 @@ static void pluginLoadAll()
             PluginData &p = pluginStore[pluginCount];
             if (pluginParseJson(json, p))
             {
+                p.enabled = false;
                 // Store just the user-facing filename (without /p_ prefix)
                 String userFilename = name.substring(2); // remove "p_"
                 strlcpy(p.filename, userFilename.c_str(), sizeof(p.filename));
@@ -809,11 +1083,16 @@ static void pluginLoadAll()
 
 static bool pluginRemove(uint8_t index)
 {
+    PluginLockGuard guard;
     if (index >= pluginCount)
         return false;
     pluginsLocked = true;
 
-    SPIFFS.remove(pluginFilePath(pluginStore[index].filename));
+    if (!SPIFFS.remove(pluginFilePath(pluginStore[index].filename)))
+    {
+        pluginsLocked = false;
+        return false;
+    }
 
     for (uint8_t i = index; i < pluginCount - 1; i++)
     {
@@ -836,6 +1115,7 @@ static void pluginNormalizePriorities()
 
 static void pluginResetDiagnostics()
 {
+    PluginLockGuard guard;
     for (uint8_t p = 0; p < pluginCount; p++)
     {
         for (uint8_t r = 0; r < pluginStore[p].ruleCount; r++)
@@ -845,6 +1125,7 @@ static void pluginResetDiagnostics()
 
 static void pluginSortByPriority()
 {
+    PluginLockGuard guard;
     pluginsLocked = true;
     for (uint8_t i = 1; i < pluginCount; i++)
     {
@@ -863,6 +1144,7 @@ static void pluginSortByPriority()
 
 static bool pluginInsert(uint8_t index, const PluginData &plugin)
 {
+    PluginLockGuard guard;
     if (pluginCount >= PLUGIN_MAX)
         return false;
     if (index > pluginCount)
@@ -881,6 +1163,7 @@ static bool pluginInsert(uint8_t index, const PluginData &plugin)
 
 static bool pluginMove(uint8_t from, uint8_t to)
 {
+    PluginLockGuard guard;
     if (from >= pluginCount || to >= pluginCount || from == to)
         return from < pluginCount && to < pluginCount;
 
@@ -905,6 +1188,7 @@ static bool pluginMove(uint8_t from, uint8_t to)
 
 static int pluginFindByName(const char *name)
 {
+    PluginLockGuard guard;
     for (uint8_t i = 0; i < pluginCount; i++)
     {
         if (strcmp(pluginStore[i].name, name) == 0)
@@ -936,36 +1220,6 @@ static void pluginApplyCounter(CanFrame &frame, const PluginOp &op)
     uint8_t current = (frame.data[op.index] >> shift) & fieldMask;
     uint8_t next = (current + op.value) & fieldMask;
     frame.data[op.index] = (frame.data[op.index] & ~op.mask) | ((next << shift) & op.mask);
-}
-
-static void pluginApplyOp(CanFrame &frame, const PluginOp &op)
-{
-    switch (op.type)
-    {
-    case OP_SET_BIT:
-        setBit(frame, op.index, op.value);
-        break;
-    case OP_SET_BYTE:
-        if (op.index < 8)
-            frame.data[op.index] = (frame.data[op.index] & ~op.mask) | (op.value & op.mask);
-        break;
-    case OP_OR_BYTE:
-        if (op.index < 8)
-            frame.data[op.index] |= op.value;
-        break;
-    case OP_AND_BYTE:
-        if (op.index < 8)
-            frame.data[op.index] &= op.value;
-        break;
-    case OP_CHECKSUM:
-        frame.data[7] = computeVehicleChecksum(frame);
-        break;
-    case OP_COUNTER:
-        pluginApplyCounter(frame, op);
-        break;
-    case OP_EMIT_PERIODIC:
-        break;
-    }
 }
 
 static uint64_t pluginOpWriteMask(const PluginOp &op)
@@ -1054,21 +1308,6 @@ static bool pluginApplyOpMasked(CanFrame &frame, const PluginOp &op, uint64_t al
         return false;
     }
     return false;
-}
-
-static void pluginAdvanceRuleCounters(CanFrame &frame, const PluginRule &rule)
-{
-    bool checksum = false;
-    for (uint8_t o = 0; o < rule.opCount; o++)
-    {
-        const PluginOp &op = rule.ops[o];
-        if (op.type == OP_COUNTER)
-            pluginApplyCounter(frame, op);
-        else if (op.type == OP_CHECKSUM)
-            checksum = true;
-    }
-    if (checksum)
-        frame.data[7] = computeVehicleChecksum(frame);
 }
 
 static void pluginAdvanceCounters(CanFrame &frame, const PluginOp *counterOps,
@@ -1203,6 +1442,9 @@ static void pluginCachePeriodicEmit(const CanFrame &frame, uint16_t intervalMs, 
 
 static void pluginEmitPeriodicTick(CanDriver &driver, unsigned long now)
 {
+    PluginLockGuard guard(false);
+    if (!guard)
+        return;
     if (pluginsLocked || !pluginPeriodicEmit.active)
         return;
     if (!pluginHasEnabledPeriodicEmit())
@@ -1217,14 +1459,17 @@ static void pluginEmitPeriodicTick(CanDriver &driver, unsigned long now)
     if ((long)(now - pluginPeriodicEmit.nextFrameAt) < 0)
         return;
 
-    driver.send(pluginPeriodicEmit.frame);
-    pluginAdvanceCounters(pluginPeriodicEmit.frame, pluginPeriodicEmit.counterOps,
-                          pluginPeriodicEmit.counterOpCount, pluginPeriodicEmit.checksum);
+    if (driver.send(pluginPeriodicEmit.frame))
+        pluginAdvanceCounters(pluginPeriodicEmit.frame, pluginPeriodicEmit.counterOps,
+                              pluginPeriodicEmit.counterOpCount, pluginPeriodicEmit.checksum);
     pluginPeriodicEmit.nextFrameAt = now + pluginPeriodicEmit.intervalMs;
 }
 
 static bool pluginProcessFrame(const CanFrame &original, CanDriver &driver)
 {
+    PluginLockGuard guard(false);
+    if (!guard)
+        return false;
     if (pluginsLocked || pluginCount == 0)
         return false;
 
@@ -1251,6 +1496,8 @@ static bool pluginProcessFrame(const CanFrame &original, CanDriver &driver)
     PluginRule *changedRules[PLUGIN_MAX * PLUGIN_RULES_MAX];
     uint8_t changedRuleCount = 0;
     uint64_t claimed = 0;
+    uint8_t dlc = original.dlc <= 8 ? original.dlc : 8;
+    uint64_t validWriteMask = dlc == 8 ? UINT64_MAX : (dlc == 0 ? 0 : (1ULL << (dlc * 8)) - 1);
     CanFrame modified = original;
     unsigned long now = millis();
 
@@ -1287,7 +1534,7 @@ static bool pluginProcessFrame(const CanFrame &original, CanDriver &driver)
                         emitPeriodicIntervalMs = op.intervalMs;
                     continue;
                 }
-                uint64_t opMask = pluginOpWriteMask(op);
+                uint64_t opMask = pluginOpWriteMask(op) & validWriteMask;
                 uint64_t allowedMask = opMask & ~claimed;
                 if (op.type == OP_CHECKSUM)
                 {
@@ -1337,18 +1584,21 @@ static bool pluginProcessFrame(const CanFrame &original, CanDriver &driver)
                 pluginNoteRuleChanged(*changedRules[i], original, modified);
             uint8_t replayCount = original.id == 2047 ? pluginGetReplayCount() : 1;
             CanFrame replayFrame = modified;
+            bool lastSendOk = false;
             for (uint8_t i = 0; i < replayCount; i++)
             {
                 bool sendOk = driver.send(replayFrame);
+                lastSendOk = sendOk;
                 unsigned long sendNow = millis();
                 for (uint8_t ruleIndex = 0; ruleIndex < changedRuleCount; ruleIndex++)
                     pluginNoteRuleSend(*changedRules[ruleIndex], sendOk, sendNow);
-                if (i + 1 >= replayCount)
+                if (!sendOk || i + 1 >= replayCount)
                     continue;
                 pluginAdvanceCounters(replayFrame, counterOps, counterOpCount, checksumPending);
             }
             periodicFrame = replayFrame;
-            pluginAdvanceCounters(periodicFrame, counterOps, counterOpCount, checksumPending);
+            if (lastSendOk)
+                pluginAdvanceCounters(periodicFrame, counterOps, counterOpCount, checksumPending);
         }
         if (cachePeriodic)
             pluginCachePeriodicEmit(periodicFrame, emitPeriodicIntervalMs, emitPeriodicGtwSilent,
@@ -1362,6 +1612,7 @@ static bool pluginProcessFrame(const CanFrame &original, CanDriver &driver)
 
 static uint8_t pluginGetFilterIds(uint32_t *ids, uint8_t maxIds)
 {
+    PluginLockGuard guard;
     uint8_t count = 0;
     for (uint8_t p = 0; p < pluginCount; p++)
     {

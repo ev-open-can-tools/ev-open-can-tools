@@ -262,9 +262,9 @@ void test_nag_output_torque_never_exceeds_safe_range()
 
         // Must be exactly 1.80 Nm (from fixed byte 3 = 0xB6)
         TEST_ASSERT_FLOAT_WITHIN(0.1, 1.80, torque);
-        // Must never exceed safe range
-        TEST_ASSERT_TRUE(torque >= -5.0f);
-        TEST_ASSERT_TRUE(torque <= 5.0f);
+        // Must never exceed firmware hard range.
+        TEST_ASSERT_TRUE(torque >= TORQUE_NM_MIN);
+        TEST_ASSERT_TRUE(torque <= TORQUE_NM_MAX);
     }
 }
 
@@ -303,6 +303,16 @@ void test_nag_multiple_frames_count_correctly()
     }
     TEST_ASSERT_EQUAL_UINT32(10, handler.nagEchoCount);
     TEST_ASSERT_EQUAL(10, mock.sent.size());
+}
+
+void test_nag_does_not_count_failed_transmission()
+{
+    mock.sendOk = false;
+    CanFrame f = makeEpasFrame(0, 0.33, 0x0C);
+    handler.handleMessage(f, mock);
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+    TEST_ASSERT_EQUAL_UINT32(0, handler.framesSent);
+    TEST_ASSERT_EQUAL_UINT32(0, handler.nagEchoCount);
 }
 
 // ============================================================
@@ -387,6 +397,7 @@ int main()
     RUN_TEST(test_nag_increments_frames_sent);
     RUN_TEST(test_nag_increments_echo_count);
     RUN_TEST(test_nag_multiple_frames_count_correctly);
+    RUN_TEST(test_nag_does_not_count_failed_transmission);
 
     // Edge cases
     RUN_TEST(test_nag_echoes_only_handson_0_in_mixed_sequence);

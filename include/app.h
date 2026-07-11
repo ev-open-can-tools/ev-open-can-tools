@@ -5,6 +5,10 @@
 #include "drivers/can_driver.h"
 #include "can_helpers.h"
 #include "handlers.h"
+#ifdef ESP_PLATFORM
+#include "gvret_serial.h"
+#include "runtime_diagnostics.h"
+#endif
 
 #ifndef NATIVE_BUILD
 #ifdef ESP_PLATFORM
@@ -46,10 +50,84 @@ using SelectedHandler = LegacyHandler;
 
 static std::unique_ptr<CanDriver> appDriver;
 static std::unique_ptr<CarManagerBase> appHandler;
-static CarManagerBase *appActiveHandler = nullptr;
+static Shared<CarManagerBase *> appActiveHandler{nullptr};
+
+class AppHandlerGuard
+{
+public:
+    AppHandlerGuard()
+    {
+#ifdef ESP_PLATFORM
+        if (appHandlerMutex_)
+            locked_ = xSemaphoreTakeRecursive(appHandlerMutex_, portMAX_DELAY) == pdTRUE;
+#endif
+    }
+
+    ~AppHandlerGuard()
+    {
+#ifdef ESP_PLATFORM
+        if (locked_)
+            xSemaphoreGiveRecursive(appHandlerMutex_);
+#endif
+    }
+
+    static bool initialize()
+    {
+#ifdef ESP_PLATFORM
+        if (!appHandlerMutex_)
+            appHandlerMutex_ = xSemaphoreCreateRecursiveMutex();
+        return appHandlerMutex_ != nullptr;
+#else
+        return true;
+#endif
+    }
+
+private:
+#ifdef ESP_PLATFORM
+    inline static SemaphoreHandle_t appHandlerMutex_ = nullptr;
+    bool locked_ = false;
+#endif
+};
+
+static CarManagerBase *appGetActiveHandler()
+{
+    return appActiveHandler;
+}
 
 // Plugin processing hook — set by dashboard to apply plugin rules after handler
 static void (*appPluginProcess)(const CanFrame &, CanDriver &) = nullptr;
+static void (*appDashboardTxObserver)(const CanFrame &, bool) = nullptr;
+
+static bool appInjectionReady()
+{
+#ifdef ESP_PLATFORM
+    return RuntimeDiagnostics::injectionReady();
+#else
+    return true;
+#endif
+}
+
+static bool appCanTransmitAllowed(const CanFrame &)
+{
+    return appInjectionReady();
+}
+
+static void appOnSendFrame(const CanFrame &frame, bool ok)
+{
+#ifdef ESP_PLATFORM
+    RuntimeDiagnostics::noteTransmit(ok);
+#endif
+    if (appDashboardTxObserver)
+        appDashboardTxObserver(frame, ok);
+}
+
+#ifdef ESP_PLATFORM
+static void appSetCanMonitorAll(bool enabled)
+{
+    if (appDriver)
+        appDriver->setMonitorAll(enabled);
+}
+#endif
 
 static volatile bool frameReady = true;
 static void canISR() { frameReady = true; }
@@ -94,6 +172,10 @@ static void appWriteStatusLed(uint8_t red, uint8_t green, uint8_t blue)
 
 static void appRefreshStatusLed(bool force)
 {
+#ifdef ESP_PLATFORM
+    static SemaphoreHandle_t ledMutex = xSemaphoreCreateMutex();
+    bool ledLocked = ledMutex && xSemaphoreTake(ledMutex, portMAX_DELAY) == pdTRUE;
+#endif
     static bool known = false;
     static bool lastInjecting = false;
     static bool lastConnected = false;
@@ -111,7 +193,13 @@ static void appRefreshStatusLed(bool force)
     bool emittedOn = (connected || ota) ? true : blinkOn;
 
     if (!force && known && lastInjecting == injecting && lastConnected == connected && lastOta == ota && lastLevel == level && lastEmittedOn == emittedOn)
+    {
+#ifdef ESP_PLATFORM
+        if (ledLocked)
+            xSemaphoreGive(ledMutex);
+#endif
         return;
+    }
 
     uint8_t r = 0, g = 0, b = 0;
     if (emittedOn)
@@ -131,6 +219,10 @@ static void appRefreshStatusLed(bool force)
     lastLevel = level;
     lastEmittedOn = emittedOn;
     known = true;
+#ifdef ESP_PLATFORM
+    if (ledLocked)
+        xSemaphoreGive(ledMutex);
+#endif
 }
 #endif
 
@@ -160,16 +252,22 @@ static void appPollInjectionToggleButton()
 #endif
 
 template <typename Driver>
-static void appSetup(std::unique_ptr<Driver> drv, const char *readyMsg)
+static void appPrepare(std::unique_ptr<Driver> drv)
 {
-    appHandler = std::make_unique<SelectedHandler>();
-    appActiveHandler = appHandler.get();
     delay(1500);
     Serial.begin(115200);
     unsigned long t0 = millis();
     while (!Serial && millis() - t0 < 1000)
     {
     }
+    if (!AppHandlerGuard::initialize())
+    {
+        Serial.println("Handler mutex allocation failed");
+        for (;;)
+            delay(1000);
+    }
+    appHandler = std::make_unique<SelectedHandler>();
+    appActiveHandler = appHandler.get();
 
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD) && defined(DASH_INJECTION_TOGGLE_PIN)
     pinMode(DASH_INJECTION_TOGGLE_PIN, INPUT_PULLUP);
@@ -183,17 +281,41 @@ static void appSetup(std::unique_ptr<Driver> drv, const char *readyMsg)
 #endif
 
     appDriver = std::move(drv);
+    appDriver->allowSendFrame = appCanTransmitAllowed;
+    appDriver->onSendFrame = appOnSendFrame;
+#ifdef ESP_PLATFORM
+    GvretSerial::setMonitorCallback(appSetCanMonitorAll);
+    appSetCanMonitorAll(GvretSerial::clientConnected.load(std::memory_order_relaxed));
+#endif
+}
+
+template <typename Driver>
+static bool appStartDriver(const char *readyMsg)
+{
+    if (!appDriver)
+        return false;
     bool canInitOk = appDriver->init();
     if (!canInitOk)
     {
-        Serial.println("CAN init failed");
+        Serial.println("[WARN] CAN init failed; dashboard remains available and recovery will retry");
     }
     char canDiag[640];
     appDriver->diagnosticsSummary(canDiag, sizeof(canDiag));
     Serial.print("[CAN] ");
     Serial.println(canDiag);
 
-    appDriver->setFilters(appHandler->filterIds(), appHandler->filterIdCount());
+    CarManagerBase *active = appGetActiveHandler();
+    if (!active)
+        active = appHandler.get();
+    if (active)
+        appDriver->setFilters(active->filterIds(), active->filterIdCount());
+#if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD)
+    dashReapplyFiltersWithPlugins();
+#endif
+#ifdef ESP_PLATFORM
+    if (appDriver->ready())
+        RuntimeDiagnostics::noteCanInitialized();
+#endif
     appDriver->diagnosticsSummary(canDiag, sizeof(canDiag));
     Serial.print("[CAN] after filters: ");
     Serial.println(canDiag);
@@ -208,11 +330,20 @@ static void appSetup(std::unique_ptr<Driver> drv, const char *readyMsg)
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD)
     delay(2000);
 #endif
+    return canInitOk;
 }
 
 template <typename Driver>
 static void appLoop()
 {
+#ifdef ESP_PLATFORM
+    RuntimeDiagnostics::noteCanLoop();
+#endif
+    if (!appDriver)
+    {
+        delay(100);
+        return;
+    }
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD) && defined(DASH_RGB_STATUS_LED)
     appRefreshStatusLed(false);
 #endif
@@ -236,20 +367,35 @@ static void appLoop()
     }
 
     CanFrame frame;
-    CarManagerBase *h = appActiveHandler ? appActiveHandler : appHandler.get();
     uint8_t framesThisLoop = 0;
     while (appDriver->read(frame))
     {
+#ifdef ESP_PLATFORM
+        RuntimeDiagnostics::noteCanInitialized();
+        RuntimeDiagnostics::noteCanFrame();
+#endif
         if (frame.bus == CAN_BUS_ANY)
             frame.bus = CAN_BUS_DEFAULT;
 #if !(defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD) && defined(DASH_RGB_STATUS_LED))
         digitalWrite(PIN_LED, LOW);
 #endif
-        h->frameCount++;
         CanFrame original = frame;
-        h->handleMessage(frame, *appDriver);
-        if (appPluginProcess)
-            appPluginProcess(original, *appDriver);
+#ifdef ESP_PLATFORM
+        GvretSerial::broadcast(original);
+#endif
+        {
+            AppHandlerGuard guard;
+            CarManagerBase *h = appGetActiveHandler();
+            if (!h)
+                h = appHandler.get();
+            if (h)
+            {
+                h->frameCount++;
+                h->handleMessage(frame, *appDriver);
+                if (appPluginProcess)
+                    appPluginProcess(original, *appDriver);
+            }
+        }
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD)
         if (++framesThisLoop >= 32)
         {

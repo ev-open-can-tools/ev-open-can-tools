@@ -13,6 +13,7 @@ idf_component_register(
         esp_netif
         esp_wifi
         nvs_flash
+        mbedtls
         spi_flash
         spiffs
         driver

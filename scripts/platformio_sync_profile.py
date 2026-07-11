@@ -27,6 +27,17 @@ DASHBOARD_OPTION_DEFINES = ("INJECTION_AFTER_AP", "DASH_INJECTION_AFTER_AP")
 # Synced for dashboard builds only (defines with literal values).
 DASHBOARD_VALUE_DEFINES = ("PLUGIN_GTW_UDS_KEY_READY",)
 CREDENTIAL_DEFINES = ("DASH_SSID", "DASH_PASS", "DASH_OTA_USER", "DASH_OTA_PASS")
+FIRMWARE_ARTIFACTS = {
+    "esp32_twai": "firmware-esp32.bin",
+    "esp32s2_twai": "firmware-esp32s2.bin",
+    "esp32c6_twai": "firmware-esp32c6.bin",
+    "lilygo_tcan485_hw3": "firmware-lilygo-tcan485-hw3.bin",
+    "m5stack-atomic-can-base": "firmware-m5stack.bin",
+    "m5stack-atoms3-mini-can-base": "firmware-m5stack-atoms3-mini.bin",
+    "esp32_feather_v2_mcp2515": "firmware-esp32-featherwing.bin",
+    "esp32_ext_mcp2515": "firmware-esp32-ext-mcp2515.bin",
+    "waveshare_ESP32_S3_RS485_CAN": "firmware-waveshare-esp32-s3.bin",
+}
 CONFIG_RELATIVE_PATH = Path("platformio_profile.h")
 EXAMPLE_CONFIG_RELATIVE_PATH = Path("platformio_profile.example.h")
 
@@ -150,7 +161,32 @@ def _regenerate_dashboard(project_dir):
         raise UserError(f"Dashboard UI generation failed: {exc}") from exc
 
 
+def _sync_sdkconfig_flash_size(env_obj, project_dir):
+    """Keep ESP-IDF image header aligned with board and partition size."""
+    flash_size = str(env_obj.BoardConfig().get("upload.flash_size", "4MB")).upper()
+    supported = {"1MB", "2MB", "4MB", "8MB", "16MB", "32MB", "64MB", "128MB"}
+    if flash_size not in supported:
+        raise UserError(f"Unsupported board flash size: {flash_size}")
+
+    sdkconfig_path = project_dir / f"sdkconfig.{env_obj['PIOENV']}"
+    lines = []
+    if sdkconfig_path.exists():
+        lines = sdkconfig_path.read_text(encoding="utf-8").splitlines()
+    lines = [
+        line
+        for line in lines
+        if "CONFIG_ESPTOOLPY_FLASHSIZE_" not in line
+        and not line.startswith("CONFIG_ESPTOOLPY_FLASHSIZE=")
+    ]
+    lines.append(f"CONFIG_ESPTOOLPY_FLASHSIZE_{flash_size}=y")
+    updated = "\n".join(lines) + "\n"
+    current = sdkconfig_path.read_text(encoding="utf-8") if sdkconfig_path.exists() else ""
+    if updated != current:
+        sdkconfig_path.write_text(updated, encoding="utf-8")
+
+
 project_dir = Path(env["PROJECT_DIR"])
+_sync_sdkconfig_flash_size(env, project_dir)
 config_path = Path(
     env.GetProjectOption("custom_profile_path", CONFIG_RELATIVE_PATH.as_posix())
 )
@@ -268,6 +304,13 @@ if uses_dashboard:
     for cred_name in CREDENTIAL_DEFINES:
         if cred_name in credentials:
             env.Append(CPPDEFINES=[(cred_name, f'\\"{credentials[cred_name]}\\"')])
+
+    artifact = FIRMWARE_ARTIFACTS.get(env["PIOENV"])
+    if artifact is None:
+        raise UserError(
+            f"PlatformIO env '{env['PIOENV']}' has no OTA release artifact mapping."
+        )
+    env.Append(CPPDEFINES=[("FIRMWARE_ARTIFACT", f'\\"{artifact}\\"')])
 
 # Inject firmware version from VERSION file
 if version_path.exists():

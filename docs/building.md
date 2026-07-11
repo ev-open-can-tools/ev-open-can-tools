@@ -69,10 +69,13 @@ For boards that need a different upload path or boot mode, use the normal Platfo
 ## First Boot
 
 - ESP32 dashboard builds start their hotspot from `DASH_SSID` / `DASH_PASS`
+- Dashboard starts before CAN. TWAI initializes after a 10-second driver-wake delay; injection remains blocked for 15 seconds from successful CAN initialization and until more than 1,000 valid frames have arrived
 - Open `http://192.168.4.1/` after connecting to the hotspot
 - Change hotspot and OTA credentials after first boot
 - Use the `WiFi Internet` card if you want plugin downloads or OTA updates from GitHub releases
 - Use the `CAN Pins` card only on TWAI-based boards when you need non-default GPIO assignments
+
+Dashboard source lives in `include/web/mcp2515_dashboard_ui.src.h`. PlatformIO regenerates `include/web/mcp2515_dashboard_ui.h` automatically with `scripts/minify_dashboard.py`; do not edit generated header directly.
 
 ## Build Outputs
 

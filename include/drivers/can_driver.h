@@ -7,12 +7,20 @@
 struct CanDriver
 {
     void (*onSendFrame)(const CanFrame &, bool ok) = nullptr;
+    bool (*allowSendFrame)(const CanFrame &) = nullptr;
 
     virtual bool init() = 0;
     virtual void setFilters(const uint32_t *ids, uint8_t count) = 0;
     virtual bool enableInterrupt(void (*onReady)()) = 0;
     virtual bool read(CanFrame &frame) = 0;
     virtual bool send(const CanFrame &frame) = 0;
+    virtual bool ready() const { return true; }
+    virtual void setMonitorAll(bool) {}
+
+    bool sendAllowed(const CanFrame &frame) const
+    {
+        return !allowSendFrame || allowSendFrame(frame);
+    }
 
     virtual void diagnosticsJson(char *out, size_t outLen) const
     {

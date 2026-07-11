@@ -56,5 +56,5 @@
 // #define ISA_SPEED_CHIME_SUPPRESS    // Suppress ISA speed chime; speed limit sign will be empty while driving
 // #define EMERGENCY_VEHICLE_DETECTION // Enable emergency vehicle detection
 // #define BYPASS_TLSSC_REQUIREMENT    // Always enable drivepilot without requiring "Traffic Light and Stop Sign Control" toggle
-// #define NAG_KILLER                  // Suppress Autosteer "hands on wheel" nag (CAN 880 counter+1 echo, X179 pin 2/3)
+// #define NAG_KILLER                  // Party CAN only: CAN 0x370 counter+1 echo. Verify connector in docs/nag-killer.md.
 // #define ENHANCED_AUTOPILOT          // Enable UI_applyEceR79 override on HW3/HW4 and summon on HW4

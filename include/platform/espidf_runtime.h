@@ -3,8 +3,10 @@
 #ifdef ESP_PLATFORM
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstdarg>
+#include <ctime>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -21,14 +23,17 @@
 #include <esp_event.h>
 #include <esp_http_client.h>
 #include <esp_http_server.h>
+#include <esp_crt_bundle.h>
 #include <esp_log.h>
 #include <esp_netif.h>
+#include <esp_netif_sntp.h>
 #include <esp_ota_ops.h>
 #include <esp_spiffs.h>
 #include <esp_system.h>
 #include <esp_timer.h>
 #include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <freertos/task.h>
 #include <nvs.h>
 #include <nvs_flash.h>
@@ -292,22 +297,34 @@ private:
 class SerialClass
 {
 public:
-    void begin(unsigned long) {}
+    void begin(unsigned long baud);
     explicit operator bool() const { return true; }
-    void println(const String &value) { std::printf("%s\n", value.c_str()); }
-    void println(const char *value) { std::printf("%s\n", value ? value : ""); }
-    void println(int value) { std::printf("%d\n", value); }
-    void println(unsigned long value) { std::printf("%lu\n", value); }
-    void print(const String &value) { std::printf("%s", value.c_str()); }
-    void print(const char *value) { std::printf("%s", value ? value : ""); }
-    int printf(const char *fmt, ...)
-    {
-        va_list args;
-        va_start(args, fmt);
-        int result = std::vprintf(fmt, args);
-        va_end(args);
-        return result;
-    }
+    void println(const String &value);
+    void println(const char *value);
+    void println(int value);
+    void println(unsigned long value);
+    void print(const String &value);
+    void print(const char *value);
+    int printf(const char *fmt, ...);
+    size_t write(uint8_t value);
+    size_t write(const uint8_t *data, size_t len);
+    int available();
+    int read();
+    int availableForWrite() const;
+    bool connected() const;
+    void setProtocolMode(bool enabled);
+    bool protocolMode() const { return protocolMode_.load(std::memory_order_relaxed); }
+
+private:
+    size_t writeTransport(const uint8_t *data, size_t len, TickType_t waitTicks);
+    void writeText(const char *data, size_t len);
+
+    bool installed_ = false;
+    bool useUsbSerialJtag_ = false;
+    std::atomic<bool> protocolMode_{false};
+    SemaphoreHandle_t mutex_ = nullptr;
+    uint8_t pendingRxByte_ = 0;
+    bool pendingRxValid_ = false;
 };
 
 extern SerialClass Serial;
@@ -346,23 +363,26 @@ int digitalRead(uint8_t pin);
 class Preferences
 {
 public:
+    ~Preferences() { end(); }
     bool begin(const char *name, bool readOnly = false);
-    void end();
+    bool end();
     bool isKey(const char *key);
     int8_t getChar(const char *key, int8_t defaultValue = 0);
     uint8_t getUChar(const char *key, uint8_t defaultValue = 0);
     bool getBool(const char *key, bool defaultValue = false);
     String getString(const char *key, const char *defaultValue = "");
-    void putChar(const char *key, int8_t value);
-    void putUChar(const char *key, uint8_t value);
-    void putBool(const char *key, bool value);
-    void putString(const char *key, const String &value);
-    void remove(const char *key);
+    bool putChar(const char *key, int8_t value);
+    bool putUChar(const char *key, uint8_t value);
+    bool putBool(const char *key, bool value);
+    bool putString(const char *key, const String &value);
+    bool remove(const char *key);
 
 private:
     nvs_handle_t handle_ = 0;
     bool open_ = false;
     bool readOnly_ = false;
+    bool writeOk_ = true;
+    bool dirty_ = false;
 };
 
 class File
@@ -383,16 +403,17 @@ public:
     ~File() { close(); }
 
     explicit operator bool() const { return fp_ || dir_; }
-    void close();
+    bool close();
     size_t write(const uint8_t *buf, size_t len);
     size_t read(uint8_t *buf, size_t len);
     String readString();
-    void print(const String &value);
-    void print(unsigned long value);
-    void println();
-    void println(const String &value);
+    size_t print(const String &value);
+    size_t print(unsigned long value);
+    size_t println();
+    size_t println(const String &value);
     File openNextFile();
     const char *name() const { return name_.c_str(); }
+    bool hasError() const { return writeError_; }
 
 private:
     void moveFrom(File &other);
@@ -401,6 +422,7 @@ private:
     DIR *dir_ = nullptr;
     std::string basePath_;
     std::string name_;
+    bool writeError_ = false;
 };
 
 class SPIFFSClass
@@ -410,6 +432,7 @@ public:
     File open(const String &path, const char *mode = "r");
     bool exists(const String &path);
     bool remove(const String &path);
+    bool rename(const String &from, const String &to);
 };
 
 extern SPIFFSClass SPIFFS;
@@ -425,7 +448,7 @@ public:
     void begin(const char *ssid, const char *pass);
     wl_status_t status();
     void disconnect(bool wifioff = false, bool eraseap = false);
-    void config(IPAddress local, IPAddress gateway, IPAddress subnet, IPAddress dns);
+    bool config(IPAddress local, IPAddress gateway, IPAddress subnet, IPAddress dns);
     IPAddress localIP();
     IPAddress softAPIP();
     int softAPgetStationNum();
@@ -438,7 +461,7 @@ public:
     void scanDelete();
 
 private:
-    void ensure();
+    bool ensure();
 
     bool initialized_ = false;
     esp_netif_t *apNetif_ = nullptr;
@@ -454,11 +477,20 @@ public:
     WiFiClient() = default;
     explicit WiFiClient(std::string data) : data_(std::move(data)) {}
     size_t readBytes(uint8_t *buf, size_t len);
-    bool connected() const { return offset_ < data_.size(); }
+    bool connected() const;
 
 private:
+    friend class HTTPClient;
+    void attach(esp_http_client_handle_t client, uint32_t timeoutMs = 15000)
+    {
+        client_ = client;
+        timeoutMs_ = timeoutMs;
+    }
+
     std::string data_;
     size_t offset_ = 0;
+    esp_http_client_handle_t client_ = nullptr;
+    uint32_t timeoutMs_ = 15000;
 };
 
 class WiFiClientSecure : public WiFiClient
@@ -470,13 +502,14 @@ public:
 class HTTPClient
 {
 public:
+    ~HTTPClient() { end(); }
     bool begin(WiFiClientSecure &, const String &url);
-    void setFollowRedirects(int) {}
+    void setFollowRedirects(int mode) { followRedirects_ = mode != 0; }
     void setTimeout(uint32_t ms) { timeoutMs_ = ms; }
-    void addHeader(const char *, const char *) {}
+    void addHeader(const char *name, const char *value);
     int GET();
-    String getString() const { return response_; }
-    int getSize() const { return response_.length(); }
+    String getString();
+    int getSize() const { return contentLength_; }
     WiFiClient *getStreamPtr();
     void end();
 
@@ -484,31 +517,39 @@ private:
     String url_;
     String response_;
     WiFiClient stream_;
+    std::vector<std::pair<std::string, std::string>> headers_;
+    esp_http_client_handle_t client_ = nullptr;
+    int contentLength_ = -1;
     uint32_t timeoutMs_ = 15000;
+    bool followRedirects_ = false;
 };
 
 class UpdateClass
 {
 public:
+    UpdateClass();
     bool begin(size_t size);
     size_t write(const uint8_t *buf, size_t len);
     size_t writeStream(WiFiClient &stream);
     bool end(bool evenIfRemaining = false);
     void abort();
     bool hasError() const { return error_; }
-    const char *errorString() const { return errorText_.c_str(); }
+    String errorString();
     bool isRunning() const { return running_; }
     bool isFinished() const { return finished_; }
 
 private:
     void setError(const char *message);
+    void lock();
+    void unlock();
 
     const esp_partition_t *partition_ = nullptr;
     esp_ota_handle_t handle_ = 0;
-    bool running_ = false;
-    bool finished_ = false;
-    bool error_ = false;
-    std::string errorText_;
+    std::atomic<bool> running_{false};
+    std::atomic<bool> finished_{false};
+    std::atomic<bool> error_{false};
+    char errorText_[64] = {};
+    SemaphoreHandle_t mutex_ = nullptr;
 };
 
 extern UpdateClass Update;
@@ -531,6 +572,7 @@ public:
     void on(const char *uri, http_method method, Handler handler);
     void on(const char *uri, http_method method, Handler handler, Handler uploadHandler);
     void begin();
+    bool started() const { return handle_ != nullptr; }
     void handleClient() {}
     bool hasArg(const char *name) const;
     String arg(const char *name) const;
@@ -556,8 +598,9 @@ private:
 
     static esp_err_t dispatch(httpd_req_t *req);
     esp_err_t handle(httpd_req_t *req);
-    void parseArgs(const std::string &query);
-    void readPostBody(httpd_req_t *req);
+    bool parseArgs(const std::string &query);
+    bool readPostBody(httpd_req_t *req);
+    bool readUpload(httpd_req_t *req, const Route &route);
     const Route *findRoute(const char *uri, httpd_method_t method) const;
     void applyHeaders();
 

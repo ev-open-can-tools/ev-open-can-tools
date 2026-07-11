@@ -6,6 +6,7 @@
 
 #ifdef ESP_PLATFORM
 #include "platform/espidf_runtime.h"
+#include <exception>
 #else
 #include <Arduino.h>
 #endif
@@ -43,9 +44,23 @@ static bool fsdActivationLastAp = false;
 
 static void appGatedDashboardPluginProcess(const CanFrame &frame, CanDriver &driver)
 {
-    CarManagerBase *handler = appActiveHandler ? appActiveHandler : appHandler.get();
+    static uint8_t previousHardwareMode = 0xFF;
+    CarManagerBase *handler = appGetActiveHandler();
+    if (!handler)
+        handler = appHandler.get();
     bool apActive = handler && (bool)handler->APActive;
     unsigned long now = millis();
+
+    // Detect live mode changes in the injection decision path. Configuration
+    // persistence must not consume this transition before the CAN path sees
+    // it. Reset cached periodic frames/counters and AP settle sequencing.
+    if (previousHardwareMode != static_cast<uint8_t>(hwMode))
+    {
+        previousHardwareMode = static_cast<uint8_t>(hwMode);
+        pluginResetPeriodicEmit();
+        fsdActivationApStartedMs = 0;
+        fsdActivationLastAp = false;
+    }
 
     if (apActive != fsdActivationLastAp)
     {
@@ -69,23 +84,26 @@ static void appGatedDashboardPluginProcess(const CanFrame &frame, CanDriver &dri
 static void app_main_setup()
 {
 #ifdef DRIVER_MCP2515
-    appSetup<MCP2515Driver>(std::make_unique<MCP2515Driver>(PIN_CAN_CS), "MCP25625 ready @ 500k");
+    appPrepare<MCP2515Driver>(std::make_unique<MCP2515Driver>(PIN_CAN_CS));
 #ifdef ESP32_DASHBOARD
     mcpDashboardSetup(appHandler.get(), appDriver.get());
 #endif
+    appStartDriver<MCP2515Driver>("MCP25625 ready @ 500k");
 #elif defined(DRIVER_ESP32_EXT_MCP2515)
 #ifndef ESP_PLATFORM
     SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, PIN_CAN_CS);
     SPI.setFrequency(8000000);
 #endif
     auto drv = std::make_unique<ESP32_MCP2515Driver>(PIN_CAN_CS);
-    MCP2515 *mcpPtr = &drv->mcp();
-    appSetup<ESP32_MCP2515Driver>(std::move(drv), "ESP32 + MCP2515 ready @ 500k");
+    ESP32_MCP2515Driver *mcpDriver = drv.get();
+    appPrepare<ESP32_MCP2515Driver>(std::move(drv));
 #ifdef ESP32_DASHBOARD
-    mcpDashboardSetup(appHandler.get(), appDriver.get(), mcpPtr);
+    mcpDashboardSetup(appHandler.get(), appDriver.get(), mcpDriver);
 #endif
+    appStartDriver<ESP32_MCP2515Driver>("ESP32 + MCP2515 ready @ 500k");
 #elif defined(DRIVER_SAME51)
-    appSetup<SAME51Driver>(std::make_unique<SAME51Driver>(), "SAME51 CAN ready @ 500k");
+    appPrepare<SAME51Driver>(std::make_unique<SAME51Driver>());
+    appStartDriver<SAME51Driver>("SAME51 CAN ready @ 500k");
 #elif defined(DRIVER_TWAI)
     // Load TWAI pins from NVS (survives OTA); fall back to compile-time defaults
     gpio_num_t twaiTx = TWAI_TX_PIN;
@@ -97,16 +115,22 @@ static void app_main_setup()
             int8_t tx = canPrefs.getChar("tx", -1);
             int8_t rx = canPrefs.getChar("rx", -1);
             canPrefs.end();
-            if (tx >= 0 && tx <= 39)
+            if (tx >= 0 && GPIO_IS_VALID_OUTPUT_GPIO(tx))
                 twaiTx = (gpio_num_t)tx;
-            if (rx >= 0 && rx <= 39)
+            if (rx >= 0 && GPIO_IS_VALID_GPIO(rx))
                 twaiRx = (gpio_num_t)rx;
         }
     }
-    appSetup<TWAIDriver>(std::make_unique<TWAIDriver>(twaiTx, twaiRx), "ESP32 TWAI ready @ 500k");
+    appPrepare<TWAIDriver>(std::make_unique<TWAIDriver>(twaiTx, twaiRx));
 #ifdef ESP32_DASHBOARD
     mcpDashboardSetup(appHandler.get(), appDriver.get());
 #endif
+#ifdef ESP_PLATFORM
+    Serial.printf("[BOOT] Driver-wake delay: %lu ms before TWAI initialization\n",
+                  DRIVER_WAKE_DELAY_MS);
+    delay(DRIVER_WAKE_DELAY_MS);
+#endif
+    appStartDriver<TWAIDriver>("ESP32 TWAI ready @ 500k");
 #endif
 
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD)
@@ -139,6 +163,12 @@ static void app_main_loop()
 #ifdef ESP_PLATFORM
 extern "C" void app_main(void)
 {
+    Serial.begin(115200);
+    delay(50);
+    RuntimeDiagnostics::begin();
+    if (!GvretSerial::begin())
+        Serial.println("[WARN] GVRET serial task failed to start");
+
     esp_err_t nvsErr = nvs_flash_init();
     if (nvsErr == ESP_ERR_NVS_NO_FREE_PAGES || nvsErr == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
@@ -150,7 +180,27 @@ extern "C" void app_main(void)
     app_main_setup();
     while (true)
     {
-        app_main_loop();
+        RuntimeDiagnostics::noteMainLoop();
+        try
+        {
+            app_main_loop();
+        }
+        catch (const std::bad_alloc &)
+        {
+            Serial.println("[ERR] Main loop out of memory");
+            delay(100);
+        }
+        catch (const std::exception &)
+        {
+            Serial.println("[ERR] Main loop failure");
+            delay(100);
+        }
+        catch (...)
+        {
+            Serial.println("[ERR] Main loop failure");
+            delay(100);
+        }
+        RuntimeDiagnostics::logHeartbeat(appDriver.get());
         yield();
     }
 }
