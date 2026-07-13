@@ -99,7 +99,7 @@ PAGE = r'''<!doctype html>
         <div class="placement-item"><b>Verify Party CAN</b><span>For the supported hands-on-wheel experiments, verify Party CAN from exact service documentation before connecting.</span></div>
       </div>
       <div class="notice danger"><strong>The illustration is not a pinout.</strong>Open the correct Tesla electrical reference or service documentation for the exact model and build date. Confirm CAN H and CAN L, voltage, termination, and 500 kbit/s traffic with a listen-only tool.</div>
-      <div class="row"><a class="btn" href="https://service.tesla.com/docs/Model3/ElectricalReference/" target="_blank" rel="noreferrer">Model 3 electrical reference</a><a class="btn" href="../docs/nag-killer.html" target="_blank">CAN safety guide</a></div>
+      <div class="row"><a class="btn" href="https://service.tesla.com/docs/Model3/ElectricalReference/" target="_blank" rel="noreferrer">Model 3 electrical reference</a><a class="btn" href="https://ev-open-can-tools.github.io/ev-open-can-tools/docs/nag-killer.html" target="_blank">CAN safety guide</a></div>
     </section>
 
     <section class="step" data-step="5" data-title="Flash">
@@ -135,7 +135,7 @@ PAGE = r'''<!doctype html>
       <div class="plan" id="final-plan"></div>
       <div class="row"><button class="btn primary" type="button" onclick="downloadPlan()">Download plan</button><button class="btn" type="button" onclick="window.print()">Print</button><button class="btn" type="button" onclick="restart()">Start over</button></div>
       <div class="notice good"><strong>Onboarding complete means ready to begin learning</strong>It does not mean a live vehicle installation or transmitting rule has been validated. Continue with the build, dashboard, safety, and plugin documentation in that order.</div>
-      <div class="row"><a class="btn" href="../docs/building.html">Build and flash</a><a class="btn" href="../docs/dashboard.html">Dashboard guide</a><a class="btn" href="../docs/nag-killer.html">CAN safety</a><a class="btn" href="../docs/plugins.html">Plugins</a></div>
+      <div class="row"><a class="btn" href="../docs/building.html">Build and flash</a><a class="btn" href="../docs/dashboard.html">Dashboard guide</a><a class="btn" href="https://ev-open-can-tools.github.io/ev-open-can-tools/docs/nag-killer.html">CAN safety</a><a class="btn" href="../docs/plugins.html">Plugins</a></div>
     </section>
 
     <footer class="actions"><button class="btn" id="back" type="button" onclick="goBack()">Back</button><div class="spacer"></div><button class="btn" type="button" onclick="saveProgress(true)">Save progress</button><button class="btn primary" id="next" type="button" onclick="goNext()">Next</button></footer>

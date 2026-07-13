@@ -29,6 +29,7 @@ class PagesOnboardingPreviewTest(unittest.TestCase):
         self.assertIn("Waveshare ESP32-S3 RS485/CAN", page)
         self.assertIn("m5stack-atoms3-mini-can-base", page)
         self.assertIn("Model 3 electrical reference", page)
+        self.assertIn("https://ev-open-can-tools.github.io/ev-open-can-tools/docs/nag-killer.html", page)
         self.assertIn("EV OPEN CAN NEWCOMER PLAN", page)
         self.assertIn("downloadPlan()", page)
         self.assertIn("evOpenCanNewcomerPlanV2", page)
