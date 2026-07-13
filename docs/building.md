@@ -1,84 +1,93 @@
-# Build And Flash
+# Build and flash
 
-[Project Home](../) | [Documentation](index.md) | [Dashboard Guide](dashboard.md) | [Plugin System](plugins.md) | [Release Notes](../CHANGELOG.md)
+[Documentation](index.md) · [Dashboard](dashboard.md) · [Plugins](plugins.md) · [Release notes](../CHANGELOG.md)
 
-The project is PlatformIO-only. Pick the correct board environment in `platformio.ini`, then choose the matching driver and default vehicle mode in your local `platformio_profile.h`.
+This project uses PlatformIO. You select a board environment, create a local profile, build a firmware image, and then flash that image to the matching board. A firmware image for one board is not interchangeable with another board.
 
-## Supported PlatformIO Environments
+## Before buying or wiring hardware
 
-| Env | Board / target | Notes |
-| --- | --- | --- |
-| `feather_rp2040_can` | Adafruit Feather RP2040 CAN | MCP2515-based build, no web dashboard |
-| `feather_m4_can` | Adafruit Feather M4 CAN Express | Native CAN build, no web dashboard |
-| `esp32_twai` | Generic ESP32 dev board | TWAI dashboard build |
-| `esp32c6_twai` | ESP32-C6 DevKitC-1 | TWAI dashboard build (single-core RISC-V); TWAI on GPIO5/GPIO4 |
-| `lilygo_tcan485_hw3` | LILYGO TCAN485 | TWAI dashboard build with board-specific default pins |
-| `m5stack-atomic-can-base` | M5Stack Atom CAN Base | TWAI dashboard build with RGB status LED |
-| `m5stack-atoms3-mini-can-base` | M5Stack AtomS3 Mini CAN Base | TWAI dashboard build with RGB status LED and built-in injection toggle button |
-| `esp32_feather_v2_mcp2515` | Feather ESP32 V2 + external MCP2515 | Dashboard build using the new MCP2515 driver and web UI |
-| `esp32_ext_mcp2515` | ESP32-S3 + external MCP2515 | Dashboard build for SPI MCP2515 hardware |
-| `waveshare_ESP32_S3_RS485_CAN` | Waveshare ESP32-S3 RS485/CAN | TWAI dashboard build |
+- Confirm the board, CAN transceiver, logic voltage, connector, and termination resistor.
+- Confirm which vehicle bus your experiment belongs on. Party CAN, Vehicle CAN, and Chassis CAN are different networks.
+- Use an isolated bench harness or listen-only tool first.
+- Do not connect an unknown adapter to a live vehicle bus.
+- Keep `platformio_profile.h` private: it can contain WiFi, OTA, or gateway credentials.
 
-## Hardware Notes
+## Supported environments
 
-Some CAN boards and adapters include an onboard 120 ohm termination resistor. When installing on an existing vehicle CAN bus, do not add another termination point: cut or remove the board's 120 ohm resistor if the adapter has one fitted.
+| Environment | Board | CAN interface | Dashboard |
+| --- | --- | --- | --- |
+| `esp32_twai` | Generic ESP32 Dev Module | Built-in TWAI | Yes |
+| `esp32s2_twai` | ESP32-S2 Saola | Built-in TWAI | Yes |
+| `esp32c6_twai` | ESP32-C6 DevKitC-1 | Built-in TWAI | Yes |
+| `lilygo_tcan485_hw3` | LILYGO TCAN485 | Built-in TWAI | Yes |
+| `m5stack-atomic-can-base` | M5Stack Atom CAN Base | Built-in TWAI | Yes |
+| `m5stack-atoms3-mini-can-base` | M5Stack AtomS3 Mini CAN Base | Built-in TWAI | Yes |
+| `esp32_feather_v2_mcp2515` | Feather ESP32 V2 + external MCP2515 | SPI MCP2515 | Yes |
+| `esp32_ext_mcp2515` | ESP32-S3 + external MCP2515 | SPI MCP2515 | Yes |
+| `waveshare_ESP32_S3_RS485_CAN` | Waveshare ESP32-S3 RS485/CAN | Built-in TWAI | Yes |
+| `feather_rp2040_can` | Adafruit Feather RP2040 CAN | MCP2515 | No |
+| `feather_m4_can` | Adafruit Feather M4 CAN Express | Native CAN | No |
 
-## Selecting Driver, Vehicle, And Defaults
+The first nine are ESP-IDF dashboard builds. The last two are legacy Arduino builds without the web dashboard.
 
-Create your local build config first:
+## Create a local profile
+
+From the repository root:
 
 ```bash
 cp platformio_profile.example.h platformio_profile.h
 ```
 
-Then edit `platformio_profile.h`:
+Edit the local file and choose the driver, vehicle mode, initial dashboard credentials, and optional compile-time features. It is ignored by Git. Never paste its secrets into an issue, Support report, plugin, or screenshot.
 
-- choose one driver define
-- choose one vehicle define
-- set initial hotspot and OTA credentials
-- uncomment optional feature defines when you want compile-time defaults changed
-
-`platformio_profile.h` is ignored by git. Keep personal board choices, WiFi credentials, OTA credentials, and gateway keys there. Commit changes to `platformio_profile.example.h` only when you are changing the template for everyone.
-
-You can also use the helper script:
+The helper can apply common choices:
 
 ```bash
-python scripts/platformio_set_profile.py --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION --enable ENHANCED_AUTOPILOT
+python scripts/platformio_set_profile.py \
+  --driver DRIVER_ESP32_EXT_MCP2515 \
+  --vehicle HW4 \
+  --enable EMERGENCY_VEHICLE_DETECTION
 ```
 
-Add `--enable INJECTION_AFTER_AP` when `ENHANCED_AUTOPILOT` should wait until AP is active before mux 1 injection.
-
-For `DRIVER_TWAI` dashboard builds, the helper script intentionally enables all optional feature defines so the dashboard can control those options at runtime; the selected vehicle then becomes the default UI mode.
+Use the exact driver and vehicle values documented by `platformio_profile.example.h`. Do not guess GPIOs from a similar board.
 
 ## Build
+
+Install PlatformIO, then build the environment matching the board:
 
 ```bash
 pio run -e esp32_ext_mcp2515
 ```
 
-Replace `esp32_ext_mcp2515` with the environment you are targeting.
+Replace the environment name with the one in the table. A successful build is not proof that wiring, bitrate, termination, or a vehicle frame interpretation is correct.
 
 ## Flash
+
+Connect only the matching board and use:
 
 ```bash
 pio run -e esp32_ext_mcp2515 -t upload
 ```
 
-For boards that need a different upload path or boot mode, use the normal PlatformIO upload flow for that board.
+Some boards need a boot button or a different USB port. Follow the board maker's upload instructions. Do not flash an image built for a different target.
 
-## First Boot
+## First boot
 
-- ESP32 dashboard builds start their hotspot from `DASH_SSID` / `DASH_PASS`
-- Dashboard starts before CAN. TWAI initializes after a 10-second driver-wake delay; injection remains blocked for 15 seconds from successful CAN initialization and until more than 1,000 valid frames have arrived
-- Open `http://192.168.4.1/` after connecting to the hotspot
-- Change hotspot and OTA credentials after first boot
-- Use the `WiFi Internet` card if you want plugin downloads or OTA updates from GitHub releases
-- Use the `CAN Pins` card only on TWAI-based boards when you need non-default GPIO assignments
+1. Power the board from a safe bench supply.
+2. Connect to the hotspot named by `DASH_SSID`.
+3. Open `http://192.168.4.1/`.
+4. Change default hotspot and OTA credentials.
+5. Leave injection stopped while checking the dashboard and CAN wiring.
+6. Read the [Dashboard guide](dashboard.md).
 
-Dashboard source lives in `include/web/mcp2515_dashboard_ui.src.h`. PlatformIO regenerates `include/web/mcp2515_dashboard_ui.h` automatically with `scripts/minify_dashboard.py`; do not edit generated header directly.
+The dashboard starts before CAN initialization. On ESP-IDF builds, TWAI waits about 10 seconds before initialization. Injection remains blocked for at least 15 seconds after successful CAN initialization and until more than 1,000 valid frames have been received. These delays are readiness gates, not a guarantee that a vehicle is safe to control.
 
-## Build Outputs
+## Common problems
 
-- RP2040 builds produce a `firmware.uf2`
-- ESP32 and ATSAME51 builds produce a `firmware.bin`
-- Manual dashboard OTA expects a `.bin` built for the exact target board
+- **No dashboard:** check power, USB serial output, hotspot name, and the board environment.
+- **No CAN frames:** check H/L polarity, transceiver power, bitrate, termination, bus selection, and GPIOs.
+- **Bus-off or recovery:** stop transmission, inspect wiring and termination, and use the Support report.
+- **Wrong behavior after flashing:** verify the environment and local profile; do not continue testing until the board and driver match.
+- **OTA failure:** use a firmware `.bin` built for the exact board and keep a serial recovery path available.
+
+Generated dashboard data lives in `include/web/mcp2515_dashboard_ui.h`. Contributors edit `include/web/mcp2515_dashboard_ui.src.h`; the generated header is recreated by `scripts/minify_dashboard.py`.

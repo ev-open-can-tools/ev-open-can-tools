@@ -1,11 +1,17 @@
+This directory contains the project's native and hardware-facing regression tests.
 
-This directory is intended for PlatformIO Test Runner and project tests.
+Native tests exercise CAN frame parsing, counters, checksums, safety gates, plugin
+rules, driver recovery, dashboard handlers, and bounded diagnostics without
+transmitting on a vehicle bus. PlatformIO Test Runner builds and runs these tests.
 
-Unit Testing is a software testing method by which individual units of
-source code, sets of one or more MCU program modules together with associated
-control data, usage procedures, and operating procedures, are tested to
-determine whether they are fit for use. Unit testing finds problems early
-in the development cycle.
+Run the focused Python tests from the repository root:
 
-More information about PlatformIO Unit Testing:
-- https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
+```bash
+python3 -m unittest discover -s test -p 'test_*.py'
+```
+
+Run the configured native environments with the command documented by the
+repository instructions. Firmware builds and vehicle testing are separate steps;
+passing unit tests does not prove a CAN change is safe on a car.
+
+PlatformIO reference: https://docs.platformio.org/en/latest/advanced/unit-testing/index.html

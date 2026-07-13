@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [3.0.2-beta.6] - 2026-07-13
+
 ### Added
 
+- Reworked the documentation for beginners: project overview, board selection, first boot, dashboard use, plugin safety, CAN evidence, troubleshooting, and runtime measurements now follow one guided path.
+- Added clear explanations of CAN IDs, frames, DLC, muxes, counters, checksums, TWAI, MCP2515, GVRET, and Support diagnostics.
 - Restored Support as collapsed final dashboard section backed by one on-demand, bounded plain-text report. It includes firmware/build/chip/flash/reset, heap and task stack watermarks, WiFi identity/signal, CAN/TWAI health and queue pressure, filters/gates/safety limits, Last Write Check, NVS recovery, GVRET, and web metrics without credentials or secrets.
 - Added lightweight request/response, support size, task wake, heap low-water, logging throttle, and TWAI maximum queue-depth measurements plus ESP32 optimization guidance.
 
@@ -16,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replaced frequently polled `/status` `String` construction with fixed-buffer formatting, removed periodic plugin polling, reduced idle WiFi/status requests, and polls GVRET only while active.
 - Reduced idle web-maintenance and disabled-GVRET task wakeups from 100 Hz to 4 Hz without changing CAN timing, task priorities, injection behavior, or safety gates.
+
 
 ## [3.0.2-beta.5] - 2026-07-11
 

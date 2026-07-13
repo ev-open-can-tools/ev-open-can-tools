@@ -1,58 +1,74 @@
-# Dashboard Guide
+# Dashboard guide
 
-[Project Home](../) | [Documentation](index.md) | [Build & Flash](building.md) | [Nag Suppression](nag-killer.md) | [Plugin System](plugins.md) | [Release Notes](../CHANGELOG.md)
+[Documentation](index.md) · [Build and flash](building.md) · [Plugins](plugins.md) · [CAN safety](nag-killer.md) · [Release notes](../CHANGELOG.md)
 
-ESP32 builds with `ESP32_DASHBOARD` serve a local dashboard at `http://192.168.4.1/` while connected to device hotspot. Dashboard starts before CAN initialization, so WiFi, configuration, and diagnostics remain available during driver wake-up, CAN failure, and bus recovery.
+ESP32 dashboard builds create a private web page on the board. Connect your phone or laptop to the board hotspot and open `http://192.168.4.1/`. The dashboard is a control and observation tool, not proof that an ECU accepted a message.
 
-## Runtime Status And Safety
+## Safe first session
 
-- **Runtime status** shows CAN availability, injection state, received-frame count, last-frame age, successful/failed transmissions, TWAI state, free heap, and uptime.
-- TWAI state colors are green for running, red for bus-off, and yellow for stopped or recovering.
-- **Last Write Check** compares latest write attempt with next received frame having same CAN ID and mux. It can reveal later overwrites. It does not prove an ECU accepted a write.
-- TWAI builds wait 10 seconds before initializing CAN. All ESP-IDF injection remains blocked for 15 seconds after actual CAN initialization and until more than 1,000 valid CAN frames have arrived.
-- Missing CAN traffic never reboots firmware. Dashboard stays online and serial emits throttled `No CAN frames yet, staying alive.` warnings.
-- A bus-off state starts ESP-IDF TWAI recovery. Runtime status and five-second serial heartbeat expose recovery state and counters.
+1. Keep **injection stopped**.
+2. Confirm the board and CAN driver in the status card.
+3. Check that received-frame count and frame age change as expected.
+4. Resolve wiring, bitrate, bus, or recovery errors before installing a plugin.
+5. Use [SavvyCAN](#savvycan-usb-serial) or the Support report to collect evidence.
+
+## Status card
+
+The status card shows the current CAN state, received-frame count, newest-frame age, transmit successes/failures, uptime, heap, and driver information. A missing frame does not reboot the firmware; the dashboard stays available and logs are throttled.
+
+**Last Write Check** compares a write attempt with the next received frame that has the same ID and mux. It can show whether another transmitter overwrote a value. It cannot prove ECU acceptance, physical effect, or safety.
+
+TWAI colors mean:
+
+- green: running;
+- yellow: stopped or recovering;
+- red: bus-off or another error state.
 
 ## Configuration
 
-- Select live hardware mode: `Legacy`, `HW3`, or `HW4`.
-- Use automatic speed profile or select compatible manual profile. `Max` and `Sloth` require HW4.
-- Configure plugin replay, AP injection gate, HW3/HW4 offset slew, and status LED brightness.
-- Stop or arm injection and reboot device.
-- Mode changes reset pending injection sequence state inside CAN decision path. Saved configuration cannot consume transition early.
+The configuration card controls settings such as:
+
+- vehicle mode: `Legacy`, `HW3`, or `HW4`;
+- automatic or manual speed profile;
+- plugin replay and AP-injection gate;
+- HW3/HW4 offset slew and status LED brightness;
+- CAN pins on supported TWAI boards;
+- WiFi, update channel, automatic updates, and saved networks.
+
+Save one change at a time and watch the status card afterward. A setting being accepted by the form does not make an unverified CAN rule safe.
 
 ## Plugins
 
-- Install plugin from HTTPS URL, uploaded `.json`, or pasted JSON.
-- Enable, disable, prioritize, or remove installed plugins.
-- Dashboard builds use enabled plugins for automatic CAN injection; built-in vehicle handlers remain observational.
-- Installed plugins and their enabled state persist on SPIFFS.
+Use the Plugins card to install a JSON file by URL, file upload, or paste. New plugins start disabled. Review the JSON, confirm the target bus and frame layout, and test on an isolated bench before enabling transmission. See the [Plugin system reference](plugins.md).
 
-See [Plugin System](plugins.md) for JSON schema and safety rules.
+## Support diagnostics
 
-## SavvyCAN USB Serial
+Support is the collapsed final card. Expanding it creates one on-demand report; it does not poll in the background. Use **Refresh report** for a new snapshot and **Copy report** when preparing a bug report.
 
-1. Open dashboard **SavvyCAN USB serial** card and select **Arm GVRET**.
-2. Connect board USB port to computer.
-3. In SavvyCAN, choose **Connection → Add Connection → Serial Connection (GVRET)**.
-4. Select board serial port and `115200` baud.
+The report includes:
 
-Firmware exposes one read-only 500 kbit/s CAN bus using reference GVRET framing. Valid GVRET device-info, bus-count, bus-parameter, and keep-alive commands are supported. CAN transmit commands are not advertised or invented. When SavvyCAN handshake succeeds, text logs are suppressed on that transport so binary frames remain clean. Disconnect, 15 seconds without a command, manual stop, or 10-minute session limit releases serial ownership. CAN, web, and main loops remain nonblocking.
+- firmware/build, chip, flash, reset reason, uptime, and boot count;
+- free/minimum heap, largest free block, RAM/PSRAM totals, and task stack watermarks;
+- task heartbeats, wakeups, logging throttles, and HTTP request/response sizes;
+- sanitized WiFi identity and signal information;
+- mode, non-secret configuration, CAN driver state, errors, recovery, filters, and queue pressure;
+- freshness and injection gates, Last Write Check, safety bounds, NVS recovery, and GVRET state.
 
-## Connectivity And Updates
+It intentionally excludes passwords, OTA credentials, tokens, keys, complete plugin payloads, and private captures. If a report is too large for its bounded buffer, the endpoint fails instead of returning a misleading partial report.
 
-- Change hotspot SSID/password and visibility.
-- Save multiple WiFi networks with DHCP or validated static IPv4 settings.
-- Override supported TWAI TX/RX GPIO pins.
-- Export or restore settings with OTA authentication.
-- Check stable/beta GitHub releases, configure automatic updates, or upload board-specific `.bin` firmware.
+## SavvyCAN USB serial
 
-## Dashboard Source Ownership
+1. Open **SavvyCAN USB serial** and select **Arm GVRET**.
+2. Connect the board's USB port.
+3. In SavvyCAN choose **Connection → Add Connection → Serial Connection (GVRET)**.
+4. Select the board serial port at `115200` baud.
 
-[`include/web/mcp2515_dashboard_ui.src.h`](../include/web/mcp2515_dashboard_ui.src.h) is authoritative HTML/CSS/JavaScript source. [`include/web/mcp2515_dashboard_ui.h`](../include/web/mcp2515_dashboard_ui.h) is generated raw/gzip firmware data. Dashboard PlatformIO builds regenerate it through `scripts/minify_dashboard.py`; generator uses Python standard library and fixed gzip timestamp for reproducible output. Edit source file, never generated header directly.
+GVRET exposes one read-only 500 kbit/s bus using reference framing. It is intended for observation. It does not advertise CAN transmit commands. Disconnect, stop the session, or wait for the timeout to release serial ownership.
 
-## Support Diagnostics
+## WiFi and updates
 
-Collapsed **Support diagnostics** section is final dashboard card. Expanding it makes one on-demand `/support` request; it never polls. Report covers firmware/build/chip/flash/reset, heap and stack watermarks, WiFi identity and signal, CAN/TWAI state and queue pressure, filters and safety gates, Last Write Check, NVS recovery, GVRET, and web/request counters. It intentionally excludes passwords, OTA credentials, tokens, keys, and plugin payloads. Use **Refresh report** for new snapshot and **Copy report** before opening GitHub issue.
+The board starts as an access point. Optional WiFi Internet enables release checks, plugin downloads, and OTA. Use a firmware `.bin` made for the exact board. Keep a serial recovery method because an interrupted update can leave the board unavailable until reflashed.
 
-See [ESP32 Runtime Optimization](esp32-optimization.md) for measured overhead reductions and further hardware-gated tuning guidance.
+## Source for contributors
+
+Edit [`include/web/mcp2515_dashboard_ui.src.h`](../include/web/mcp2515_dashboard_ui.src.h). [`include/web/mcp2515_dashboard_ui.h`](../include/web/mcp2515_dashboard_ui.h) is generated raw/gzip data and should not be edited directly.

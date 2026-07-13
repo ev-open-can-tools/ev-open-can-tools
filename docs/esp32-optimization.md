@@ -1,43 +1,57 @@
-# ESP32 Runtime Optimization Guide
+# ESP32 runtime optimization
 
-[Project Home](../) | [Documentation](index.md) | [Dashboard Guide](dashboard.md) | [Build & Flash](building.md)
+[Documentation](index.md) · [Build and flash](building.md) · [Dashboard](dashboard.md)
 
-This page records optimizations considered for ESP-IDF dashboard firmware. Changes marked **applied** are intentionally low risk. Remaining recommendations need measurements before implementation; none should weaken CAN validation, injection gates, torque limits, error handling, or watchdog coverage.
+This page explains how to make ESP32 firmware use less time and memory without changing CAN behavior. It is for contributors and advanced testers. The rule is simple: measure first, change one thing, then measure again.
 
-## Applied In Current Firmware
+## What is already applied
 
-- Support diagnostics are generated only when expanded or refreshed. One bounded plain-text response replaces client-side assembly from several stale dashboard values.
-- High-frequency `/status` JSON uses a fixed 2,304-byte buffer instead of repeated `String` concatenation.
-- Idle dashboard traffic falls from about 72 requests/minute to 22 requests/minute: status every 3 seconds, WiFi every 30 seconds, no periodic plugin request, and GVRET polling only while armed or connected.
-- ESP-IDF web maintenance and disabled GVRET tasks wake 4 times/second instead of 100 times/second. CAN loop timing and task priorities are unchanged.
-- Static chip, flash, internal-RAM, and PSRAM totals are captured once at boot. Dynamic heap, stack, WiFi, CAN, and queue values are calculated only for support requests.
-- Runtime counters expose HTTP requests/bytes, support requests, response sizes, task wakeups, stack high-water marks, heap low-water state, TWAI queue pressure, CAN drops/errors, and logging throttle counts.
+- Support diagnostics are on demand instead of continuously assembled in the browser.
+- Frequent `/status` output uses a bounded fixed buffer instead of repeated text concatenation.
+- Idle dashboard traffic is about 22 requests/minute instead of about 72 in the previous design.
+- Idle web-maintenance and disabled-GVRET wakeups are 4/second instead of 100/second.
+- CAN task timing, CAN task priority, injection timing, physical limits, and safety gates are unchanged.
+- Chip, flash, and RAM totals are cached at boot; dynamic heap, stack, WiFi, CAN, queue, and HTTP values are collected when needed.
 
-## Recommendations Requiring Measurement
+These are software measurements and estimates. Real stack margin, heap fragmentation, CAN queue pressure, and WiFi coexistence need hardware runs.
 
-| Area | Current behavior | Proposed change | Expected benefit | Risk or trade-off | Measurement | Hardware required |
-| --- | --- | --- | --- | --- | --- | --- |
-| Task stacks | HTTP server uses 16 KB; web maintenance uses 12 KB; GVRET uses 3 KB. Support report exposes high-water marks. | Record worst-case high-water marks through OTA, WiFi scan/reconnect, plugin install, settings restore, and SavvyCAN; reduce one stack at a time with at least 25% margin. | Lower permanently reserved internal RAM. | Undersizing causes stack corruption or reset, often only on rare error paths. | Compare `uxTaskGetStackHighWaterMark()` before/after stress runs and inspect stack-overflow reset reason. | Yes. |
-| Heap fragmentation | Dynamic HTTP, ArduinoJson, WiFi, OTA, and plugin operations share heap. Support reports free heap, minimum free heap, and largest internal block. | Track `largest block / free heap` over long runs; use fixed buffers or scoped documents only where fragmentation grows. | More reliable OTA and large-response allocation. | Static buffers consume RAM permanently; aggressive pooling can increase lock contention. | Log free heap, largest block, and minimum heap before/after repeated installs, scans, exports, and OTA checks. | Yes. |
-| Task priorities | CAN/main, HTTP server, web maintenance, and GVRET use existing priorities and pinning. | Change priorities or core affinity only after tracing deadline misses and queue growth under simultaneous CAN + HTTP + USB load. | Lower CAN jitter under pathological web or serial load. | Priority inversion, starvation, watchdog trips, or changed CAN timing. | Use SystemView/App Trace, TWAI max queue depth, missed/overrun counters, and write latency. | Yes. |
-| Dashboard polling | Idle load is about 22 requests/minute after current reductions. | Add server-sent events or a single low-rate status stream only if many clients or slower targets still show measurable load. | Fewer HTTP setups and JSON responses. | Persistent connections consume sockets and complicate reconnect handling. | Compare request counter, response bytes, HTTP task CPU, and reconnect failures. | Recommended. |
-| Logging | Five-second heartbeat and fault logs remain; protocol mode suppresses text on GVRET transport. | Compile out verbose informational logs in release builds while keeping boot, heartbeat, safety, and error logs; add per-tag runtime levels if needed. | Less UART work and formatting overhead. | Reduced field evidence can make intermittent failures harder to diagnose. | Compare task wake/CPU traces and serial byte rate with identical CAN traffic. | Recommended. |
-| Dashboard assets | Authoritative HTML is generated into deterministic gzip data in flash; current firmware sends gzip directly. | Evaluate dictionary-friendly source cleanup or serving from a read-only filesystem only if image-size pressure returns. | Smaller `.rodata` and firmware image. | Filesystem mount/lookup cost and update complexity; decompression changes can break older browsers. | Compare `DASH_HTML_GZ_LEN`, ELF section sizes, first-page latency, and free heap. | No for size; yes for latency. |
-| JSON allocation | `/status` is fixed-buffer; configuration/plugin/WiFi/update handlers still use small `String` responses; backup and plugin parsing use ArduinoJson. | Convert only frequently requested or proven-fragmenting responses to bounded writers; size ArduinoJson documents from measured payload limits. | Fewer heap allocations and less fragmentation. | Fixed buffers can truncate; hand-built JSON needs strict escaping and tests. | Count response bytes, largest heap block, allocation failures, and overflow test coverage. | No for unit tests; yes for fragmentation. |
-| NVS wear | Runtime settings write on explicit user changes; plugin-state writes are deferred and batched. | Add dirty-value comparisons or longer coalescing only for keys shown by instrumentation to write repeatedly. | Longer flash life and shorter request latency. | Delayed persistence can lose recent settings on power loss. | Count commits per key during normal use and forced reboot tests. | Yes. |
-| CAN queue pressure | TWAI RX queue is 32, TX queue is 16; support reports current/max queue depths, missed frames, overruns, errors, and recovery count. | Tune queue sizes only after recording pressure during high bus load plus dashboard/SavvyCAN traffic. | Less dropped traffic or less reserved RAM. | Larger queues reserve RAM; smaller queues reduce burst tolerance. | Record max depth and missed/overrun counts during representative 500 kbit/s captures. | Yes. |
-| ESP-IDF heap tools | Lightweight production counters are enabled; comprehensive heap tracing is not. | Use heap tracing, heap poisoning, failed-allocation callbacks, and task tracking in a dedicated debug build. | Finds leaks, overwrite bugs, and allocation hotspots. | Significant CPU/RAM overhead; debug timing differs from release. | Capture traces around repeated WiFi, plugin, backup, and OTA workflows. | Yes. |
-| Compiler optimization | Release defaults favor size; safety checks and exceptions remain. | Compare `-Os` with supported ESP-IDF release optimization options per target. Do not enable unsafe math, remove exceptions blindly, or disable assertions without evidence. | Potential flash reduction or modest speed gain. | Different timing, larger image, harder debugging, or hidden faults. | Compare ELF map, firmware size, CAN latency, CPU traces, and full tests. | Hardware required for timing. |
-| Logging levels | ESP-IDF WiFi/noisy tags are warning/error in normal operation. | Use debug tag levels only in diagnostic builds; keep production defaults stable. | Lower formatting and serial overhead. | Less vendor-driver context in field reports. | Compare log bytes/second and reproduce faults with temporary debug build. | Recommended. |
-| Unused ESP-IDF components | PlatformIO/ESP-IDF links required components plus transitive dependencies. | Inspect link map and `idf.py size-components`; disable only components proven unused across every target. | Flash and static RAM reduction. | Cross-target build failures or missing OTA/WiFi/TLS functionality. | Clean-build all targets and compare component/section sizes. | No for build; yes for feature verification. |
-| Firmware/partition size | Build checks target-specific 4/8/16 MB flash headers and OTA layouts. | Track app-slot headroom in CI and fail before a configurable threshold, not only at hard overflow. | Prevents late release failures and preserves OTA growth room. | Threshold needs per-board policy. | Record used bytes and percentage for every release environment. | No. |
-| CPU profiling | Production firmware exposes wake counters but not per-task CPU time. | Use ESP-IDF App Trace, SystemView, or FreeRTOS run-time stats in a dedicated profiling build under real CAN/WiFi/USB load. | Identifies actual CPU hotspots and lock contention. | Instrumentation changes timing and consumes buffers. | Compare idle percentage, per-task runtime, CAN queue pressure, and deadline latency. | Yes. |
+## What the metrics mean
 
-## Safe Evaluation Sequence
+- **Free heap:** memory available now.
+- **Minimum free heap:** lowest observed free heap since boot.
+- **Largest free block:** largest single allocation that can fit; it can fall because of fragmentation even when free heap looks healthy.
+- **Stack high-water mark:** remaining task stack margin; lower is closer to overflow.
+- **Queue maximum:** highest observed backlog; a growing value means a task cannot keep up.
+- **Wakeups:** task loop iterations, not necessarily useful work.
+- **Request rate:** dashboard HTTP requests, separated from device CAN traffic.
 
-1. Capture support report after cold boot and after 30 minutes idle.
-2. Repeat under CAN traffic, dashboard use, WiFi reconnect, plugin install, and GVRET capture.
-3. Record minimum heap, largest block, stack high-water marks, queue maxima, missed frames, response bytes, and reset reason.
-4. Change one parameter only.
-5. Clean-build every ESP-IDF target, run tests, then repeat same hardware workload.
-6. Revert any change that reduces safety margin, changes CAN behavior, or lacks measurable benefit.
+Open **Support diagnostics** after a representative run to capture these values. Do not compare numbers from different board targets as if they were identical.
+
+## Deferred work: measure before changing
+
+| Area | Current approach | Safe next experiment | Main risk | Evidence to collect | Hardware? |
+| --- | --- | --- | --- | --- | --- |
+| Task stacks | Conservative task stacks; Support reports high-water marks | Reduce one stack only after stress testing with at least 25% margin | Rare stack overflow/reset | Stack watermark, watchdog and reset reason | Yes |
+| Heap fragmentation | Fixed status/support buffers; other handlers use small dynamic objects | Repeat WiFi scans, plugin installs, settings restore, and OTA checks; use ESP-IDF heap tools when available | Fragmentation or permanent RAM cost | Free heap, minimum heap, largest block over hours; heap tracing and allocation failure hooks | Yes |
+| Task priorities | Existing CAN priorities and pinning | Trace deadline misses before tuning | CAN jitter, starvation, watchdog | App Trace/SystemView, queue depth, write latency | Yes |
+| Dashboard polling | Slow status/WiFi polling; active-only GVRET polling | Stream updates only if request count is still material | Socket/reconnect complexity | HTTP count/bytes, HTTP CPU, reconnect errors | Recommended |
+| Logging | Heartbeat and fault logs retained; GVRET stays binary-clean | Remove only proven noisy release logs | Less field evidence | Serial bytes, task CPU, captured faults | Recommended |
+| Dashboard asset | Deterministic compressed asset in flash | Revisit only if image size becomes a limit | Browser/update compatibility | Raw/gzip length, flash sections, page latency | Optional |
+| JSON | Fixed buffers only where frequent; ArduinoJson elsewhere | Convert one proven hot response | Malformed output or code complexity | Allocation failures, response validity, heap | Yes |
+| NVS wear | Writes occur on durable changes, not polling | Batch only a measured multi-key path | Lost settings or flash wear | Commit errors, reboot recovery, write count | Yes |
+| CAN queue pressure | Existing bounded queues and counters | Tune only after observing drops/backlog | Dropped frames or changed timing | RX/TX queue max, missed/error counters | Yes |
+| Compiler optimization | Target-specific existing settings | Compare size/debug/optimization flags one at a time | Image incompatibility or timing shift | RAM/flash, warnings, runtime trace | Build + hardware |
+| Firmware/partition size | Board-specific OTA partitions | Resize only with a release and OTA compatibility check | Unbootable or non-updatable image | ELF sections, binary size, partition headroom | Build + hardware |
+| CPU profiling | Heartbeats and counters, no continuous profiler | Use CPU profiling only after a reproducible workload exists | Probe overhead or changed timing | App Trace/SystemView, task runtime, CAN latency | Yes |
+
+## Safe measurement sequence
+
+1. Record board, firmware version, build flags, partition, traffic rate, and test duration.
+2. Capture Support diagnostics before the experiment.
+3. Exercise CAN observation, dashboard requests, WiFi reconnect, plugin operations, and GVRET separately.
+4. Repeat with combined load.
+5. Change one variable.
+6. Re-run the same workload and compare RAM, flash, heap, stack, queue, HTTP, and CAN metrics.
+7. Stop if CAN age, missed frames, queue pressure, watchdog events, or safety-gate behavior changes.
+
+Never optimize a CAN callback by adding network I/O, NVS writes, JSON parsing, verbose logging, or an unbounded allocation. Keep diagnostics outside the CAN hot path and fail closed on report overflow.

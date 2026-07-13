@@ -1,9 +1,11 @@
-# Legacy Arduino Build
+# Legacy Arduino builds
 
-This in-repo PlatformIO project keeps the Arduino-only board targets that do not run ESP-IDF:
+These targets are for boards that do not run the ESP-IDF dashboard. They still share the core CAN handlers with the root project, but they do not provide WiFi, OTA, web settings, plugins, or Support diagnostics.
 
-- `feather_rp2040_can`
-- `feather_m4_can`
+- `feather_rp2040_can` — Feather RP2040 with MCP2515 CAN controller
+- `feather_m4_can` — Feather M4 CAN Express with native CAN
+
+Read the root [Build and flash guide](../../docs/building.md) first. Use an isolated bench bus or listen-only setup before connecting a live vehicle bus.
 
 Build from this directory with:
 
