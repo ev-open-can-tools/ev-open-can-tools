@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Build the standalone newcomer onboarding page for GitHub Pages."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_OUTPUT = ROOT / "onboarding" / "index.html"
+
+PAGE = r'''<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="A calm, step-by-step introduction to choosing, installing, flashing, and safely starting EV Open CAN hardware.">
+<title>Start with EV Open CAN</title>
+<style>
+:root{--bg:#0b0d11;--panel:#13171d;--panel2:#191e26;--line:#2a313c;--text:#f3f6fa;--muted:#9aa6b5;--blue:#6ea0ff;--blue2:#315fbb;--green:#45c783;--yellow:#f4b942;--red:#ff6a6a;--shadow:0 24px 70px rgba(0,0,0,.3)}
+[data-theme=light]{--bg:#f3f5f8;--panel:#fff;--panel2:#f7f9fc;--line:#d8dee8;--text:#151a23;--muted:#667386;--blue:#315fbb;--blue2:#24498e;--green:#177846;--yellow:#9a6500;--red:#b62929;--shadow:0 20px 55px rgba(27,39,58,.12)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 10% -10%,rgba(65,110,205,.22),transparent 35%),var(--bg);color:var(--text);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input,select{font:inherit}button,a{touch-action:manipulation}.topbar{min-height:68px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:12px 22px;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(16px);position:sticky;top:0;z-index:30}.brand{display:flex;align-items:center;gap:11px}.brand-mark{width:36px;height:36px;border-radius:11px;background:linear-gradient(145deg,var(--blue),#7b61ff);display:grid;place-items:center;color:#fff;font-weight:900;box-shadow:0 10px 30px rgba(73,119,220,.35)}.brand h1{font-size:16px;margin:0}.brand p{font-size:12px;color:var(--muted);margin:1px 0 0}.top-actions{margin-left:auto;display:flex;gap:8px}.shell{max-width:1180px;margin:0 auto;padding:26px 18px 50px;display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:20px}.wizard,.summary{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow)}.wizard{overflow:hidden}.wizard-head{padding:20px 24px 0}.eyebrow{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--blue)}.wizard-head h2{font-size:27px;line-height:1.15;margin:5px 0 8px}.wizard-head p{color:var(--muted);margin:0}.progress-line{height:7px;background:var(--panel2);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:20px}.progress-line span{display:block;height:100%;background:linear-gradient(90deg,var(--blue2),var(--blue));transition:width .25s ease}.step-tabs{display:flex;gap:6px;overflow:auto;padding:13px 18px;border-bottom:1px solid var(--line);scrollbar-width:none}.step-tabs::-webkit-scrollbar{display:none}.step-tab{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--muted);font-size:12px;background:transparent}.step-tab.active{color:#fff;background:var(--blue2);border-color:var(--blue2)}.step-tab.done{color:var(--green);border-color:color-mix(in srgb,var(--green) 55%,var(--line))}.step{display:none;padding:26px 24px}.step.active{display:block}.step h3{font-size:24px;line-height:1.2;margin:0 0 8px}.step h4{font-size:16px;margin:22px 0 8px}.lead{font-size:16px;color:var(--muted);margin:0 0 18px}.notice{border:1px solid color-mix(in srgb,var(--yellow) 55%,var(--line));background:color-mix(in srgb,var(--yellow) 8%,var(--panel));border-radius:14px;padding:14px 15px;margin:16px 0}.notice.danger{border-color:color-mix(in srgb,var(--red) 60%,var(--line));background:color-mix(in srgb,var(--red) 7%,var(--panel))}.notice.good{border-color:color-mix(in srgb,var(--green) 55%,var(--line));background:color-mix(in srgb,var(--green) 7%,var(--panel))}.notice strong{display:block;margin-bottom:3px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}.choice{display:block;border:1px solid var(--line);border-radius:15px;padding:14px;background:var(--panel2);cursor:pointer;min-height:100%}.choice:hover{border-color:color-mix(in srgb,var(--blue) 55%,var(--line))}.choice:has(input:checked){border-color:var(--blue);box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 30%,transparent)}.choice input{margin-right:7px}.choice b{display:block;font-size:15px;margin-bottom:3px}.choice small{display:block;color:var(--muted);line-height:1.45}.badge{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;background:color-mix(in srgb,var(--blue) 15%,var(--panel));color:var(--blue);margin-bottom:8px}.row{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:14px 0}.field{display:flex;flex-direction:column;gap:5px;flex:1;min-width:170px}.field>span{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:750}input[type=text],input[type=number],select{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:11px 12px}.hardware-card{position:relative;overflow:hidden}.hardware-card .device-art{height:120px;border-radius:12px;margin-bottom:12px;background:linear-gradient(145deg,#202b3b,#10141a);display:grid;place-items:center;border:1px solid #334055}.hardware-card svg{width:145px;height:95px}.hardware-card .spec{font-size:12px;color:var(--muted);margin-top:7px}.hardware-card .spec strong{color:var(--text)}.parts{display:grid;gap:9px;margin:15px 0}.check{display:flex;gap:11px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}.check input{margin-top:4px;transform:scale(1.15)}.check span{color:var(--muted)}.check b{color:var(--text)}.visual{border:1px solid var(--line);border-radius:17px;overflow:hidden;background:linear-gradient(155deg,#212b3b,#11161d);margin:16px 0}.visual svg{display:block;width:100%;height:auto;max-height:390px}.visual-caption{padding:13px 15px;background:var(--panel2);color:var(--muted);font-size:13px;border-top:1px solid var(--line)}.placement-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.placement-item{padding:12px;border-radius:12px;background:var(--panel2);border:1px solid var(--line)}.placement-item b{display:block;margin-bottom:3px}.placement-item span{color:var(--muted);font-size:13px}.codebox{position:relative}.codebox pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#090b0f;color:#e8edf5;border:1px solid #2b3440;border-radius:13px;padding:15px;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;margin:10px 0}.copy{position:absolute;right:9px;top:9px}.status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:15px 0}.status{padding:13px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}.status b{display:block}.status span{font-size:12px;color:var(--muted)}.plan{white-space:pre-wrap;background:var(--panel2);border:1px solid var(--line);border-radius:13px;padding:15px;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}.actions{display:flex;gap:9px;align-items:center;border-top:1px solid var(--line);padding:17px 24px;background:var(--panel2)}.spacer{flex:1}.btn{border:1px solid var(--line);background:transparent;color:var(--text);border-radius:10px;padding:10px 13px;text-decoration:none;cursor:pointer}.btn:hover{border-color:var(--blue)}.btn.primary{background:var(--blue2);border-color:var(--blue2);color:#fff;font-weight:750}.btn:disabled{opacity:.4;cursor:not-allowed}.summary{height:max-content;position:sticky;top:88px;padding:18px}.summary h3{font-size:16px;margin:0 0 12px}.summary dl{margin:0}.summary-row{padding:10px 0;border-top:1px solid var(--line)}.summary-row:first-child{border-top:0}.summary dt{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.summary dd{margin:2px 0 0;font-weight:700}.save-note{font-size:12px;color:var(--muted);margin-top:14px}.link-list{display:grid;gap:8px;margin-top:14px}.link-list a{color:var(--blue);text-decoration:none;font-size:13px}.link-list a:hover{text-decoration:underline}.hidden{display:none!important}.muted{color:var(--muted)}.green{color:var(--green)}.yellow{color:var(--yellow)}.footer{text-align:center;color:var(--muted);font-size:12px;padding:0 15px 30px}@media(max-width:900px){.shell{grid-template-columns:1fr}.summary{position:static;order:-1}.summary dl{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.summary-row{border:1px solid var(--line)!important;border-radius:10px;padding:9px}}@media(max-width:650px){.topbar{padding:10px 13px}.brand p{display:none}.shell{padding:13px 10px 35px}.wizard-head,.step{padding-left:16px;padding-right:16px}.wizard-head h2{font-size:23px}.grid,.grid.three,.placement-list,.status-grid{grid-template-columns:1fr}.actions{padding:14px 16px;flex-wrap:wrap}.spacer{display:none}.actions .btn{flex:1}.summary dl{grid-template-columns:1fr 1fr}.top-actions .btn:first-child{display:none}}@media print{.topbar,.step-tabs,.progress-line,.actions,.summary,.footer{display:none!important}.shell{display:block;padding:0}.wizard{box-shadow:none;border:0}.step{display:none!important}.step[data-step="7"]{display:block!important}.plan{border:1px solid #aaa;background:#fff;color:#000}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><div class="brand-mark">EV</div><div><h1>EV Open CAN</h1><p>Newcomer onboarding</p></div></div>
+  <div class="top-actions"><a class="btn" href="../docs/">Documentation</a><button class="btn" type="button" onclick="toggleTheme()">Theme</button></div>
+</header>
+<main class="shell">
+  <article class="wizard">
+    <div class="wizard-head"><div class="eyebrow" id="step-label">Step 1 of 8</div><h2 id="step-title">Welcome</h2><p id="step-subtitle">One decision at a time. Your answers create a personal setup plan.</p></div>
+    <div class="progress-line"><span id="progress"></span></div>
+    <nav class="step-tabs" id="step-tabs" aria-label="Onboarding progress"></nav>
+
+    <section class="step active" data-step="0" data-title="Welcome">
+      <h3>Start without the information overload</h3>
+      <p class="lead">This guide explains what the project does, helps you choose compatible hardware, shows the safe installation area, and gives you the correct build and first-start path.</p>
+      <div class="notice danger"><strong>This is experimental vehicle-network hardware</strong>CAN connects safety-critical vehicle computers. Begin on a bench, keep transmission disabled, and never guess a connector, bus, pinout, bitrate, or vehicle hardware generation.</div>
+      <div class="grid">
+        <label class="choice"><input type="radio" name="goal" value="observe" checked><b>Learn and observe first</b><small>Recommended. Start with the dashboard or a logger while CAN transmission stays stopped.</small></label>
+        <label class="choice"><input type="radio" name="goal" value="plugins"><b>Prepare for plugins later</b><small>Follow the same safe start, then learn how reviewed plugin rules work after traffic is verified.</small></label>
+        <label class="choice"><input type="radio" name="goal" value="savvycan"><b>Record with SavvyCAN</b><small>Choose a dashboard board that supports read-only GVRET logging over USB serial.</small></label>
+        <label class="choice"><input type="radio" name="goal" value="bench"><b>Bench research only</b><small>Build an isolated CAN setup without installing anything in a vehicle.</small></label>
+      </div>
+      <label class="check"><input id="safety" type="checkbox"><span><b>I understand the safe starting point.</b><br>I will begin with injection stopped and verify the exact vehicle documentation before connecting to a live bus.</span></label>
+    </section>
+
+    <section class="step" data-step="1" data-title="Your car">
+      <h3>Tell us what you are working with</h3>
+      <p class="lead">The model and build date affect harnesses and installation areas. The Autopilot computer generation affects the firmware vehicle mode. Do not infer one from the other.</p>
+      <div class="grid three">
+        <label class="choice"><input type="radio" name="model" value="Model 3" checked><b>Model 3</b><small>Sedan, including pre-refresh and refreshed interiors.</small></label>
+        <label class="choice"><input type="radio" name="model" value="Model Y"><b>Model Y</b><small>Crossover. Connector and trim details can differ by build date.</small></label>
+        <label class="choice"><input type="radio" name="model" value="Model S or X"><b>Model S or X</b><small>Use model-specific service information. Do not reuse Model 3 or Y guidance.</small></label>
+        <label class="choice"><input type="radio" name="model" value="Bench only"><b>Bench only</b><small>No vehicle installation. Use an isolated harness and current-limited supply.</small></label>
+      </div>
+      <div class="row">
+        <label class="field"><span>Build year</span><select id="year"><option value="Unknown">I need to check</option><option>2017</option><option>2018</option><option>2019</option><option>2020</option><option>2021</option><option>2022</option><option>2023</option><option>2024</option><option>2025</option><option>2026</option></select></label>
+        <label class="field"><span>Vehicle hardware mode</span><select id="vehicle-hw"><option value="Unknown">I need to verify</option><option>Legacy</option><option>HW3</option><option>HW4</option></select></label>
+      </div>
+      <div class="notice"><strong>Not sure whether the car is Legacy, HW3, or HW4?</strong>Stop here and verify it from authoritative vehicle information or service documentation. Model year alone is not enough. The final plan will keep a visible reminder until you select a confirmed mode.</div>
+    </section>
+
+    <section class="step" data-step="2" data-title="Hardware">
+      <h3>Choose the physical device</h3>
+      <p class="lead">For a first build, an integrated ESP32 and CAN board avoids loose transceiver wiring. Advanced boards remain available when you already understand CAN electronics.</p>
+      <div class="grid">
+        <label class="choice hardware-card"><input type="radio" name="board" value="atoms3" checked><span class="badge">Beginner friendly</span><div class="device-art"><svg viewBox="0 0 170 105" aria-label="Illustration of compact AtomS3 CAN hardware"><rect x="44" y="10" width="82" height="70" rx="14" fill="#f4f6f9" stroke="#8da0b8" stroke-width="3"/><rect x="59" y="22" width="52" height="38" rx="5" fill="#172033"/><text x="85" y="45" fill="#74a7ff" font-size="15" font-weight="800" text-anchor="middle">ATOM S3</text><rect x="69" y="73" width="32" height="11" rx="3" fill="#cbd5e1"/><path d="M35 83h100v13H35z" fill="#3d4b60"/><circle cx="53" cy="89" r="3" fill="#f4b942"/><circle cx="63" cy="89" r="3" fill="#f4b942"/><circle cx="107" cy="89" r="3" fill="#f4b942"/><circle cx="117" cy="89" r="3" fill="#f4b942"/></svg></div><b>M5Stack AtomS3 Mini CAN Base</b><small>Compact dashboard board with an integrated CAN base.</small><div class="spec"><strong>Environment:</strong> m5stack-atoms3-mini-can-base</div></label>
+        <label class="choice hardware-card"><input type="radio" name="board" value="atomic"><span class="badge">Simple alternative</span><div class="device-art"><svg viewBox="0 0 170 105" aria-label="Illustration of M5Stack Atomic CAN hardware"><rect x="52" y="13" width="66" height="66" rx="13" fill="#303c50" stroke="#72819a" stroke-width="3"/><circle cx="85" cy="46" r="17" fill="#151b25" stroke="#6ea0ff" stroke-width="3"/><text x="85" y="51" fill="#fff" font-size="12" font-weight="800" text-anchor="middle">ATOM</text><rect x="65" y="76" width="40" height="9" rx="3" fill="#cbd5e1"/><path d="M39 85h92v12H39z" fill="#3d4b60"/><circle cx="55" cy="91" r="3" fill="#45c783"/><circle cx="115" cy="91" r="3" fill="#45c783"/></svg></div><b>M5Stack Atom CAN Base</b><small>Small integrated option supported by the dashboard firmware.</small><div class="spec"><strong>Environment:</strong> m5stack-atomic-can-base</div></label>
+        <label class="choice hardware-card"><input type="radio" name="board" value="waveshare"><span class="badge">Terminals and enclosure</span><div class="device-art"><svg viewBox="0 0 170 105" aria-label="Illustration of Waveshare ESP32-S3 CAN hardware"><rect x="30" y="15" width="110" height="73" rx="8" fill="#1f6a63" stroke="#6ac1b5" stroke-width="3"/><rect x="45" y="29" width="48" height="32" rx="4" fill="#172033"/><path d="M105 26h22v48h-22z" fill="#386fbd"/><circle cx="116" cy="36" r="4" fill="#d9e5f7"/><circle cx="116" cy="49" r="4" fill="#d9e5f7"/><circle cx="116" cy="62" r="4" fill="#d9e5f7"/><rect x="56" y="75" width="27" height="8" rx="3" fill="#cbd5e1"/></svg></div><b>Waveshare ESP32-S3 RS485/CAN</b><small>Integrated CAN board with screw terminals. Confirm the exact terminal labels before wiring.</small><div class="spec"><strong>Environment:</strong> waveshare_ESP32_S3_RS485_CAN</div></label>
+        <label class="choice hardware-card"><input type="radio" name="board" value="custom"><span class="badge">Advanced</span><div class="device-art"><svg viewBox="0 0 170 105" aria-label="Illustration of separate ESP32 and CAN transceiver"><rect x="18" y="21" width="72" height="63" rx="7" fill="#244b78" stroke="#6ea0ff" stroke-width="3"/><rect x="99" y="32" width="53" height="42" rx="6" fill="#384253" stroke="#8795aa" stroke-width="3"/><path d="M90 43h9M90 53h9M90 63h9" stroke="#f4b942" stroke-width="4"/><text x="54" y="56" fill="#fff" font-size="13" font-weight="800" text-anchor="middle">ESP32</text><text x="125" y="57" fill="#fff" font-size="10" font-weight="700" text-anchor="middle">CAN</text></svg></div><b>Custom ESP32 plus transceiver</b><small>Only choose this when logic voltage, transceiver power, termination, GPIOs, and SPI or TWAI wiring are already understood.</small><div class="spec"><strong>Environment:</strong> esp32_twai or esp32_ext_mcp2515</div></label>
+      </div>
+      <div id="board-guidance" class="notice good"></div>
+    </section>
+
+    <section class="step" data-step="3" data-title="What you need">
+      <h3>Collect the parts before opening the car</h3>
+      <p class="lead">A calm installation starts with every part on the table. Check each item as you prepare it.</p>
+      <div class="parts">
+        <label class="check"><input type="checkbox" class="part"><span><b id="part-board">Selected supported board</b><br>The exact board must match the firmware environment.</span></label>
+        <label class="check"><input type="checkbox" class="part"><span><b>Known-good USB data cable</b><br>Some charging cables provide power but cannot flash firmware.</span></label>
+        <label class="check vehicle-part"><input type="checkbox" class="part"><span><b>Vehicle-specific plug-in harness or adapter</b><br>For a beginner, use a verified connectorized harness instead of tapping unidentified wires.</span></label>
+        <label class="check vehicle-part"><input type="checkbox" class="part"><span><b>Non-conductive enclosure and secure mounting</b><br>The board must not move, rattle, short against trim, or interfere with pedals, seats, airbags, or HVAC.</span></label>
+        <label class="check"><input type="checkbox" class="part"><span><b>Laptop with PlatformIO or a matching release image</b><br>Keep a USB recovery path available even when OTA will be used later.</span></label>
+        <label class="check"><input type="checkbox" class="part"><span><b>Safe first-test equipment</b><br>Prefer an isolated bench harness, current-limited supply, and an independent CAN logger.</span></label>
+      </div>
+      <div class="notice"><strong>Do not buy or connect a harness based on a similar-looking photo.</strong>Vehicle connectors and network assignments can change between models, factories, and build dates. Match the exact vehicle service information.</div>
+    </section>
+
+    <section class="step" data-step="4" data-title="Placement">
+      <h3>Understand where the device belongs</h3>
+      <p class="lead">The visual below points to a general installation zone. It deliberately does not claim that one connector or wire is correct for every vehicle.</p>
+      <div class="visual" id="placement-visual"></div>
+      <div class="placement-list">
+        <div class="placement-item"><b>Secure behind removable trim</b><span>Mount the enclosed board so it cannot move or touch metal.</span></div>
+        <div class="placement-item"><b>Keep USB service access</b><span>Leave enough cable and access to recover or reflash the board.</span></div>
+        <div class="placement-item"><b>Avoid safety equipment</b><span>Never route near airbags, seat rails, steering mechanisms, pedals, or high-voltage wiring.</span></div>
+        <div class="placement-item"><b>Verify Party CAN</b><span>For the supported hands-on-wheel experiments, verify Party CAN from exact service documentation before connecting.</span></div>
+      </div>
+      <div class="notice danger"><strong>The illustration is not a pinout.</strong>Open the correct Tesla electrical reference or service documentation for the exact model and build date. Confirm CAN H and CAN L, voltage, termination, and 500 kbit/s traffic with a listen-only tool.</div>
+      <div class="row"><a class="btn" href="https://service.tesla.com/docs/Model3/ElectricalReference/" target="_blank" rel="noreferrer">Model 3 electrical reference</a><a class="btn" href="https://ev-open-can-tools.github.io/ev-open-can-tools/docs/nag-killer.html" target="_blank">CAN safety guide</a></div>
+    </section>
+
+    <section class="step" data-step="5" data-title="Flash">
+      <h3>Put the correct firmware on the board</h3>
+      <p class="lead">The board environment and vehicle mode in your plan are used below. Never flash an image intended for another board.</p>
+      <div class="status-grid"><div class="status"><b id="flash-board">Board</b><span>Selected hardware</span></div><div class="status"><b id="flash-env">Environment</b><span>PlatformIO target</span></div><div class="status"><b id="flash-hw">Vehicle mode</b><span>Must be verified</span></div></div>
+      <h4>Option A: matching release image</h4>
+      <p>Open the latest release and download the artifact whose board name matches your selected environment. Keep the USB cable ready in case recovery is needed.</p>
+      <a class="btn" href="https://github.com/ev-open-can-tools/ev-open-can-tools/releases/latest" target="_blank" rel="noreferrer">Open latest release</a>
+      <h4>Option B: build from source</h4>
+      <div class="codebox"><button class="btn copy" type="button" onclick="copyCommands()">Copy</button><pre id="commands"></pre></div>
+      <div class="notice"><strong>First flash on the bench</strong>Power the board over USB, confirm it starts, and find its hotspot before connecting it to the vehicle network.</div>
+    </section>
+
+    <section class="step" data-step="6" data-title="First start">
+      <h3>Bring it online in the safest order</h3>
+      <p class="lead">This sequence keeps software, power, and vehicle wiring problems separate, so a newcomer can identify where something went wrong.</p>
+      <ol>
+        <li><b>Bench power first:</b> connect only USB and confirm the board boots.</li>
+        <li><b>Join the hotspot:</b> connect your phone or laptop to the configured EV Open CAN access point.</li>
+        <li><b>Open the dashboard:</b> browse to <code>http://192.168.4.1/</code>.</li>
+        <li><b>Keep injection stopped:</b> do not install or enable a transmitting plugin.</li>
+        <li><b>Connect the verified harness:</b> only after the exact bus, connector, voltage, and polarity have been confirmed.</li>
+        <li><b>Observe traffic:</b> received-frame count should increase and frame age should remain fresh. Resolve bus-off, recovery, or missing traffic before going further.</li>
+      </ol>
+      <div class="status-grid"><div class="status"><b class="green">Dashboard opens</b><span>Power and WiFi are working.</span></div><div class="status"><b class="green">RX count changes</b><span>The selected CAN interface sees valid frames.</span></div><div class="status"><b class="yellow">Injection stopped</b><span>The correct state for a first session.</span></div></div>
+      <div class="notice"><strong>No dashboard?</strong>Check USB power, serial output, hotspot name, and the exact firmware environment. <strong>No CAN frames?</strong>Disconnect and verify the bus, H/L polarity, transceiver power, bitrate, termination, and GPIO defaults.</div>
+    </section>
+
+    <section class="step" data-step="7" data-title="Your plan">
+      <h3>Your personal starting plan</h3>
+      <p class="lead">Save or print this checklist. It contains your choices and the safe order for getting started.</p>
+      <div class="plan" id="final-plan"></div>
+      <div class="row"><button class="btn primary" type="button" onclick="downloadPlan()">Download plan</button><button class="btn" type="button" onclick="window.print()">Print</button><button class="btn" type="button" onclick="restart()">Start over</button></div>
+      <div class="notice good"><strong>Onboarding complete means ready to begin learning</strong>It does not mean a live vehicle installation or transmitting rule has been validated. Continue with the build, dashboard, safety, and plugin documentation in that order.</div>
+      <div class="row"><a class="btn" href="../docs/building.html">Build and flash</a><a class="btn" href="../docs/dashboard.html">Dashboard guide</a><a class="btn" href="https://ev-open-can-tools.github.io/ev-open-can-tools/docs/nag-killer.html">CAN safety</a><a class="btn" href="../docs/plugins.html">Plugins</a></div>
+    </section>
+
+    <footer class="actions"><button class="btn" id="back" type="button" onclick="goBack()">Back</button><div class="spacer"></div><button class="btn" type="button" onclick="saveProgress(true)">Save progress</button><button class="btn primary" id="next" type="button" onclick="goNext()">Next</button></footer>
+  </article>
+
+  <aside class="summary">
+    <h3>Your setup plan</h3>
+    <dl>
+      <div class="summary-row"><dt>Goal</dt><dd id="sum-goal">Learn and observe</dd></div>
+      <div class="summary-row"><dt>Vehicle</dt><dd id="sum-vehicle">Model 3</dd></div>
+      <div class="summary-row"><dt>Vehicle mode</dt><dd id="sum-hw" class="yellow">Needs verification</dd></div>
+      <div class="summary-row"><dt>Board</dt><dd id="sum-board">AtomS3 Mini CAN Base</dd></div>
+      <div class="summary-row"><dt>Environment</dt><dd id="sum-env">m5stack-atoms3-mini-can-base</dd></div>
+      <div class="summary-row"><dt>Current step</dt><dd id="sum-step">Welcome</dd></div>
+    </dl>
+    <div class="save-note">Progress is stored only in this browser. Nothing is sent to a device or external service.</div>
+    <div class="link-list"><a href="../docs/">Open all documentation</a><a href="https://github.com/ev-open-can-tools/ev-open-can-tools" target="_blank" rel="noreferrer">Open repository</a><a href="https://discord.gg/ZTQKAUTd2F" target="_blank" rel="noreferrer">Ask the community</a></div>
+  </aside>
+</main>
+<div class="footer">Standalone GitHub Pages onboarding. The ESP32 dashboard and firmware are unchanged.</div>
+<script>
+window.__EV_OPEN_CAN_NEWCOMER_ONBOARDING__=true;
+const STORAGE_KEY='evOpenCanNewcomerPlanV2';
+const steps=[...document.querySelectorAll('.step')];
+const $=id=>document.getElementById(id);
+let currentStep=0;
+const boards={
+  atoms3:{name:'M5Stack AtomS3 Mini CAN Base',short:'AtomS3 Mini CAN Base',env:'m5stack-atoms3-mini-can-base',driver:'DRIVER_TWAI',guidance:'Best starting point for most newcomers who want a compact integrated dashboard board.'},
+  atomic:{name:'M5Stack Atom CAN Base',short:'Atom CAN Base',env:'m5stack-atomic-can-base',driver:'DRIVER_TWAI',guidance:'A small integrated alternative. Verify that the exact Atom module and CAN base match the supported environment.'},
+  waveshare:{name:'Waveshare ESP32-S3 RS485/CAN',short:'Waveshare ESP32-S3 CAN',env:'waveshare_ESP32_S3_RS485_CAN',driver:'DRIVER_TWAI',guidance:'Useful when screw terminals and an integrated board are preferred. Confirm every terminal label before wiring.'},
+  custom:{name:'Custom ESP32 plus CAN transceiver',short:'Custom ESP32 setup',env:'esp32_twai',driver:'DRIVER_TWAI',guidance:'Advanced path. Choose the actual environment and driver only after the transceiver, GPIOs, logic voltage, and termination are known.'}
+};
+const goals={observe:'Learn and observe',plugins:'Prepare for plugins later',savvycan:'Record with SavvyCAN',bench:'Bench research only'};
+function selected(name){return document.querySelector(`input[name="${name}"]:checked`)?.value}
+function board(){return boards[selected('board')]||boards.atoms3}
+function toggleTheme(){document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'}
+function buildTabs(){$('step-tabs').innerHTML=steps.map((s,i)=>`<button class="step-tab" type="button" data-index="${i}">${i+1}. ${s.dataset.title}</button>`).join('');document.querySelectorAll('.step-tab').forEach(button=>button.addEventListener('click',()=>{const target=Number(button.dataset.index);if(target<=currentStep)goTo(target)}))}
+function vehicleText(){const model=selected('model')||'Model 3',year=$('year').value;return model==='Bench only'?'Bench only':`${model}${year==='Unknown'?'':` (${year})`}`}
+function renderPlacement(){const model=selected('model')||'Model 3';if(model==='Bench only'){$('placement-visual').innerHTML=`<svg viewBox="0 0 760 360" role="img" aria-label="Isolated bench CAN setup illustration"><defs><linearGradient id="bench" x1="0" x2="1"><stop stop-color="#1d2735"/><stop offset="1" stop-color="#11161d"/></linearGradient></defs><rect width="760" height="360" fill="url(#bench)"/><rect x="70" y="75" width="170" height="120" rx="18" fill="#2c3850" stroke="#6ea0ff" stroke-width="4"/><text x="155" y="130" fill="#fff" text-anchor="middle" font-size="22" font-weight="800">CAN board</text><rect x="300" y="58" width="180" height="150" rx="15" fill="#252f3d" stroke="#45c783" stroke-width="4"/><text x="390" y="118" fill="#fff" text-anchor="middle" font-size="20" font-weight="800">Isolated harness</text><text x="390" y="148" fill="#a9b5c5" text-anchor="middle" font-size="15">500 kbit/s test bus</text><rect x="545" y="83" width="145" height="100" rx="14" fill="#2d3440" stroke="#f4b942" stroke-width="4"/><text x="617" y="126" fill="#fff" text-anchor="middle" font-size="18" font-weight="800">CAN logger</text><path d="M240 136h60M480 136h65" stroke="#f4b942" stroke-width="8" stroke-linecap="round"/><rect x="180" y="260" width="400" height="42" rx="21" fill="#141a22" stroke="#465267"/><text x="380" y="287" fill="#d9e3f0" text-anchor="middle" font-size="16">Current-limited power and independent observation</text></svg><div class="visual-caption">Bench path: board, isolated harness, and a second logger. No vehicle trim or live bus is involved.</div>`;document.querySelectorAll('.vehicle-part').forEach(e=>e.classList.add('hidden'));return}document.querySelectorAll('.vehicle-part').forEach(e=>e.classList.remove('hidden'));const label=model==='Model S or X'?'Model-specific lower cabin area':'Center-console or front-footwell trim area';$('placement-visual').innerHTML=`<svg viewBox="0 0 760 390" role="img" aria-label="General Tesla cabin installation area illustration"><defs><linearGradient id="cabin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#28364a"/><stop offset="1" stop-color="#10151c"/></linearGradient><filter id="glow"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><rect width="760" height="390" fill="url(#cabin)"/><path d="M85 263C145 126 252 68 386 70c127 2 236 61 287 193" fill="none" stroke="#8fa1b8" stroke-width="14" stroke-linecap="round"/><path d="M176 252c58-72 126-106 207-106 83 0 152 35 207 106" fill="none" stroke="#516176" stroke-width="8"/><rect x="313" y="145" width="142" height="188" rx="45" fill="#1a222e" stroke="#718198" stroke-width="4"/><rect x="338" y="167" width="92" height="69" rx="12" fill="#0e1319" stroke="#596a80"/><path d="M285 330h198" stroke="#76869a" stroke-width="12" stroke-linecap="round"/><circle cx="527" cy="282" r="40" fill="#ffb52e" opacity=".16" filter="url(#glow)"/><circle cx="527" cy="282" r="13" fill="#f4b942"/><path d="M527 282L628 218" stroke="#f4b942" stroke-width="4"/><rect x="565" y="163" width="165" height="62" rx="12" fill="#151c25" stroke="#f4b942" stroke-width="3"/><text x="648" y="188" fill="#fff" text-anchor="middle" font-size="15" font-weight="800">GENERAL ZONE</text><text x="648" y="210" fill="#c8d2df" text-anchor="middle" font-size="12">${label}</text><rect x="42" y="35" width="250" height="72" rx="14" fill="#151c25" stroke="#6ea0ff" stroke-width="3"/><text x="167" y="62" fill="#fff" text-anchor="middle" font-size="17" font-weight="800">${model}</text><text x="167" y="87" fill="#b7c4d4" text-anchor="middle" font-size="13">Exact connector varies by build date</text><path d="M294 317c-70 18-108 16-164-5" fill="none" stroke="#ff6a6a" stroke-width="4" stroke-dasharray="9 9"/><text x="135" y="347" fill="#ff9b9b" font-size="13" text-anchor="middle">Keep clear of pedals, seats, airbags</text></svg><div class="visual-caption">Installation area illustration for ${model}. Secure the module behind trim only after the exact Party CAN harness has been verified. This is not a connector photo or pinout.</div>`}
+function updateBoardGuidance(){const b=board();$('board-guidance').innerHTML=`<strong>${b.name}</strong>${b.guidance}<br><span class="muted">PlatformIO environment: <code>${b.env}</code></span>`;$('part-board').textContent=b.name;$('flash-board').textContent=b.short;$('flash-env').textContent=b.env}
+function commands(){const b=board(),hw=$('vehicle-hw').value,vehicle=hw==='Unknown'?'<verify Legacy, HW3, or HW4>':hw;return `cp platformio_profile.example.h platformio_profile.h\n\npython scripts/platformio_set_profile.py \\\n  --driver ${b.driver} \\\n  --vehicle ${vehicle} \\\n  --enable EMERGENCY_VEHICLE_DETECTION\n\npio run -e ${b.env}\npio run -e ${b.env} -t upload`}
+function buildPlan(){const b=board(),hw=$('vehicle-hw').value,goal=goals[selected('goal')],vehicle=vehicleText(),warning=hw==='Unknown'?'VERIFY VEHICLE MODE BEFORE BUILDING':'Vehicle mode confirmed as '+hw;return `EV OPEN CAN NEWCOMER PLAN\n\nGoal: ${goal}\nVehicle: ${vehicle}\nVehicle firmware mode: ${hw}\nHardware: ${b.name}\nPlatformIO environment: ${b.env}\n\nIMPORTANT: ${warning}\n\nSAFE ORDER\n1. Read the CAN safety guide.\n2. Confirm exact vehicle connector, Party CAN, H/L polarity, voltage, termination, and bitrate.\n3. Flash ${b.env} over USB while the board is on the bench.\n4. Join the board hotspot and open http://192.168.4.1/.\n5. Keep injection stopped.\n6. Install the enclosed board behind verified trim, away from airbags, pedals, seat rails, HVAC, and high-voltage wiring.\n7. Connect the verified plug-in harness.\n8. Confirm received frames and fresh frame age.\n9. Stop and disconnect if the bus is silent, bus-off, recovering, or does not match the expected network.\n10. Learn the plugin system only after observation is stable and documented.\n\nThis plan is educational. It does not validate a connector, wiring harness, rule, or live vehicle installation.`}
+function updateSummary(){const b=board(),hw=$('vehicle-hw').value;$('sum-goal').textContent=goals[selected('goal')];$('sum-vehicle').textContent=vehicleText();$('sum-hw').textContent=hw==='Unknown'?'Needs verification':hw;$('sum-hw').className=hw==='Unknown'?'yellow':'green';$('sum-board').textContent=b.short;$('sum-env').textContent=b.env;$('sum-step').textContent=steps[currentStep].dataset.title;updateBoardGuidance();renderPlacement();$('commands').textContent=commands();$('flash-hw').textContent=hw==='Unknown'?'Needs verification':hw;$('final-plan').textContent=buildPlan()}
+function render(){steps.forEach((step,index)=>step.classList.toggle('active',index===currentStep));document.querySelectorAll('.step-tab').forEach((tab,index)=>{tab.classList.toggle('active',index===currentStep);tab.classList.toggle('done',index<currentStep)});$('step-label').textContent=`Step ${currentStep+1} of ${steps.length}`;$('step-title').textContent=steps[currentStep].dataset.title;$('step-subtitle').textContent=currentStep===7?'Review, save, and continue with the detailed documentation.':'One decision at a time. Your answers create a personal setup plan.';$('progress').style.width=`${((currentStep+1)/steps.length)*100}%`;$('back').disabled=currentStep===0;$('next').classList.toggle('hidden',currentStep===steps.length-1);$('next').textContent=currentStep===steps.length-2?'Create my plan':'Next';updateSummary();saveProgress(false);window.scrollTo({top:0,behavior:'smooth'})}
+function validate(){if(currentStep===0&&!$('safety').checked){alert('Confirm the safety starting point before continuing.');return false}return true}
+function goNext(){if(!validate())return;if(currentStep<steps.length-1){currentStep++;render()}}
+function goBack(){if(currentStep>0){currentStep--;render()}}
+function goTo(index){currentStep=Math.max(0,Math.min(index,steps.length-1));render()}
+function state(){return{step:currentStep,goal:selected('goal'),model:selected('model'),year:$('year').value,hw:$('vehicle-hw').value,board:selected('board'),safety:$('safety').checked}}
+function saveProgress(showMessage){localStorage.setItem(STORAGE_KEY,JSON.stringify(state()));if(showMessage)alert('Progress saved in this browser.')}
+function loadProgress(){try{const data=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');if(!data)return;for(const [name,value] of [['goal',data.goal],['model',data.model],['board',data.board]]){const input=document.querySelector(`input[name="${name}"][value="${CSS.escape(value||'')}"]`);if(input)input.checked=true}if(data.year)$('year').value=data.year;if(data.hw)$('vehicle-hw').value=data.hw;$('safety').checked=!!data.safety;currentStep=Math.max(0,Math.min(Number(data.step)||0,steps.length-1))}catch(error){localStorage.removeItem(STORAGE_KEY)}}
+async function copyCommands(){try{await navigator.clipboard.writeText(commands());alert('Commands copied.')}catch(error){alert('Copy unavailable. Select the commands manually.')}}
+function downloadPlan(){const blob=new Blob([buildPlan()+'\n'],{type:'text/plain'}),link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='ev-open-can-starting-plan.txt';link.click();URL.revokeObjectURL(link.href)}
+function restart(){if(!confirm('Clear this browser plan and start again?'))return;localStorage.removeItem(STORAGE_KEY);location.reload()}
+document.querySelectorAll('input,select').forEach(element=>element.addEventListener('change',()=>{updateSummary();saveProgress(false)}));
+if(location.hash!=='#/onboarding')history.replaceState(null,'','#/onboarding');
+buildTabs();loadProgress();render();
+</script>
+</body>
+</html>
+'''
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    args = parser.parse_args()
+
+    output = args.output if args.output.is_absolute() else ROOT / args.output
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(PAGE, encoding="utf-8")
+    display = output.relative_to(ROOT) if output.is_relative_to(ROOT) else output
+    print(f"GitHub Pages newcomer onboarding: {display}")
+
+
+if __name__ == "__main__":
+    main()

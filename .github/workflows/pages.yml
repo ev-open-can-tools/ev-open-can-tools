@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - docs/**
+      - scripts/build_pages_onboarding.py
       - README.md
       - CHANGELOG.md
       - VERSION
@@ -30,6 +31,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+      - name: Build newcomer onboarding
+        run: python scripts/build_pages_onboarding.py
       - uses: actions/configure-pages@v5
       - uses: actions/jekyll-build-pages@v1
         with:
