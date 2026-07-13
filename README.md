@@ -1,6 +1,6 @@
 # ev-open-can-tools
 
-[Documentation](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/) · [Plugin repository](https://github.com/ev-open-can-tools/ev-open-can-tools-plugins) · [Discord](https://discord.gg/ZTQKAUTd2F)
+[Start onboarding](https://ev-open-can-tools.github.io/ev-open-can-tools/onboarding/) · [Documentation](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/) · [Plugin repository](https://github.com/ev-open-can-tools/ev-open-can-tools-plugins) · [Discord](https://discord.gg/ZTQKAUTd2F)
 
 Experimental open-source firmware for selected Tesla CAN experiments using ESP32 and other CAN-capable boards.
 
@@ -12,9 +12,9 @@ Use an isolated bench harness or listen-only tool first. Do not begin on a publi
 
 New to the project? Follow this order:
 
-1. Read the [documentation index](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/).
+1. Start the [guided newcomer onboarding](https://ev-open-can-tools.github.io/ev-open-can-tools/onboarding/) to choose a goal, vehicle mode, board, installation approach, and matching build path.
 2. Read [CAN safety and testing](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/nag-killer.html).
-3. Choose a board in [Build and flash](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html).
+3. Follow [Build and flash](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html) for the selected board.
 4. Keep injection stopped while learning the [Dashboard](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/dashboard.html).
 5. Read the [Plugin system](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/plugins.html) before installing a transmit rule.
 
@@ -63,6 +63,7 @@ After flashing an ESP32 dashboard board, connect to its hotspot and open `http:/
 
 ## Documentation
 
+- [Guided newcomer onboarding](https://ev-open-can-tools.github.io/ev-open-can-tools/onboarding/)
 - [Documentation index](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/)
 - [Build and flash](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/building.html)
 - [Dashboard](https://ev-open-can-tools.github.io/ev-open-can-tools/docs/dashboard.html)
