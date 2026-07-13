@@ -1,24 +1,26 @@
 name: Apply dashboard onboarding
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/dashboard-onboarding
-    paths:
-      - .github/apply_dashboard_onboarding.py
-      - .github/workflows/apply-dashboard-onboarding.yml
+      - dev
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
 
 jobs:
   apply:
+    if: github.head_ref == 'feature/dashboard-onboarding'
     runs-on: ubuntu-latest
     steps:
       - name: Check out feature branch
         uses: actions/checkout@v6
         with:
-          ref: feature/dashboard-onboarding
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -44,4 +46,4 @@ jobs:
             exit 0
           fi
           git commit -m "Add guided dashboard onboarding"
-          git push
+          git push origin HEAD:${{ github.head_ref }}
