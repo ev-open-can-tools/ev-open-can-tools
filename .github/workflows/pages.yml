@@ -34,7 +34,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.x"
-      - name: Build interactive onboarding preview
+      - name: Build newcomer onboarding
         run: python scripts/build_pages_onboarding.py
       - uses: actions/configure-pages@v5
       - uses: actions/jekyll-build-pages@v1
