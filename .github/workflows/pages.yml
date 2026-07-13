@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - docs/**
-      - include/web/mcp2515_dashboard_ui.src.h
       - scripts/build_pages_onboarding.py
       - README.md
       - CHANGELOG.md
