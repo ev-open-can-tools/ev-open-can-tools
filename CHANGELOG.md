@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- Added a lightweight first-visit dashboard onboarding wizard for vehicle, safety gate, WiFi, and CAN pin setup. It reuses existing endpoints, can be reopened at `#/onboarding`, and never arms CAN injection automatically.
 
 ## [3.0.2-beta.6] - 2026-07-13
 
