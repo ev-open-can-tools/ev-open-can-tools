@@ -1,0 +1,41 @@
+name: Restore Pages-only scope
+
+on:
+  pull_request:
+    branches:
+      - dev
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    if: github.head_ref == 'feature/dashboard-onboarding'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Restore firmware dashboard and changelog
+        run: |
+          git fetch origin dev
+          git checkout origin/dev -- \
+            CHANGELOG.md \
+            include/web/mcp2515_dashboard_ui.src.h \
+            include/web/mcp2515_dashboard_ui.h
+      - name: Commit Pages-only scope
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add CHANGELOG.md include/web/mcp2515_dashboard_ui.src.h include/web/mcp2515_dashboard_ui.h
+          if git diff --cached --quiet; then
+            echo "Firmware files already match dev"
+            exit 0
+          fi
+          git commit -m "Keep onboarding on GitHub Pages only"
+          git push origin HEAD:${{ github.head_ref }}
