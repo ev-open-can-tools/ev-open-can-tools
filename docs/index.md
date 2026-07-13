@@ -1,6 +1,6 @@
 # ev-open-can-tools documentation
 
-[Project home](../) · [Build and flash](building.md) · [Dashboard](dashboard.md) · [Plugins](plugins.md) · [CAN safety](nag-killer.md) · [Runtime optimization](esp32-optimization.md) · [Release notes](../CHANGELOG.md)
+[Project home](../) · [Build and flash](building.md) · [Dashboard](dashboard.md) · [Onboarding](onboarding.md) · [Interactive preview](../onboarding/) · [Plugins](plugins.md) · [CAN safety](nag-killer.md) · [Runtime optimization](esp32-optimization.md) · [Release notes](../CHANGELOG.md)
 
 ## Start here
 
@@ -12,14 +12,16 @@ If you are new, use this order:
 
 1. Read the [safety and testing guide](nag-killer.md).
 2. Choose a board and follow [Build and flash](building.md).
-3. Connect to the dashboard and learn the [Dashboard guide](dashboard.md) with CAN transmission stopped.
-4. Read [Plugins](plugins.md) before installing any rule that can transmit.
-5. Start with a listen-only or isolated bench test. Do not begin on a public road.
+3. Try the [interactive onboarding preview](../onboarding/) to understand the setup flow without changing a device.
+4. Connect to the dashboard and learn the [Dashboard guide](dashboard.md) with CAN transmission stopped.
+5. Read [Plugins](plugins.md) before installing any rule that can transmit.
+6. Start with a listen-only or isolated bench test. Do not begin on a public road.
 
 ## Choose your path
 
 | Goal | Start with |
 | --- | --- |
+| Preview the setup flow in a browser | [Interactive onboarding preview](../onboarding/) |
 | Use a supported ESP32 board | [Build and flash](building.md), then [Dashboard](dashboard.md) |
 | Observe traffic with SavvyCAN | [Dashboard → GVRET](dashboard.md#savvycan-usb-serial) |
 | Create a CAN rule | [Plugin system](plugins.md) |
