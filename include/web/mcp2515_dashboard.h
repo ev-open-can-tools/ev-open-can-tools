@@ -238,6 +238,7 @@ static bool canOnline = false;
 static Shared<uint8_t> hwMode{DASH_DEFAULT_HW};
 static Shared<bool> canActive{kDashInjectionDefaultEnabled};
 static Shared<bool> apInjectionGate{kDashApGateDefaultEnabled};
+static Shared<bool> summonOnlyInjection{false};
 static Shared<bool> dashSpeedProfileAuto{true};
 static Shared<uint8_t> dashManualSpeedProfile{1};
 
@@ -538,9 +539,44 @@ static bool dashApInjectionAllowed()
                                          kDashApInjectionStableDelayMs);
 }
 
+static SummonInjectionDecision dashSummonOnlyInjectionDecision()
+{
+    if (!summonOnlyInjection)
+        return {true, SummonInjectionState::Disabled};
+    if (!dashHandler)
+        return {false, SummonInjectionState::MissingDiState};
+    AppHandlerGuard guard;
+    return dashHandler->summonOnlyInjectionDecisionAt(millis());
+}
+
+static bool dashSummonOnlyInjectionAllowed()
+{
+    return dashSummonOnlyInjectionDecision().allowed;
+}
+
+static void dashRefreshSummonOnlyPolicy()
+{
+    static bool initialized = false;
+    static SummonInjectionState previousState = SummonInjectionState::Disabled;
+    SummonInjectionDecision decision = dashSummonOnlyInjectionDecision();
+    if (initialized && decision.state == previousState)
+        return;
+
+    initialized = true;
+    previousState = decision.state;
+    if (summonOnlyInjection && !decision.allowed)
+    {
+        pluginResetPeriodicEmit();
+        if (dashDriver)
+            dashDriver->clearPendingTransmit();
+    }
+    dashLog(String("[SUMMON] ") + summonInjectionStateName(decision.state));
+}
+
 static bool dashInjectionActive()
 {
-    return canActive && appInjectionReady() && dashApInjectionAllowed();
+    return canActive && appInjectionReady() && dashApInjectionAllowed() &&
+           dashSummonOnlyInjectionAllowed();
 }
 
 static bool dashCheckNagDisabled()
@@ -655,6 +691,7 @@ static void dashApplyRuntimeState()
     isaSpeedChimeSuppressRuntime = false;
     enhancedAutopilotRuntime = false;
     nagKillerRuntime = false;
+    summonOnlyInjectionRuntime = static_cast<bool>(summonOnlyInjection);
 
     if (dashHandler)
     {
@@ -683,6 +720,7 @@ static bool dashSavePrefs()
     prefs.putUChar("hw_def", DASH_DEFAULT_HW);
     prefs.putBool("can", canActive);
     prefs.putBool("ap_gate", apInjectionGate);
+    prefs.putBool("sum_only", summonOnlyInjection);
     prefs.putBool("sp_auto", dashSpeedProfileAuto);
     prefs.putUChar("sp_sel", dashManualSpeedProfile);
     prefs.putUChar("plg_rep", pluginGetReplayCount());
@@ -841,6 +879,7 @@ static void dashLoadPrefs()
         prefs.putUChar("hw_def", DASH_DEFAULT_HW);
     canActive = prefs.getBool("can", kDashInjectionDefaultEnabled);
     apInjectionGate = prefs.getBool("ap_gate", kDashApGateDefaultEnabled);
+    summonOnlyInjection = prefs.getBool("sum_only", false);
     dashSpeedProfileAuto = prefs.getBool("sp_auto", true);
     dashManualSpeedProfile = dashClampSpeedProfileForHw(hwMode, prefs.getUChar("sp_sel", 1));
     pluginSetReplayCount(prefs.getUChar("plg_rep", PLUGIN_REPLAY_COUNT));
@@ -1467,8 +1506,9 @@ static void handleSupport()
                    static_cast<unsigned int>(dashManualSpeedProfile),
                    dashSpeedProfileAuto ? "automatic" : "manual",
                    static_cast<unsigned int>(pluginGetReplayCount()));
-    report.appendf("AP injection gate: %s\nOffset slew: %s",
+    report.appendf("AP injection gate: %s\nSummon-only injection (beta): %s\nOffset slew: %s",
                    apInjectionGate ? "enabled" : "disabled",
+                   summonOnlyInjection ? "enabled" : "disabled",
                    hw3OffsetSlew ? "enabled" : "disabled");
     if (hw3OffsetSlew)
         report.appendf(" at %u%%/s", static_cast<unsigned int>(hw3SlewRate));
@@ -1519,6 +1559,8 @@ static void handleSupport()
                    static_cast<unsigned long>(CAN_LIVE_FRAME_THRESHOLD));
     report.appendf("Injection configured: %s\nInjection state: %s\n",
                    canActive ? "armed" : "stopped", dashInjectionActive() ? "enabled" : "blocked");
+    SummonInjectionDecision summonDecision = dashSummonOnlyInjectionDecision();
+    report.appendf("Summon-only policy: %s\n", summonInjectionStateName(summonDecision.state));
 
     report.append("\n[Last Write Check]\n");
     report.appendf("State: %s\n", dashWriteProbeStateName(writeProbeSnapshot.state));
@@ -1590,6 +1632,7 @@ static void handleConfigGet()
     json += ",\"pluginReplay\":" + String(pluginGetReplayCount());
     json += ",\"pluginReplayMax\":" + String(PLUGIN_REPLAY_COUNT_MAX);
     json += ",\"apGate\":" + String(apInjectionGate ? "true" : "false");
+    json += ",\"summonOnly\":" + String(summonOnlyInjection ? "true" : "false");
     json += ",\"hw3OffsetSlew\":" + String(hw3OffsetSlew ? "true" : "false");
     json += ",\"hw3SlewRate\":" + String(hw3SlewRate);
     json += ",\"ledBrightness\":" + String(dashLedBrightness);
@@ -1606,6 +1649,7 @@ static void handleConfig()
     bool canValue = canActive;
     bool speedAutoValue = dashSpeedProfileAuto;
     bool gateValue = apInjectionGate;
+    bool summonOnlyValue = summonOnlyInjection;
     bool slewValue = hw3OffsetSlew;
     const char *slewArg = server.hasArg("hw3OffsetSlew") ? "hw3OffsetSlew" : "offsetSlew";
     const char *slewRateArg = server.hasArg("hw3SlewRate") ? "hw3SlewRate" : "offsetSlewRate";
@@ -1627,6 +1671,8 @@ static void handleConfig()
         valid &= dashParseBool(server.arg("spa"), speedAutoValue);
     if (server.hasArg("apg"))
         valid &= dashParseBool(server.arg("apg"), gateValue);
+    if (server.hasArg("smo"))
+        valid &= dashParseBool(server.arg("smo"), summonOnlyValue);
     if (server.hasArg("hw3OffsetSlew") || server.hasArg("offsetSlew"))
         valid &= dashParseBool(server.arg(slewArg), slewValue);
     if (!valid)
@@ -1640,6 +1686,7 @@ static void handleConfig()
     bool oldSpeedAuto = dashSpeedProfileAuto;
     uint8_t oldSpeed = dashManualSpeedProfile;
     bool oldGate = apInjectionGate;
+    bool oldSummonOnly = summonOnlyInjection;
     uint8_t oldReplay = pluginGetReplayCount();
     bool oldSlew = hw3OffsetSlew;
     uint8_t oldSlewRate = hw3SlewRate;
@@ -1683,6 +1730,15 @@ static void handleConfig()
             dashLog("[CFG] AP injection gate " + String(v ? "ON" : "OFF"));
         }
     }
+    if (server.hasArg("smo"))
+    {
+        bool v = summonOnlyValue;
+        if (v != summonOnlyInjection)
+        {
+            summonOnlyInjection = v;
+            dashLog("[CFG] Summon-only injection " + String(v ? "ON" : "OFF"));
+        }
+    }
     if (server.hasArg("plgr"))
     {
         uint8_t previous = pluginGetReplayCount();
@@ -1714,6 +1770,7 @@ static void handleConfig()
         dashApplyFilters();
     }
     dashApplyRuntimeState();
+    dashRefreshSummonOnlyPolicy();
     if (!dashSavePrefs())
     {
         hwMode = oldHw;
@@ -1721,6 +1778,7 @@ static void handleConfig()
         dashSpeedProfileAuto = oldSpeedAuto;
         dashManualSpeedProfile = oldSpeed;
         apInjectionGate = oldGate;
+        summonOnlyInjection = oldSummonOnly;
         pluginSetReplayCount(oldReplay);
         hw3OffsetSlew = oldSlew;
         hw3SlewRate = oldSlewRate;
@@ -1730,6 +1788,7 @@ static void handleConfig()
             dashApplyFilters();
         }
         dashApplyRuntimeState();
+        dashRefreshSummonOnlyPolicy();
         server.send(500, "application/json", "{\"ok\":false,\"error\":\"NVS write failed\"}");
         return;
     }
@@ -2802,6 +2861,7 @@ static void handleSettingsExport()
     bool beta = updateBetaChannel;
     bool apHid = apHidden;
     bool startAfterAp = apInjectionGate;
+    bool summonOnly = summonOnlyInjection;
     bool h3Slew = hw3OffsetSlew;
     uint8_t h3SlewRate = hw3SlewRate;
     int canTx = -1, canRx = -1;
@@ -2828,7 +2888,8 @@ static void handleSettingsExport()
     }
     j += "]}";
     j += ",\"plugins\":{\"replay\":" + String(pluginGetReplayCount()) +
-         ",\"startAfterAp\":" + String(startAfterAp ? "true" : "false") + "}";
+         ",\"startAfterAp\":" + String(startAfterAp ? "true" : "false") +
+         ",\"summonOnly\":" + String(summonOnly ? "true" : "false") + "}";
     j += ",\"hw3\":{\"offsetSlew\":" + String(h3Slew ? "true" : "false") + ",\"slewRate\":" + String(h3SlewRate) + "}";
     j += ",\"dashboard\":{\"hw\":" + String(hwMode) + ",\"can\":" + String(canActive ? "true" : "false");
     j += ",\"speedAuto\":" + String(dashSpeedProfileAuto ? "true" : "false");
@@ -3095,9 +3156,11 @@ static void handleSettingsImport()
     {
         JsonVariant replay = doc["plugins"]["replay"];
         JsonVariant gate = doc["plugins"]["startAfterAp"];
+        JsonVariant summonOnly = doc["plugins"]["summonOnly"];
         if ((!replay.isNull() && (!replay.is<int>() || replay.as<int>() < 1 ||
                                   replay.as<int>() > PLUGIN_REPLAY_COUNT_MAX)) ||
-            (!gate.isNull() && !gate.is<bool>()))
+            (!gate.isNull() && !gate.is<bool>()) ||
+            (!summonOnly.isNull() && !summonOnly.is<bool>()))
         {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid plugin settings\"}");
             return;
@@ -3205,6 +3268,8 @@ static void handleSettingsImport()
         p.putUChar("plg_rep", pluginClampReplayCount(doc["plugins"]["replay"].as<int>()));
     if (doc["plugins"].is<JsonObject>() && doc["plugins"]["startAfterAp"].is<bool>())
         p.putBool("ap_gate", doc["plugins"]["startAfterAp"].as<bool>());
+    if (doc["plugins"].is<JsonObject>() && doc["plugins"]["summonOnly"].is<bool>())
+        p.putBool("sum_only", doc["plugins"]["summonOnly"].as<bool>());
     if (doc["hw3"].is<JsonObject>())
     {
         if (doc["hw3"]["offsetSlew"].is<bool>())
@@ -3934,6 +3999,7 @@ static void dashSwapHandler(uint8_t mode)
         next->last923Ms = (uint32_t)previous->last923Ms;
         next->last280Ms = (uint32_t)previous->last280Ms;
         next->last390Ms = (uint32_t)previous->last390Ms;
+        next->last599Ms = (uint32_t)previous->last599Ms;
         next->last1016Ms = (uint32_t)previous->last1016Ms;
         next->last1021Ms = (uint32_t)previous->last1021Ms;
     }
@@ -3943,6 +4009,7 @@ static void dashSwapHandler(uint8_t mode)
     next->sprSeen = false;
     next->lastAca = false;
     next->lastSummonActivityMs = 0;
+    next->resetSummonOnlyPolicyState();
     next->checkAD = dashCheckADEnabled;
     next->checkNag = dashCheckNagDisabled;
     next->speedProfileAuto = (bool)dashSpeedProfileAuto;
@@ -4091,6 +4158,7 @@ static void mcpDashboardLoop()
     if (Update.isRunning())
         return;
     dashFlushPluginStatesIfDue();
+    dashRefreshSummonOnlyPolicy();
     if (dashInjectionActive() && dashDriver)
         pluginEmitPeriodicTick(*dashDriver, millis());
     dashCheckBusHealth();

@@ -12,7 +12,10 @@ class EspIdfStabilityRegressionTests(unittest.TestCase):
         cls.app = (ROOT / "include/app.h").read_text(encoding="utf-8")
         cls.runtime = (ROOT / "include/runtime_diagnostics.h").read_text(encoding="utf-8")
         cls.twai = (ROOT / "include/drivers/twai_driver.h").read_text(encoding="utf-8")
+        cls.external_mcp = (ROOT / "include/drivers/esp32_mcp2515_driver.h").read_text(encoding="utf-8")
         cls.handlers = (ROOT / "include/handlers.h").read_text(encoding="utf-8")
+        cls.injection_policy = (ROOT / "include/injection_policy.h").read_text(encoding="utf-8")
+        cls.plugin_engine = (ROOT / "include/plugin_engine.h").read_text(encoding="utf-8")
         cls.dashboard = (ROOT / "include/web/mcp2515_dashboard.h").read_text(encoding="utf-8")
         cls.ui = (ROOT / "include/web/mcp2515_dashboard_ui.src.h").read_text(encoding="utf-8")
         cls.gvret = (ROOT / "include/gvret_serial.h").read_text(encoding="utf-8")
@@ -30,6 +33,19 @@ class EspIdfStabilityRegressionTests(unittest.TestCase):
         self.assertIn("now - initialized >= INJECTION_DELAY_MS", self.runtime)
         self.assertIn("canFrames.load(std::memory_order_relaxed) > CAN_LIVE_FRAME_THRESHOLD", self.runtime)
         self.assertIn("appDriver->allowSendFrame = appCanTransmitAllowed", self.app)
+
+    def test_summon_only_policy_is_central_and_clears_pending_transmit(self) -> None:
+        self.assertIn("evaluateSummonInjectionPolicy", self.injection_policy)
+        self.assertIn("kSummonInjectionFreshnessMs = 500", self.injection_policy)
+        self.assertIn("summonOnlyInjectionDecisionAt", self.app)
+        self.assertIn("sendAllowed(frame)", self.twai)
+        self.assertIn("sendAllowed(frame)", self.external_mcp)
+        self.assertIn("twai_clear_transmit_queue()", self.twai)
+        self.assertIn("void clearPendingTransmit() override", self.external_mcp)
+        self.assertIn("mcp_.abortPendingTransmissions()", self.external_mcp)
+        self.assertIn("pluginResetPeriodicEmit()", self.dashboard)
+        self.assertIn("dashRefreshSummonOnlyPolicy();", self.app)
+        self.assertIn("driver.send(pluginPeriodicEmit.frame)", self.plugin_engine)
 
     def test_twai_recovery_and_state_contract(self) -> None:
         self.assertIn("twai_initiate_recovery()", self.twai)

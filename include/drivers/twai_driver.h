@@ -222,6 +222,14 @@ public:
         return ok;
     }
 
+    void clearPendingTransmit() override
+    {
+        lock();
+        if (driverInstalled_)
+            twai_clear_transmit_queue();
+        unlock();
+    }
+
     void diagnosticsJson(char *out, size_t outLen) const override
     {
         if (!out || outLen == 0)

@@ -31,11 +31,25 @@ The configuration card controls settings such as:
 - vehicle mode: `Legacy`, `HW3`, or `HW4`;
 - automatic or manual speed profile;
 - plugin replay and AP-injection gate;
+- beta Summon-only injection;
 - HW3/HW4 offset slew and status LED brightness;
 - CAN pins on supported TWAI boards;
 - WiFi, update channel, automatic updates, and saved networks.
 
 Save one change at a time and watch the status card afterward. A setting being accepted by the form does not make an unverified CAN rule safe.
+
+### Summon-only injection (beta)
+
+Use this optional mode only when normal injection interferes with Autopilot on newer Tesla software. It defaults to disabled, including after upgrading. Existing injection behavior remains unchanged while disabled.
+
+When enabled, one final driver-level policy protects every ESP-IDF transmit path. Injection is allowed only when fresh CAN state confirms either:
+
+- `DI_gear=P` on `DI_systemStatus` (`0x118`) and `DI_vehicleSpeed=0.00 km/h` on `DI_speed` (`0x257`); or
+- `DI_autonomyControlActive=1` on `0x118` and a valid active `UI_selfParkRequest` session on `UI_driverAssistControl` (`0x3F8`), with gear in P, R, or D.
+
+The policy also requires a fresh non-active DAS AP state from `0x399` on Legacy/HW3 or `0x39B` on HW4. Fresh `DIF/DIR_gear` from `0x186`, when available, must agree with `DI_gear`. Missing, stale (over 500 ms), SNA, invalid, contradictory, manually driven, AP-active, or unexpectedly moving state blocks injection. A block clears pending periodic plugin emission and pending ESP-IDF TWAI or MCP2515 hardware transmissions.
+
+Signal behavior can differ by vehicle and Tesla software version. This beta gate is conservative and does not establish compatibility with any specific release. Start with an isolated bench or stationary vehicle, keep an independent disconnect available, and inspect Support diagnostics before enabling a plugin.
 
 ## Plugins
 

@@ -109,7 +109,18 @@ static bool appInjectionReady()
 
 static bool appCanTransmitAllowed(const CanFrame &)
 {
-    return appInjectionReady();
+    if (!appInjectionReady())
+        return false;
+    if (!summonOnlyInjectionRuntime)
+        return true;
+
+    AppHandlerGuard guard;
+    CarManagerBase *handler = appGetActiveHandler();
+    if (!handler)
+        handler = appHandler.get();
+    if (!handler)
+        return false;
+    return handler->summonOnlyInjectionDecisionAt(CarManagerBase::diagnosticMillis()).allowed;
 }
 
 static void appOnSendFrame(const CanFrame &frame, bool ok)
@@ -392,6 +403,9 @@ static void appLoop()
             {
                 h->frameCount++;
                 h->handleMessage(frame, *appDriver);
+#if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD)
+                dashRefreshSummonOnlyPolicy();
+#endif
                 if (appPluginProcess)
                     appPluginProcess(original, *appDriver);
             }

@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.0.2-beta.7] - 2026-07-13
+
+### Added
+
+- Added beta **Summon-only injection** for ESP-IDF dashboard builds. Default remains disabled. When enabled, every ESP-IDF CAN transmit passes one centralized, fail-closed policy that requires fresh `DI_systemStatus` (`0x118`) gear/ACA, `DI_speed` (`0x257`) vehicle speed, `UI_driverAssistControl` (`0x3F8`) Summon request, and DAS AP state (`0x399` on Legacy/HW3 or `0x39B` on HW4).
+- Added dashboard, NVS, settings-backup, Support-report, and regression-test coverage for parked/stationary, active Summon, manual driving, AP, unexpected movement, state transitions, missing/stale/invalid signals, contradictory gear, disabled-mode compatibility, and setting restoration.
+
+### Safety
+
+- Summon-only mode allows injection only in definitive Park at exactly `0 km/h`, or while `DI_autonomyControlActive=1` agrees with a confirmed active `UI_selfParkRequest` session. AP active, R/N/D without confirmed Summon, movement without confirmed Summon, SNA/invalid data, signal age over 500 ms, and contradictory fresh `0x118`/`0x186` gear observations block transmission.
+- A transition to a blocked policy state clears cached periodic plugin frames and pending ESP-IDF TWAI or MCP2515 hardware transmissions. The driver-level transmit gate rechecks policy immediately before every send, covering handler writes, plugin rewrites/replays, periodic emissions, and plugin GTW UDS traffic.
+- This feature remains beta because exact Tesla signal behavior can differ by vehicle and software version. No new vehicle/software compatibility claim is made.
+
 ## [3.0.2-beta.6] - 2026-07-13
 
 ### Added

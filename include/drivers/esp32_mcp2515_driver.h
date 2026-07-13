@@ -270,6 +270,18 @@ public:
         return ok;
     }
 
+    void clearPendingTransmit() override
+    {
+#ifdef ESP_PLATFORM
+        if (!mutex_)
+            return;
+        lock();
+        if (initialized_)
+            mcp_.abortPendingTransmissions();
+        unlock();
+#endif
+    }
+
     MCP2515 &mcp() { return mcp_; }
 
     void configurationSummary(char *out, size_t outLen) const override

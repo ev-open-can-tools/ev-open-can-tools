@@ -163,6 +163,14 @@ public:
         return ERROR_ALLTXBUSY;
     }
 
+    void abortPendingTransmissions()
+    {
+        ioError_ = false;
+        bitModify(MCP_TXB0CTRL, TXB_TXREQ, 0);
+        bitModify(MCP_TXB1CTRL, TXB_TXREQ, 0);
+        bitModify(MCP_TXB2CTRL, TXB_TXREQ, 0);
+    }
+
     uint8_t getErrorFlags()
     {
         ioError_ = false;

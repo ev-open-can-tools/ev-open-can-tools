@@ -16,6 +16,7 @@ struct CanDriver
     virtual bool send(const CanFrame &frame) = 0;
     virtual bool ready() const { return true; }
     virtual void setMonitorAll(bool) {}
+    virtual void clearPendingTransmit() {}
 
     bool sendAllowed(const CanFrame &frame) const
     {

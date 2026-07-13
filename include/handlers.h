@@ -5,6 +5,7 @@
 #include "can_frame_types.h"
 #include "drivers/can_driver.h"
 #include "can_helpers.h"
+#include "injection_policy.h"
 #include "shared_types.h"
 #include "log_buffer.h"
 
@@ -53,9 +54,28 @@ struct CarManagerBase
     Shared<uint32_t> last923Ms{0};
     Shared<uint32_t> last280Ms{0};
     Shared<uint32_t> last390Ms{0};
+    Shared<uint32_t> last599Ms{0};
     Shared<uint32_t> last1016Ms{0};
     Shared<uint32_t> last1021Ms{0};
     Shared<int> dasAutopilotStatus{-1};
+    Shared<bool> summonPolicyDiSeen{false};
+    Shared<bool> summonPolicySpeedSeen{false};
+    Shared<bool> summonPolicyApSeen{false};
+    Shared<bool> summonPolicyUiSeen{false};
+    Shared<bool> summonPolicySecondaryGearSeen{false};
+    Shared<uint8_t> summonPolicyDiGear{0};
+    Shared<uint8_t> summonPolicySecondaryGear{0};
+    Shared<uint8_t> summonPolicyApState{15};
+    Shared<uint8_t> summonPolicySelfParkRequest{15};
+    Shared<uint16_t> summonPolicyVehicleSpeedRaw{kDiVehicleSpeedSnaRaw};
+    Shared<bool> summonPolicyAca{false};
+    Shared<bool> summonPolicyRequestConfirmed{false};
+    Shared<uint32_t> summonPolicyDiMs{0};
+    Shared<uint32_t> summonPolicySpeedMs{0};
+    Shared<uint32_t> summonPolicyApMs{0};
+    Shared<uint32_t> summonPolicyUiMs{0};
+    Shared<uint32_t> summonPolicySecondaryGearMs{0};
+    Shared<uint32_t> summonPolicyRequestMs{0};
 
     unsigned long lastSummonActivityMs = 0;
     // Summon-vs-AP/TACC discrimination state. ACA (DI_autonomyControlActive)
@@ -105,6 +125,8 @@ struct CarManagerBase
             last280Ms = now;
         else if (frame.id == 390)
             last390Ms = now;
+        else if (frame.id == 599)
+            last599Ms = now;
         else if (frame.id == 1016)
             last1016Ms = now;
         else if (frame.id == 1021)
@@ -132,6 +154,19 @@ struct CarManagerBase
         uint8_t spr = static_cast<uint8_t>((frame.data[3] >> 4) & 0x0F);
         if (spr != 0)
             sprSeen = true;
+        if (frame.dlc == 8)
+        {
+            summonPolicyUiSeen = true;
+            summonPolicyUiMs = diagnosticMillis();
+            summonPolicySelfParkRequest = spr;
+            if (summonInjectionRequestConfirmsSession(spr))
+            {
+                summonPolicyRequestConfirmed = true;
+                summonPolicyRequestMs = diagnosticMillis();
+            }
+            else if (summonInjectionRequestCancelsSession(spr))
+                summonPolicyRequestConfirmed = false;
+        }
         recomputeSummoning();
     }
 
@@ -145,10 +180,101 @@ struct CarManagerBase
         if (frame.dlc < 7)
             return;
         bool aca = (frame.data[6] & 0x04) != 0;
+        uint32_t now = diagnosticMillis();
+        if (!lastAca && aca &&
+            (!summonPolicyRequestConfirmed ||
+             now - (uint32_t)summonPolicyRequestMs > kSummonInjectionRequestLeadMs))
+            summonPolicyRequestConfirmed = false;
         if (lastAca && !aca)
+        {
             sprSeen = false;
+            summonPolicyRequestConfirmed = false;
+        }
         lastAca = aca;
+        if (frame.dlc == 8)
+        {
+            summonPolicyDiSeen = true;
+            summonPolicyDiMs = now;
+            summonPolicyDiGear = readDIGear(frame);
+            summonPolicyAca = aca;
+        }
         recomputeSummoning();
+    }
+
+    void updateSummonPolicySpeed(const CanFrame &frame)
+    {
+        if (frame.dlc != 8)
+            return;
+        summonPolicySpeedSeen = true;
+        summonPolicySpeedMs = diagnosticMillis();
+        summonPolicyVehicleSpeedRaw = readDIVehicleSpeedRaw(frame);
+    }
+
+    void updateSummonPolicySecondaryGear(uint8_t gear)
+    {
+        summonPolicySecondaryGearSeen = true;
+        summonPolicySecondaryGearMs = diagnosticMillis();
+        summonPolicySecondaryGear = gear;
+    }
+
+    void updateSummonPolicyAutopilot(const CanFrame &frame, uint8_t state)
+    {
+        if (frame.dlc != 8)
+            return;
+        summonPolicyApSeen = true;
+        summonPolicyApMs = diagnosticMillis();
+        summonPolicyApState = state;
+    }
+
+    void resetSummonOnlyPolicyState()
+    {
+        summonPolicyDiSeen = false;
+        summonPolicySpeedSeen = false;
+        summonPolicyApSeen = false;
+        summonPolicyUiSeen = false;
+        summonPolicySecondaryGearSeen = false;
+        summonPolicyDiGear = 0;
+        summonPolicySecondaryGear = 0;
+        summonPolicyApState = 15;
+        summonPolicySelfParkRequest = 15;
+        summonPolicyVehicleSpeedRaw = kDiVehicleSpeedSnaRaw;
+        summonPolicyAca = false;
+        summonPolicyRequestConfirmed = false;
+        summonPolicyDiMs = 0;
+        summonPolicySpeedMs = 0;
+        summonPolicyApMs = 0;
+        summonPolicyUiMs = 0;
+        summonPolicySecondaryGearMs = 0;
+        summonPolicyRequestMs = 0;
+    }
+
+    SummonInjectionSnapshot summonOnlyInjectionSnapshot() const
+    {
+        SummonInjectionSnapshot snapshot;
+        snapshot.diSeen = summonPolicyDiSeen;
+        snapshot.speedSeen = summonPolicySpeedSeen;
+        snapshot.autopilotSeen = summonPolicyApSeen;
+        snapshot.summonStateSeen = summonPolicyUiSeen;
+        snapshot.secondaryGearSeen = summonPolicySecondaryGearSeen;
+        snapshot.diTimestampMs = summonPolicyDiMs;
+        snapshot.speedTimestampMs = summonPolicySpeedMs;
+        snapshot.autopilotTimestampMs = summonPolicyApMs;
+        snapshot.summonStateTimestampMs = summonPolicyUiMs;
+        snapshot.secondaryGearTimestampMs = summonPolicySecondaryGearMs;
+        snapshot.diGear = summonPolicyDiGear;
+        snapshot.secondaryGear = summonPolicySecondaryGear;
+        snapshot.autopilotState = summonPolicyApState;
+        snapshot.selfParkRequest = summonPolicySelfParkRequest;
+        snapshot.vehicleSpeedRaw = summonPolicyVehicleSpeedRaw;
+        snapshot.autonomyControlActive = summonPolicyAca;
+        snapshot.summonRequestConfirmed = summonPolicyRequestConfirmed;
+        return snapshot;
+    }
+
+    SummonInjectionDecision summonOnlyInjectionDecisionAt(uint32_t nowMs) const
+    {
+        return ::summonOnlyInjectionDecision(summonOnlyInjectionRuntime,
+                                             summonOnlyInjectionSnapshot(), nowMs);
     }
 
     // Force Summoning off and reset sprSeen when the vehicle is observed
@@ -190,10 +316,10 @@ struct LegacyHandler : public CarManagerBase
 {
     const uint32_t *filterIds() const override
     {
-        static constexpr uint32_t ids[] = {69, 280, 390, 921, 1006};
+        static constexpr uint32_t ids[] = {69, 280, 390, 599, 921, 1006, 1016};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 5; }
+    uint8_t filterIdCount() const override { return 7; }
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
@@ -240,10 +366,16 @@ struct LegacyHandler : public CarManagerBase
             {
                 uint8_t difGear = readVehicleGear(frame);
                 Parked = isVehicleParked(difGear);
+                updateSummonPolicySecondaryGear(difGear);
                 // Only clear Summoning on a *definitive* Park (gear==1).
                 // SNA (7) and INVALID (0) can blip during gear transitions.
                 clearSummonOnParkIfAcaInactive(difGear);
             }
+            return;
+        }
+        if (frame.id == 599)
+        {
+            updateSummonPolicySpeed(frame);
             return;
         }
         if (frame.id == 921)
@@ -253,6 +385,12 @@ struct LegacyHandler : public CarManagerBase
             uint8_t status = readDASAutopilotStatus(frame);
             dasAutopilotStatus = status;
             APActive = isDASAutopilotActive(status);
+            updateSummonPolicyAutopilot(frame, status);
+            return;
+        }
+        if (frame.id == 1016)
+        {
+            updateSummonFrom1016(frame);
             return;
         }
         if (frame.id == 1006)
@@ -306,10 +444,10 @@ struct HW3Handler : public CarManagerBase
 {
     const uint32_t *filterIds() const override
     {
-        static constexpr uint32_t ids[] = {280, 390, 921, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {280, 390, 599, 921, 1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 6; }
+    uint8_t filterIdCount() const override { return 7; }
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
     {
@@ -339,10 +477,16 @@ struct HW3Handler : public CarManagerBase
             {
                 uint8_t difGear = readVehicleGear(frame);
                 Parked = isVehicleParked(difGear);
+                updateSummonPolicySecondaryGear(difGear);
                 // Only clear Summoning on a *definitive* Park (gear==1).
                 // SNA (7) and INVALID (0) can blip during gear transitions.
                 clearSummonOnParkIfAcaInactive(difGear);
             }
+            return;
+        }
+        if (frame.id == 599)
+        {
+            updateSummonPolicySpeed(frame);
             return;
         }
         if (frame.id == 1016)
@@ -376,6 +520,7 @@ struct HW3Handler : public CarManagerBase
             uint8_t status = readDASAutopilotStatus(frame);
             dasAutopilotStatus = status;
             APActive = isDASAutopilotActive(status);
+            updateSummonPolicyAutopilot(frame, status);
             return;
         }
         if (frame.id == 2047)
@@ -596,15 +741,15 @@ struct HW4Handler : public CarManagerBase
 #if defined(ISA_SPEED_CHIME_SUPPRESS) && !defined(ESP32_DASHBOARD)
         // MCP2515 has six hardware filters. Keep 0x399 for ISA suppression
         // and use DI_systemStatus (0x118) as the gear source in this build.
-        static constexpr uint32_t ids[] = {280, 921, 923, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {280, 599, 921, 923, 1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 6; }
+    uint8_t filterIdCount() const override { return 7; }
 #else
-        static constexpr uint32_t ids[] = {280, 390, 923, 1016, 1021, 2047};
+        static constexpr uint32_t ids[] = {280, 390, 599, 923, 1016, 1021, 2047};
         return ids;
     }
-    uint8_t filterIdCount() const override { return 6; }
+    uint8_t filterIdCount() const override { return 7; }
 #endif
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
@@ -635,10 +780,16 @@ struct HW4Handler : public CarManagerBase
             {
                 uint8_t difGear = readVehicleGear(frame);
                 Parked = isVehicleParked(difGear);
+                updateSummonPolicySecondaryGear(difGear);
                 // Only clear Summoning on a *definitive* Park (gear==1).
                 // SNA (7) and INVALID (0) can blip during gear transitions.
                 clearSummonOnParkIfAcaInactive(difGear);
             }
+            return;
+        }
+        if (frame.id == 599)
+        {
+            updateSummonPolicySpeed(frame);
             return;
         }
         if (frame.id == 923)
@@ -662,6 +813,7 @@ struct HW4Handler : public CarManagerBase
             uint8_t status = dasHw4UseByte0 ? byte0State : standardState;
             dasAutopilotStatus = status;
             APActive = isDASAutopilotActive(status);
+            updateSummonPolicyAutopilot(frame, status);
         }
 #if defined(ISA_SPEED_CHIME_SUPPRESS) && !defined(ESP32_DASHBOARD)
         if (isaSpeedChimeSuppressRuntime && frame.id == 921)

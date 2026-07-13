@@ -168,6 +168,27 @@ class WifiSettingsRegressionTests(unittest.TestCase):
 
         self.assertIn("INJECTION_AFTER_AP", self.sync)
 
+    def test_summon_only_setting_defaults_disabled_and_roundtrips_reboot(self) -> None:
+        self.assertHasUiId("summon-only-tgl")
+        for ui_field in ("Summon-only injection (beta)", "c.summonOnly", "smo:"):
+            with self.subTest(ui_field=ui_field):
+                self.assertIn(ui_field, self.ui)
+
+        for backend_field in (
+            "static Shared<bool> summonOnlyInjection{false}",
+            'prefs.putBool("sum_only", summonOnlyInjection)',
+            'prefs.getBool("sum_only", false)',
+            'server.hasArg("smo")',
+            '\"summonOnly\"',
+            'doc["plugins"]["summonOnly"]',
+            'p.putBool("sum_only"',
+        ):
+            with self.subTest(backend_field=backend_field):
+                self.assertIn(backend_field, self.dash)
+
+        self.assertIn("pluginResetPeriodicEmit()", self.dash)
+        self.assertIn("clearPendingTransmit()", self.dash)
+
     def test_manual_ota_credentials_can_be_reset_from_dashboard(self) -> None:
         self.assertHasUiId("ota-reset-btn")
         self.assertIn("resetOtaCredentials()", self.ui)

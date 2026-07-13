@@ -115,6 +115,14 @@ inline uint8_t readDIGear(const CanFrame &frame)
     return static_cast<uint8_t>((frame.data[2] >> 5) & 0x07);
 }
 
+// DI_speed (CAN ID 599 / 0x257) DI_vehicleSpeed: bits 12-23,
+// factor 0.08, offset -40 kph. Raw 500 is exactly 0 kph; 4095 is SNA.
+inline uint16_t readDIVehicleSpeedRaw(const CanFrame &frame)
+{
+    return static_cast<uint16_t>((frame.data[1] >> 4) |
+                                 (static_cast<uint16_t>(frame.data[2]) << 4));
+}
+
 inline bool isDefinitiveParkGear(uint8_t gear)
 {
     return gear == 1;
