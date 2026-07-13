@@ -34,7 +34,7 @@ jobs:
       - name: Validate generated dashboard
         run: |
           python scripts/minify_dashboard.py
-          python -m unittest test.test_dashboard_onboarding_regression
+          python -m unittest discover -s test -p 'test_dashboard_onboarding_regression.py' -v
 
       - name: Commit generated changes
         run: |
