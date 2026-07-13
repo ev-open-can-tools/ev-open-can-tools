@@ -1,6 +1,6 @@
 # ev-open-can-tools documentation
 
-[Project home](../) · [Build and flash](building.md) · [Dashboard](dashboard.md) · [Pages onboarding](onboarding.md) · [Interactive preview](../onboarding/) · [Plugins](plugins.md) · [CAN safety](nag-killer.md) · [Runtime optimization](esp32-optimization.md) · [Release notes](../CHANGELOG.md)
+[Project home](../) · [Start onboarding](../onboarding/) · [Build and flash](building.md) · [Dashboard](dashboard.md) · [Onboarding guide](onboarding.md) · [Plugins](plugins.md) · [CAN safety](nag-killer.md) · [Runtime optimization](esp32-optimization.md) · [Release notes](../CHANGELOG.md)
 
 ## Start here
 
@@ -8,12 +8,12 @@ ev-open-can-tools is experimental firmware for selected Tesla CAN experiments. A
 
 CAN is the vehicle's internal message network. A frame is a small message with an ID, a length, and data bytes. A wrong frame can affect steering, driver assistance, braking, or gateway behavior. This project is not plug-and-play and is not a substitute for a qualified vehicle technician.
 
-If you are new, use this order:
+New to the project? Use this order:
 
-1. Read the [safety and testing guide](nag-killer.md).
-2. Choose a board and follow [Build and flash](building.md).
-3. Try the [interactive onboarding preview](../onboarding/) to understand a possible setup flow without changing a device.
-4. Connect to the dashboard and learn the [Dashboard guide](dashboard.md) with CAN transmission stopped.
+1. Start the [guided newcomer onboarding](../onboarding/). It helps you choose a goal, vehicle mode, supported board, installation approach, and matching build path without changing a device.
+2. Read the [safety and testing guide](nag-killer.md).
+3. Follow [Build and flash](building.md) for the selected PlatformIO environment.
+4. Connect to the dashboard and use the [Dashboard guide](dashboard.md) with CAN transmission stopped.
 5. Read [Plugins](plugins.md) before installing any rule that can transmit.
 6. Start with a listen-only or isolated bench test. Do not begin on a public road.
 
@@ -21,7 +21,7 @@ If you are new, use this order:
 
 | Goal | Start with |
 | --- | --- |
-| Preview a possible setup flow in a browser | [Interactive onboarding preview](../onboarding/) |
+| Understand the whole setup step by step | [Guided newcomer onboarding](../onboarding/) |
 | Use a supported ESP32 board | [Build and flash](building.md), then [Dashboard](dashboard.md) |
 | Observe traffic with SavvyCAN | [Dashboard -> GVRET](dashboard.md#savvycan-usb-serial) |
 | Create a CAN rule | [Plugin system](plugins.md) |
