@@ -940,7 +940,7 @@ private:
                 return false;
             walkSeed_ = static_cast<uint16_t>(walkSeed_ * 1103u + 12345u);
             float delta = (static_cast<int>(walkSeed_ & 0x1F) - 16) * 0.05f;
-            float magnitude = std::abs(lastModeCTorqueNm_) + delta;
+            float magnitude = std::fabs(lastModeCTorqueNm_) + delta;
             magnitude = std::max(0.5f, std::min(TORQUE_NM_MAX, magnitude));
             torqueNm = steeringAngleDeg_ > 0.0f ? -magnitude : magnitude;
             lastModeCTorqueNm_ = torqueNm;
@@ -959,7 +959,7 @@ private:
         }
 
         torque = torqueNmToRaw(torqueNm);
-        setHandsOn = std::abs(torqueNm) >= 1.0f;
+        setHandsOn = std::fabs(torqueNm) >= 1.0f;
         return true;
     }
 };
