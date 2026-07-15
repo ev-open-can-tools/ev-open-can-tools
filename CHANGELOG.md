@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.0.2-beta.8] - 2026-07-15
+
+### Added
+
+- Added dashboard buttons for built-in nag suppression Off, Mode A, Mode B, and Mode C. This path is implemented directly in firmware and does not use plugins.
+- Mode A keeps the fixed `+1.80 Nm` counter-echo behavior. Mode B cycles `+1.80`, `+1.50`, `-1.50`, and `-1.80 Nm` during a one-second burst followed by a 1.5-second pause. Mode C follows the reviewed DAS hands-on state machine using `0x399` and `0x129` context.
+- Added NVS persistence, settings backup/restore, Support-report output, merged CAN filters, and native/regression coverage for the selected nag mode.
+
+### Safety
+
+- Nag suppression defaults to Off in dashboard builds, remains bounded to `-1.80 Nm` through `+1.80 Nm`, preserves exact `0x370` DLC/counter/checksum handling, and still passes the existing global startup and Summon-only transmit gates.
+- Mode C fails closed when AP state or steering context is missing, older than one second, outside supported AP states, or beyond `±5 degrees` steering angle.
+
 ## [3.0.2-beta.7] - 2026-07-13
 
 ### Added

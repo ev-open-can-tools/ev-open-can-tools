@@ -62,6 +62,19 @@ class EspIdfStabilityRegressionTests(unittest.TestCase):
         self.assertIn("torqueRaw == TORQUE_RAW_MAX", self.handlers)
         self.assertIn("frame.dlc < 8", self.handlers)
 
+    def test_dashboard_nag_modes_are_built_in_and_fail_closed(self) -> None:
+        for mode in ("ModeA", "ModeB", "ModeC"):
+            self.assertIn(mode, self.handlers)
+        self.assertIn("kContextFreshMs = 1000", self.handlers)
+        self.assertIn("dashNagProcess(original, *appDriver)", self.app)
+        self.assertIn('prefs.putUChar("nag_mode", dashNagMode)', self.dashboard)
+        self.assertIn('server.hasArg("nag")', self.dashboard)
+        self.assertIn('id="nag-off"', self.ui)
+        self.assertIn('id="nag-a"', self.ui)
+        self.assertIn('id="nag-b"', self.ui)
+        self.assertIn('id="nag-c"', self.ui)
+        self.assertIn("plugins are not used", self.ui)
+
     def test_only_last_write_check_remains_from_removed_diagnostics(self) -> None:
         self.assertIn("Last Write Check", self.ui)
         for removed in ("CAN Sniffer", "CAN Recorder", "CAN Controller", "Live Log", "Rule Test", "Plugin Editor"):

@@ -107,8 +107,10 @@ class WifiSettingsRegressionTests(unittest.TestCase):
             'item["mask"]',
             'item["dns"]',
             '\\"dashboard\\":{\\"hw\\"',
+            '\\"nagMode\\"',
             '\\"autoUpdate\\"',
             'doc["dashboard"].is<JsonObject>()',
+            'p.putUChar("nag_mode"',
             'doc["autoUpdate"]',
         ]
 

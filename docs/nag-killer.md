@@ -35,6 +35,8 @@ Dashboard ESP32 builds keep injection blocked until CAN has initialized, the sta
 
 The firmware enforces a complete 12-bit torque encoding and hard `-1.80 Nm` to `+1.80 Nm` bounds (`0x74E` through `0x8B6`) for the built-in nag path. A plugin cannot safely be assumed to have these semantics; review its operations and target frame separately.
 
+Dashboard builds expose the built-in path as Off plus Modes A, B, and C. Mode A uses fixed positive torque, Mode B uses a bounded four-value burst/pause cycle, and Mode C requires fresh DAS hands-on and steering context. These controls are direct firmware settings, not plugins, and default to Off.
+
 ## Recommended test progression
 
 1. Validate decoding and exact output bytes with native tests.

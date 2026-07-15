@@ -405,6 +405,7 @@ static void appLoop()
                 h->handleMessage(frame, *appDriver);
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD)
                 dashRefreshSummonOnlyPolicy();
+                dashNagProcess(original, *appDriver);
 #endif
                 if (appPluginProcess)
                     appPluginProcess(original, *appDriver);

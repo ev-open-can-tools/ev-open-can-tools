@@ -239,8 +239,10 @@ static Shared<uint8_t> hwMode{DASH_DEFAULT_HW};
 static Shared<bool> canActive{kDashInjectionDefaultEnabled};
 static Shared<bool> apInjectionGate{kDashApGateDefaultEnabled};
 static Shared<bool> summonOnlyInjection{false};
+static Shared<uint8_t> dashNagMode{static_cast<uint8_t>(NagMode::Disabled)};
 static Shared<bool> dashSpeedProfileAuto{true};
 static Shared<uint8_t> dashManualSpeedProfile{1};
+static NagHandler dashNagHandler;
 
 static constexpr uint8_t kHw3SlewRateMin = 1;
 static constexpr uint8_t kHw3SlewRateMax = 25;
@@ -690,7 +692,8 @@ static void dashApplyRuntimeState()
     emergencyVehicleDetectionRuntime = false;
     isaSpeedChimeSuppressRuntime = false;
     enhancedAutopilotRuntime = false;
-    nagKillerRuntime = false;
+    nagKillerRuntime = canActive && dashNagMode != static_cast<uint8_t>(NagMode::Disabled);
+    dashNagHandler.setMode(dashNagMode);
     summonOnlyInjectionRuntime = static_cast<bool>(summonOnlyInjection);
 
     if (dashHandler)
@@ -721,6 +724,7 @@ static bool dashSavePrefs()
     prefs.putBool("can", canActive);
     prefs.putBool("ap_gate", apInjectionGate);
     prefs.putBool("sum_only", summonOnlyInjection);
+    prefs.putUChar("nag_mode", dashNagMode);
     prefs.putBool("sp_auto", dashSpeedProfileAuto);
     prefs.putUChar("sp_sel", dashManualSpeedProfile);
     prefs.putUChar("plg_rep", pluginGetReplayCount());
@@ -880,6 +884,7 @@ static void dashLoadPrefs()
     canActive = prefs.getBool("can", kDashInjectionDefaultEnabled);
     apInjectionGate = prefs.getBool("ap_gate", kDashApGateDefaultEnabled);
     summonOnlyInjection = prefs.getBool("sum_only", false);
+    dashNagMode = clampNagMode(prefs.getUChar("nag_mode", static_cast<uint8_t>(NagMode::Disabled)));
     dashSpeedProfileAuto = prefs.getBool("sp_auto", true);
     dashManualSpeedProfile = dashClampSpeedProfileForHw(hwMode, prefs.getUChar("sp_sel", 1));
     pluginSetReplayCount(prefs.getUChar("plg_rep", PLUGIN_REPLAY_COUNT));
@@ -1500,9 +1505,10 @@ static void handleSupport()
     report.appendf("AP clients: %d\n", WiFi.softAPgetStationNum());
 
     report.append("\n[Configuration]\n");
-    report.appendf("Hardware mode: %s\nSpeed profile: %u (%s)\nPlugin replay: %u\n",
+    report.appendf("Hardware mode: %s\nNag suppression: %s\nSpeed profile: %u (%s)\nPlugin replay: %u\n",
                    hwMode == 0 ? "Legacy" : hwMode == 1 ? "HW3"
                                                         : "HW4",
+                   nagModeName(dashNagMode),
                    static_cast<unsigned int>(dashManualSpeedProfile),
                    dashSpeedProfileAuto ? "automatic" : "manual",
                    static_cast<unsigned int>(pluginGetReplayCount()));
@@ -1633,6 +1639,7 @@ static void handleConfigGet()
     json += ",\"pluginReplayMax\":" + String(PLUGIN_REPLAY_COUNT_MAX);
     json += ",\"apGate\":" + String(apInjectionGate ? "true" : "false");
     json += ",\"summonOnly\":" + String(summonOnlyInjection ? "true" : "false");
+    json += ",\"nagMode\":" + String(dashNagMode);
     json += ",\"hw3OffsetSlew\":" + String(hw3OffsetSlew ? "true" : "false");
     json += ",\"hw3SlewRate\":" + String(hw3SlewRate);
     json += ",\"ledBrightness\":" + String(dashLedBrightness);
@@ -1645,6 +1652,7 @@ static void handleConfig()
     long hwValue = hwMode;
     long speedValue = dashManualSpeedProfile;
     long replayValue = pluginGetReplayCount();
+    long nagModeValue = dashNagMode;
     long slewRateValue = hw3SlewRate;
     bool canValue = canActive;
     bool speedAutoValue = dashSpeedProfileAuto;
@@ -1662,6 +1670,10 @@ static void handleConfig()
     if (server.hasArg("plgr"))
         valid &= dashParseLong(server.arg("plgr"), replayValue) && replayValue >= 1 &&
                  replayValue <= PLUGIN_REPLAY_COUNT_MAX;
+    if (server.hasArg("nag"))
+        valid &= dashParseLong(server.arg("nag"), nagModeValue) &&
+                 nagModeValue >= static_cast<long>(NagMode::Disabled) &&
+                 nagModeValue <= static_cast<long>(NagMode::ModeC);
     if (server.hasArg("hw3SlewRate") || server.hasArg("offsetSlewRate"))
         valid &= dashParseLong(server.arg(slewRateArg), slewRateValue) &&
                  slewRateValue >= kHw3SlewRateMin && slewRateValue <= kHw3SlewRateMax;
@@ -1687,6 +1699,7 @@ static void handleConfig()
     uint8_t oldSpeed = dashManualSpeedProfile;
     bool oldGate = apInjectionGate;
     bool oldSummonOnly = summonOnlyInjection;
+    uint8_t oldNagMode = dashNagMode;
     uint8_t oldReplay = pluginGetReplayCount();
     bool oldSlew = hw3OffsetSlew;
     uint8_t oldSlewRate = hw3SlewRate;
@@ -1739,6 +1752,16 @@ static void handleConfig()
             dashLog("[CFG] Summon-only injection " + String(v ? "ON" : "OFF"));
         }
     }
+    if (server.hasArg("nag"))
+    {
+        uint8_t v = static_cast<uint8_t>(nagModeValue);
+        if (v != dashNagMode)
+        {
+            dashNagMode = v;
+            dashLog("[CFG] Nag suppression " + String(nagModeName(v)));
+            dashReapplyFiltersWithPlugins();
+        }
+    }
     if (server.hasArg("plgr"))
     {
         uint8_t previous = pluginGetReplayCount();
@@ -1779,6 +1802,7 @@ static void handleConfig()
         dashManualSpeedProfile = oldSpeed;
         apInjectionGate = oldGate;
         summonOnlyInjection = oldSummonOnly;
+        dashNagMode = oldNagMode;
         pluginSetReplayCount(oldReplay);
         hw3OffsetSlew = oldSlew;
         hw3SlewRate = oldSlewRate;
@@ -1788,6 +1812,7 @@ static void handleConfig()
             dashApplyFilters();
         }
         dashApplyRuntimeState();
+        dashReapplyFiltersWithPlugins();
         dashRefreshSummonOnlyPolicy();
         server.send(500, "application/json", "{\"ok\":false,\"error\":\"NVS write failed\"}");
         return;
@@ -1955,8 +1980,30 @@ static uint8_t dashCollectMergedFilterIds(uint32_t *ids, uint8_t maxIds)
     uint8_t hCount = dashHandler->filterIdCount();
     for (uint8_t i = 0; i < hCount && count < maxIds; i++)
         ids[count++] = hIds[i];
+    if (dashNagMode != static_cast<uint8_t>(NagMode::Disabled))
+    {
+        const uint32_t *nagIds = dashNagHandler.modeFilterIds();
+        uint8_t nagCount = dashNagHandler.modeFilterIdCount(dashNagMode);
+        for (uint8_t i = 0; i < nagCount && count < maxIds; i++)
+            ids[count++] = nagIds[i];
+    }
     count += pluginGetFilterIds(ids + count, maxIds - count);
-    return count;
+    uint8_t uniqueCount = 0;
+    for (uint8_t i = 0; i < count; i++)
+    {
+        bool duplicate = false;
+        for (uint8_t j = 0; j < uniqueCount; j++)
+        {
+            if (ids[j] == ids[i])
+            {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate)
+            ids[uniqueCount++] = ids[i];
+    }
+    return uniqueCount;
 }
 
 static void handlePluginList()
@@ -2892,6 +2939,7 @@ static void handleSettingsExport()
          ",\"summonOnly\":" + String(summonOnly ? "true" : "false") + "}";
     j += ",\"hw3\":{\"offsetSlew\":" + String(h3Slew ? "true" : "false") + ",\"slewRate\":" + String(h3SlewRate) + "}";
     j += ",\"dashboard\":{\"hw\":" + String(hwMode) + ",\"can\":" + String(canActive ? "true" : "false");
+    j += ",\"nagMode\":" + String(dashNagMode);
     j += ",\"speedAuto\":" + String(dashSpeedProfileAuto ? "true" : "false");
     j += ",\"speedProfile\":" + String(dashManualSpeedProfile);
     j += ",\"ledBrightness\":" + String(dashLedBrightness) + "}";
@@ -3102,6 +3150,7 @@ static void handleSettingsImport()
     int importedHw = hwMode;
     int importedSpeedProfile = dashManualSpeedProfile;
     int importedLedBrightness = dashLedBrightness;
+    int importedNagMode = dashNagMode;
     bool importedCanActive = canActive;
     bool importedSpeedAuto = dashSpeedProfileAuto;
     if (hasDashboardImport)
@@ -3120,9 +3169,11 @@ static void handleSettingsImport()
         JsonVariant hwValue = dashboard["hw"];
         JsonVariant speedValue = dashboard["speedProfile"];
         JsonVariant ledValue = dashboard["ledBrightness"];
+        JsonVariant nagModeValue = dashboard["nagMode"];
         if ((!hwValue.isNull() && !hwValue.is<int>()) ||
             (!speedValue.isNull() && !speedValue.is<int>()) ||
             (!ledValue.isNull() && !ledValue.is<int>()) ||
+            (!nagModeValue.isNull() && !nagModeValue.is<int>()) ||
             !readBool("can", importedCanActive) || !readBool("speedAuto", importedSpeedAuto))
         {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid dashboard settings\"}");
@@ -3134,9 +3185,13 @@ static void handleSettingsImport()
             importedSpeedProfile = speedValue.as<int>();
         if (!ledValue.isNull())
             importedLedBrightness = ledValue.as<int>();
+        if (!nagModeValue.isNull())
+            importedNagMode = nagModeValue.as<int>();
         if (importedHw < 0 || importedHw > 2 || importedSpeedProfile < 0 ||
             importedSpeedProfile > (importedHw == 2 ? 4 : 2) ||
-            importedLedBrightness < 0 || importedLedBrightness > 255)
+            importedLedBrightness < 0 || importedLedBrightness > 255 ||
+            importedNagMode < static_cast<int>(NagMode::Disabled) ||
+            importedNagMode > static_cast<int>(NagMode::ModeC))
         {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid dashboard settings\"}");
             return;
@@ -3263,6 +3318,7 @@ static void handleSettingsImport()
         p.putBool("sp_auto", importedSpeedAuto);
         p.putUChar("sp_sel", static_cast<uint8_t>(importedSpeedProfile));
         p.putUChar("led_b", static_cast<uint8_t>(importedLedBrightness));
+        p.putUChar("nag_mode", static_cast<uint8_t>(importedNagMode));
     }
     if (doc["plugins"].is<JsonObject>() && doc["plugins"]["replay"].is<int>())
         p.putUChar("plg_rep", pluginClampReplayCount(doc["plugins"]["replay"].as<int>()));
@@ -3934,6 +3990,13 @@ static void dashPluginProcess(const CanFrame &frame, CanDriver &driver)
     pluginProcessFrame(frame, driver);
 }
 
+static void dashNagProcess(CanFrame frame, CanDriver &driver)
+{
+    if (dashNagMode == static_cast<uint8_t>(NagMode::Disabled) || !dashInjectionActive())
+        return;
+    dashNagHandler.handleMessage(frame, driver);
+}
+
 static void webTask(void *)
 {
     for (;;)
@@ -3980,6 +4043,7 @@ static void dashInitHandlers()
     {
         handlerPool[i]->onFrame = mcpDashOnFrame;
     }
+    dashNagHandler.onFrame = mcpDashOnFrame;
 }
 
 static void dashSwapHandler(uint8_t mode)

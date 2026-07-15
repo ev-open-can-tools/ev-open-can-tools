@@ -38,6 +38,16 @@ The configuration card controls settings such as:
 
 Save one change at a time and watch the status card afterward. A setting being accepted by the form does not make an unverified CAN rule safe.
 
+### Built-in nag suppression
+
+The Configuration card has four direct firmware controls: **Off**, **Mode A**, **Mode B**, and **Mode C**. These modes do not install or execute a plugin. Dashboard builds default to Off and preserve the selection in NVS and settings backups.
+
+- **Mode A** echoes eligible Party CAN `0x370` frames with fixed `+1.80 Nm`, `handsOnLevel=1`, counter `+1`, and a recalculated checksum.
+- **Mode B** cycles `+1.80`, `+1.50`, `-1.50`, and `-1.80 Nm` every 200 ms during a one-second active burst, then pauses for 1.5 seconds.
+- **Mode C** observes DAS state on `0x399` and steering angle on `0x129`. It blocks unless both frames are fresh within one second, AP state is 3 through 6, steering angle is within `±5 degrees`, and the hands-on state-machine delay has elapsed.
+
+All modes retain the firmware `±1.80 Nm` hard bound and global dashboard injection gates. Use Party CAN only and validate exact frame layouts against a capture from the target vehicle before enabling any mode.
+
 ### Summon-only injection (beta)
 
 Use this optional mode only when normal injection interferes with Autopilot on newer Tesla software. It defaults to disabled, including after upgrading. Existing injection behavior remains unchanged while disabled.
