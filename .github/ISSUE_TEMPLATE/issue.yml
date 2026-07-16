@@ -56,6 +56,7 @@ body:
         - Adafruit Feather M4 CAN Express
         - Generic ESP32 dev board
         - LILYGO TCAN485
+        - LILYGO T-2CAN
         - M5Stack Atom CAN Base
         - M5Stack AtomS3 Mini CAN Base
         - Feather ESP32 V2 + external MCP2515

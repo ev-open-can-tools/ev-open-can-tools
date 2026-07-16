@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.0.2-beta.9] - 2026-07-16
+
+### Added
+
+- Added the LILYGO T-2CAN as the `lilygo_t2can` ESP-IDF dashboard environment, using its native CAN1 TWAI interface on TX GPIO7 and RX GPIO6 with a 16 MB OTA partition layout.
+- Added LILYGO T-2CAN test and release builds, including the `firmware-lilygo-t2can.bin` OTA artifact.
+
+### Safety
+
+- The board target uses only the native CAN1 TWAI interface. It does not import the reference fork's custom secondary MCP2515 behavior or change CAN filters, transmit gates, frame handling, or timing.
+
 ## [3.0.2-beta.8] - 2026-07-15
 
 ### Added

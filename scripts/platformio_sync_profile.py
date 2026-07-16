@@ -32,6 +32,7 @@ FIRMWARE_ARTIFACTS = {
     "esp32s2_twai": "firmware-esp32s2.bin",
     "esp32c6_twai": "firmware-esp32c6.bin",
     "lilygo_tcan485_hw3": "firmware-lilygo-tcan485-hw3.bin",
+    "lilygo_t2can": "firmware-lilygo-t2can.bin",
     "m5stack-atomic-can-base": "firmware-m5stack.bin",
     "m5stack-atoms3-mini-can-base": "firmware-m5stack-atoms3-mini.bin",
     "esp32_feather_v2_mcp2515": "firmware-esp32-featherwing.bin",
