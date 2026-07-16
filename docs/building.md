@@ -20,6 +20,7 @@ This project uses PlatformIO. You select a board environment, create a local pro
 | `esp32s2_twai` | ESP32-S2 Saola | Built-in TWAI | Yes |
 | `esp32c6_twai` | ESP32-C6 DevKitC-1 | Built-in TWAI | Yes |
 | `lilygo_tcan485_hw3` | LILYGO TCAN485 | Built-in TWAI | Yes |
+| `lilygo_t2can` | LILYGO T-2CAN | Built-in TWAI (CAN1) | Yes |
 | `m5stack-atomic-can-base` | M5Stack Atom CAN Base | Built-in TWAI | Yes |
 | `m5stack-atoms3-mini-can-base` | M5Stack AtomS3 Mini CAN Base | Built-in TWAI | Yes |
 | `esp32_feather_v2_mcp2515` | Feather ESP32 V2 + external MCP2515 | SPI MCP2515 | Yes |
@@ -28,7 +29,7 @@ This project uses PlatformIO. You select a board environment, create a local pro
 | `feather_rp2040_can` | Adafruit Feather RP2040 CAN | MCP2515 | No |
 | `feather_m4_can` | Adafruit Feather M4 CAN Express | Native CAN | No |
 
-The first nine are ESP-IDF dashboard builds. The last two are legacy Arduino builds without the web dashboard.
+The first ten are ESP-IDF dashboard builds. The last two are legacy Arduino builds without the web dashboard.
 
 ## Create a local profile
 

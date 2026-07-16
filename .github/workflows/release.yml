@@ -67,6 +67,13 @@ jobs:
             artifact_name: firmware-lilygo-tcan485-hw3
             artifact_path: .pio/build/lilygo_tcan485_hw3/firmware.bin
             extra_python_packages: littlefs-python fatfs-ng pyyaml intelhex
+          - env: lilygo_t2can
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+              --enable ENHANCED_AUTOPILOT
+            project_dir: .
+            artifact_name: firmware-lilygo-t2can
+            artifact_path: .pio/build/lilygo_t2can/firmware.bin
+            extra_python_packages: littlefs-python fatfs-ng pyyaml intelhex
           - env: m5stack-atomic-can-base
             profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
               --enable ENHANCED_AUTOPILOT
@@ -171,6 +178,7 @@ jobs:
             release-assets/firmware-esp32s2.bin
             release-assets/firmware-esp32c6.bin
             release-assets/firmware-lilygo-tcan485-hw3.bin
+            release-assets/firmware-lilygo-t2can.bin
             release-assets/firmware-m5stack-atoms3-mini.bin
             release-assets/firmware-waveshare-esp32-s3.bin
       - name: Publish draft release

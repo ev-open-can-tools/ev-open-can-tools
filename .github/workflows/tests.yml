@@ -109,6 +109,11 @@ jobs:
               --enable ENHANCED_AUTOPILOT
             project_dir: .
             extra_python_packages: littlefs-python fatfs-ng pyyaml intelhex
+          - env: lilygo_t2can
+            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+              --enable ENHANCED_AUTOPILOT
+            project_dir: .
+            extra_python_packages: littlefs-python fatfs-ng pyyaml intelhex
           - env: m5stack-atomic-can-base
             profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
               --enable ENHANCED_AUTOPILOT
