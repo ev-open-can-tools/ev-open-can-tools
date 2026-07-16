@@ -28,7 +28,6 @@
     "vscode": {
       "extensions": [
         "ms-vscode.cpptools",
-        "ms-vscode.cpptools-extension-pack",
         "platformio.platformio-ide",
         "charliermarsh.ruff",
         "esbenp.prettier-vscode",

@@ -52,6 +52,12 @@ python scripts/platformio_set_profile.py \
 
 Use the exact driver and vehicle values documented by `platformio_profile.example.h`. Do not guess GPIOs from a similar board.
 
+## VS Code IntelliSense
+
+Install the recommended PlatformIO and Microsoft C/C++ extensions, then open the repository root in VS Code. The tracked workspace settings use PlatformIO as the IntelliSense configuration provider on a normal host and inside the dev container.
+
+Use the PlatformIO environment switcher in the VS Code status bar to select the board you are editing. PlatformIO then supplies the matching compiler, build defines, and include paths for that environment. Generated `.vscode/c_cpp_properties.json`, `.vscode/launch.json`, and `compile_commands.json` files are machine-specific and remain local; do not commit them.
+
 ## Build
 
 Install PlatformIO, then build the environment matching the board:

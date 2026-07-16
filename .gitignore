@@ -41,6 +41,7 @@ Temporary Items
 .gcc-flags.json
 .pio
 .platformio-ci
+compile_commands.json
 index.html
 
 ### Python ###
@@ -216,13 +217,12 @@ poetry.toml
 pyrightconfig.json
 
 ### VisualStudioCode ###
-.vscode/
+.vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 
 # Local scratch files
 .tmp/
-!.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets
 

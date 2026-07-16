@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.0.2-beta.10] - 2026-07-16
+
+### Fixed
+
+- VS Code now uses PlatformIO as the shared IntelliSense configuration provider on normal hosts and inside the dev container, so selecting a PlatformIO environment supplies its matching compiler, defines, and include paths.
+- Removed the committed machine-specific `compile_commands.json`; PlatformIO-generated editor files and compilation databases now remain local instead of pinning another developer to one board and one filesystem layout.
+
+### Safety
+
+- This release changes editor configuration and documentation only. CAN filters, frame handling, transmit gates, timing, and firmware runtime behavior are unchanged.
+
 ## [3.0.2-beta.9] - 2026-07-16
 
 ### Added
