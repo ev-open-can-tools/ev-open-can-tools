@@ -966,14 +966,6 @@ private:
 
 struct HW4Handler : public CarManagerBase
 {
-    // Some 2026.20 Highland cars keep the standard byte-1 AP state pinned at
-    // 1 and carry it in byte 0 instead. Latch that variant only after three
-    // matching frames; any standard byte-1 movement permanently disqualifies
-    // the fallback for this session.
-    bool dasHw4UseByte0 = false;
-    bool dasHw4Byte1Moved = false;
-    uint8_t dasHw4Byte0PinCount = 0;
-
     const uint32_t *filterIds() const override
     {
 #if defined(ISA_SPEED_CHIME_SUPPRESS) && !defined(ESP32_DASHBOARD)
@@ -1032,23 +1024,9 @@ struct HW4Handler : public CarManagerBase
         }
         if (frame.id == 923)
         {
-            if (frame.dlc < 2)
+            if (frame.dlc < 1)
                 return;
-            uint8_t standardState = readHW4DASAutopilotStatus(frame);
-            uint8_t byte0State = readDASAutopilotStatus(frame);
-            if (standardState != 1)
-            {
-                dasHw4Byte1Moved = true;
-                dasHw4Byte0PinCount = 0;
-            }
-            else if (!dasHw4UseByte0 && !dasHw4Byte1Moved && byte0State >= 2)
-            {
-                if (dasHw4Byte0PinCount < 3)
-                    dasHw4Byte0PinCount++;
-                if (dasHw4Byte0PinCount >= 3)
-                    dasHw4UseByte0 = true;
-            }
-            uint8_t status = dasHw4UseByte0 ? byte0State : standardState;
+            uint8_t status = readHW4DASAutopilotStatus(frame);
             dasAutopilotStatus = status;
             APActive = isDASAutopilotActive(status);
             updateSummonPolicyAutopilot(frame, status);

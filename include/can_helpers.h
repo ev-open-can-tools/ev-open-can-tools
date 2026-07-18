@@ -100,7 +100,7 @@ inline bool isDASAutopilotActive(uint8_t status)
 
 inline uint8_t readHW4DASAutopilotStatus(const CanFrame &frame)
 {
-    return static_cast<uint8_t>((frame.data[1] >> 4) & 0x0F);
+    return frame.data[0] & 0x0F;
 }
 
 inline uint8_t readVehicleGear(const CanFrame &frame)

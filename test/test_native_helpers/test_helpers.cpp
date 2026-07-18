@@ -166,10 +166,11 @@ void test_isDASAutopilotActive_false_for_abort_states()
     TEST_ASSERT_FALSE(isDASAutopilotActive(15));
 }
 
-void test_readHW4DASAutopilotStatus_extracts_byte1_high_nibble()
+void test_readHW4DASAutopilotStatus_extracts_byte0_low_nibble()
 {
     CanFrame f = {};
-    f.data[1] = 0x6A;
+    f.data[0] = 0xA6;
+    f.data[1] = 0x20;
     TEST_ASSERT_EQUAL_UINT8(6, readHW4DASAutopilotStatus(f));
 }
 
@@ -356,7 +357,7 @@ int main()
     RUN_TEST(test_isDASAutopilotActive_true_for_active_states);
     RUN_TEST(test_isDASAutopilotActive_false_for_available_state);
     RUN_TEST(test_isDASAutopilotActive_false_for_abort_states);
-    RUN_TEST(test_readHW4DASAutopilotStatus_extracts_byte1_high_nibble);
+    RUN_TEST(test_readHW4DASAutopilotStatus_extracts_byte0_low_nibble);
     RUN_TEST(test_readVehicleGear_extracts_dif_gear_bits);
     RUN_TEST(test_isVehicleParked_true_for_park);
     RUN_TEST(test_isVehicleParked_false_for_drive);

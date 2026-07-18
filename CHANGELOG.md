@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.0.2-beta.11] - 2026-07-18
+
+### Fixed
+
+- HW4 AP status now decodes `DAS_autopilotState` from the low nibble of byte 0 in Party CAN `0x39B`, so the AP injection gate recognizes active states on current vehicle software instead of reading unrelated byte-1 data.
+
+### Safety
+
+- The change only corrects passive AP-state decoding for the existing gate. CAN IDs, transmit payloads, checksums, counters, timing, startup gates, and torque limits are unchanged; unknown, unavailable, aborting, and fault states remain blocked.
+
 ## [3.0.2-beta.10] - 2026-07-16
 
 ### Fixed
