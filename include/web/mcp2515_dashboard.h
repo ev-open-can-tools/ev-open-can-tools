@@ -692,8 +692,11 @@ static void dashApplyRuntimeState()
     emergencyVehicleDetectionRuntime = false;
     isaSpeedChimeSuppressRuntime = false;
     enhancedAutopilotRuntime = false;
+    if (!nagModeAllowedForHardware(dashNagMode, hwMode))
+        dashNagMode = static_cast<uint8_t>(NagMode::Disabled);
     nagKillerRuntime = canActive && dashNagMode != static_cast<uint8_t>(NagMode::Disabled);
     dashNagHandler.setMode(dashNagMode);
+    dashNagHandler.setHardwareMode(hwMode);
     summonOnlyInjectionRuntime = static_cast<bool>(summonOnlyInjection);
 
     if (dashHandler)
@@ -1690,6 +1693,14 @@ static void handleConfig()
     if (!valid)
     {
         server.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid configuration value\"}");
+        return;
+    }
+    if (server.hasArg("nag") &&
+        !nagModeAllowedForHardware(static_cast<uint8_t>(nagModeValue),
+                                   static_cast<uint8_t>(hwValue)))
+    {
+        server.send(400, "application/json",
+                    "{\"ok\":false,\"error\":\"Modes A and B are blocked on HW4; use Mode C\"}");
         return;
     }
 
@@ -3191,7 +3202,9 @@ static void handleSettingsImport()
             importedSpeedProfile > (importedHw == 2 ? 4 : 2) ||
             importedLedBrightness < 0 || importedLedBrightness > 255 ||
             importedNagMode < static_cast<int>(NagMode::Disabled) ||
-            importedNagMode > static_cast<int>(NagMode::ModeC))
+            importedNagMode > static_cast<int>(NagMode::ModeC) ||
+            !nagModeAllowedForHardware(static_cast<uint8_t>(importedNagMode),
+                                       static_cast<uint8_t>(importedHw)))
         {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid dashboard settings\"}");
             return;

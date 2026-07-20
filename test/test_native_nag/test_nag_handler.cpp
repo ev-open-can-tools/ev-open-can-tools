@@ -33,19 +33,20 @@ static CanFrame makeEpasFrame(uint8_t handsOn, float torqueNm, uint8_t counter, 
     return f;
 }
 
-static CanFrame makeApStateFrame(uint8_t apState, uint8_t handsOnState)
+static CanFrame makeApStateFrame(uint32_t id, uint8_t apState, uint8_t handsOnState)
 {
-    CanFrame f = {.id = NagHandler::kApStateId, .dlc = 8};
-    f.data[0] = static_cast<uint8_t>((apState << 4) | (handsOnState & 0x0F));
+    CanFrame f = {.id = id, .dlc = 8};
+    f.data[0] = apState & 0x0F;
+    f.data[5] = static_cast<uint8_t>((handsOnState & 0x0F) << 2);
     return f;
 }
 
-static CanFrame makeSteeringFrame(float degrees)
+static CanFrame makeSteeringFrame(float degrees, uint8_t validity = 1)
 {
     CanFrame f = {.id = NagHandler::kSteeringId, .dlc = 8};
-    int16_t raw = static_cast<int16_t>(degrees * 10.0f);
-    f.data[0] = static_cast<uint8_t>(raw & 0xFF);
-    f.data[1] = static_cast<uint8_t>((static_cast<uint16_t>(raw) >> 8) & 0xFF);
+    uint16_t raw = static_cast<uint16_t>((degrees + 819.2f) * 10.0f + 0.5f);
+    f.data[2] = static_cast<uint8_t>(raw & 0xFF);
+    f.data[3] = static_cast<uint8_t>(((raw >> 8) & 0x3F) | ((validity & 0x03) << 6));
     return f;
 }
 
@@ -85,6 +86,27 @@ void test_nag_filter_ids_value()
     TEST_ASSERT_EQUAL_UINT8(3, handler.modeFilterIdCount(static_cast<uint8_t>(NagMode::ModeC)));
     TEST_ASSERT_EQUAL_UINT32(0x399, ids[1]);
     TEST_ASSERT_EQUAL_UINT32(0x129, ids[2]);
+
+    handler.setHardwareMode(2);
+    ids = handler.modeFilterIds();
+    TEST_ASSERT_EQUAL_UINT32(0x39B, ids[1]);
+    TEST_ASSERT_EQUAL_UINT32(0x129, ids[2]);
+}
+
+void test_nag_hw4_allows_only_disabled_and_mode_c()
+{
+    TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeA), 1));
+    TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeB), 1));
+    TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::Disabled), 2));
+    TEST_ASSERT_FALSE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeA), 2));
+    TEST_ASSERT_FALSE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeB), 2));
+    TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeC), 2));
+
+    handler.setHardwareMode(2);
+    handler.setMode(static_cast<uint8_t>(NagMode::ModeA));
+    CanFrame f = makeEpasFrame(0, 0.33f, 0x01);
+    handler.handleMessageAt(f, mock, 100);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
 }
 
 // ============================================================
@@ -413,12 +435,12 @@ void test_nag_mode_c_blocks_without_fresh_context()
 void test_nag_mode_c_injects_after_state2_delay_with_fresh_context()
 {
     handler.setMode(static_cast<uint8_t>(NagMode::ModeC));
-    CanFrame ap = makeApStateFrame(6, 2);
+    CanFrame ap = makeApStateFrame(NagHandler::kLegacyApStateId, 6, 2);
     CanFrame steering = makeSteeringFrame(2.0f);
     handler.handleMessageAt(ap, mock, 100);
     handler.handleMessageAt(steering, mock, 100);
 
-    ap = makeApStateFrame(6, 2);
+    ap = makeApStateFrame(NagHandler::kLegacyApStateId, 6, 2);
     steering = makeSteeringFrame(2.0f);
     handler.handleMessageAt(ap, mock, 2100);
     handler.handleMessageAt(steering, mock, 2100);
@@ -434,6 +456,40 @@ void test_nag_mode_c_injects_after_state2_delay_with_fresh_context()
     TEST_ASSERT_TRUE(verifyChecksum(mock.sent[0]));
 }
 
+void test_nag_mode_c_uses_hw4_status_and_accepts_real_handson_1()
+{
+    handler.setMode(static_cast<uint8_t>(NagMode::ModeC));
+    handler.setHardwareMode(2);
+    CanFrame legacyAp = makeApStateFrame(NagHandler::kLegacyApStateId, 6, 2);
+    CanFrame hw4Ap = makeApStateFrame(NagHandler::kHw4ApStateId, 6, 2);
+    CanFrame steering = makeSteeringFrame(-2.0f);
+    handler.handleMessageAt(legacyAp, mock, 100);
+    handler.handleMessageAt(steering, mock, 100);
+    handler.handleMessageAt(hw4Ap, mock, 100);
+    handler.handleMessageAt(hw4Ap, mock, 2100);
+    handler.handleMessageAt(steering, mock, 2100);
+    CanFrame f = makeEpasFrame(1, 0.33f, 0x01);
+    handler.handleMessageAt(f, mock, 2200);
+
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
+    TEST_ASSERT_TRUE(verifyChecksum(mock.sent[0]));
+}
+
+void test_nag_mode_c_blocks_invalid_steering_context()
+{
+    handler.setMode(static_cast<uint8_t>(NagMode::ModeC));
+    CanFrame ap = makeApStateFrame(NagHandler::kLegacyApStateId, 6, 2);
+    CanFrame steering = makeSteeringFrame(0.0f, 0);
+    handler.handleMessageAt(ap, mock, 100);
+    handler.handleMessageAt(steering, mock, 100);
+    handler.handleMessageAt(ap, mock, 2100);
+    handler.handleMessageAt(steering, mock, 2100);
+    CanFrame f = makeEpasFrame(0, 0.33f, 0x01);
+    handler.handleMessageAt(f, mock, 2200);
+
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
 int main()
 {
     UNITY_BEGIN();
@@ -441,6 +497,7 @@ int main()
     // Filter
     RUN_TEST(test_nag_filter_ids_count);
     RUN_TEST(test_nag_filter_ids_value);
+    RUN_TEST(test_nag_hw4_allows_only_disabled_and_mode_c);
 
     // Basic echo behavior
     RUN_TEST(test_nag_echoes_when_handson_0);
@@ -490,6 +547,8 @@ int main()
     RUN_TEST(test_nag_mode_b_cycles_torque_and_pauses);
     RUN_TEST(test_nag_mode_c_blocks_without_fresh_context);
     RUN_TEST(test_nag_mode_c_injects_after_state2_delay_with_fresh_context);
+    RUN_TEST(test_nag_mode_c_uses_hw4_status_and_accepts_real_handson_1);
+    RUN_TEST(test_nag_mode_c_blocks_invalid_steering_context);
 
     return UNITY_END();
 }

@@ -66,6 +66,10 @@ class EspIdfStabilityRegressionTests(unittest.TestCase):
         for mode in ("ModeA", "ModeB", "ModeC"):
             self.assertIn(mode, self.handlers)
         self.assertIn("kContextFreshMs = 1000", self.handlers)
+        self.assertIn("nagModeAllowedForHardware", self.handlers)
+        self.assertIn("Modes A and B are blocked on HW4", self.dashboard)
+        self.assertIn("readDASAutopilotHandsOnState", self.handlers)
+        self.assertIn("readSCCMSteeringAngleValidity", self.handlers)
         self.assertIn("dashNagProcess(original, *appDriver)", self.app)
         self.assertIn('prefs.putUChar("nag_mode", dashNagMode)', self.dashboard)
         self.assertIn('server.hasArg("nag")', self.dashboard)

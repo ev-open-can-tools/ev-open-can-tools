@@ -62,6 +62,12 @@ static const char *nagModeName(uint8_t mode)
     }
 }
 
+static bool nagModeAllowedForHardware(uint8_t mode, uint8_t hardwareMode)
+{
+    NagMode selected = static_cast<NagMode>(clampNagMode(mode));
+    return hardwareMode != 2 || selected == NagMode::Disabled || selected == NagMode::ModeC;
+}
+
 struct CarManagerBase
 {
     Shared<int> speedProfile{1};
@@ -664,11 +670,12 @@ struct HW3Handler : public CarManagerBase
  * plugin engine. Modes mirror the reviewed nag_echo implementation:
  * - A: fixed +1.80 Nm echo on every eligible 0x370 frame.
  * - B: +1.80/+1.50/-1.50/-1.80 Nm cycle with 1 s burst / 1.5 s pause.
- * - C: DAS hands-on state machine, gated by fresh 0x399 and 0x129 context.
+ * - C: DAS hands-on state machine, gated by fresh hardware-specific DAS status
+ *   (0x399 on Legacy/HW3, 0x39B on HW4) and 0x129 steering context.
  *
  * Common echo behavior:
  * - Listens for CAN 880 (0x370) = EPAS3P_sysStatus
- * - When handsOnLevel = 0 (nag would trigger):
+ * - When handsOnLevel = 0, or Mode C receives an eligible real level-1 frame:
  *   1. Copies the real frame
  *   2. Sets byte 3 = 0xB6 (fixed torsionBarTorque = 1.80 Nm)
  *   3. Sets byte 4 |= 0x40 (handsOnLevel = 1)
@@ -685,10 +692,12 @@ struct NagHandler : public CarManagerBase
 {
     Shared<bool> nagKillerActive{true};
     Shared<uint8_t> nagMode{static_cast<uint8_t>(NagMode::ModeA)};
+    Shared<uint8_t> nagHardwareMode{0};
     Shared<uint32_t> nagEchoCount{0};
 
     static constexpr uint32_t kTargetId = 0x370;
-    static constexpr uint32_t kApStateId = 0x399;
+    static constexpr uint32_t kLegacyApStateId = 0x399;
+    static constexpr uint32_t kHw4ApStateId = 0x39B;
     static constexpr uint32_t kSteeringId = 0x129;
     static constexpr uint32_t kContextFreshMs = 1000;
     static constexpr uint32_t kModeBBurstMs = 1000;
@@ -696,6 +705,7 @@ struct NagHandler : public CarManagerBase
     static constexpr uint32_t kModeBTorqueStepMs = 200;
 
     void setMode(uint8_t mode) { nagMode = clampNagMode(mode); }
+    void setHardwareMode(uint8_t mode) { nagHardwareMode = mode <= 2 ? mode : 0; }
 
     const uint32_t *filterIds() const override
     {
@@ -706,8 +716,9 @@ struct NagHandler : public CarManagerBase
 
     const uint32_t *modeFilterIds() const
     {
-        static constexpr uint32_t ids[] = {kTargetId, kApStateId, kSteeringId};
-        return ids;
+        static constexpr uint32_t legacyIds[] = {kTargetId, kLegacyApStateId, kSteeringId};
+        static constexpr uint32_t hw4Ids[] = {kTargetId, kHw4ApStateId, kSteeringId};
+        return static_cast<uint8_t>(nagHardwareMode) == 2 ? hw4Ids : legacyIds;
     }
 
     uint8_t modeFilterIdCount(uint8_t mode) const
@@ -723,10 +734,13 @@ struct NagHandler : public CarManagerBase
     void handleMessageAt(CanFrame &frame, CanDriver &driver, uint32_t now)
     {
         uint8_t selectedMode = clampNagMode(nagMode);
-        if (selectedMode != activeMode_)
-            resetModeState(selectedMode, now);
+        uint8_t selectedHardwareMode = static_cast<uint8_t>(nagHardwareMode);
+        if (!nagModeAllowedForHardware(selectedMode, selectedHardwareMode))
+            selectedMode = static_cast<uint8_t>(NagMode::Disabled);
+        if (selectedMode != activeMode_ || selectedHardwareMode != activeHardwareMode_)
+            resetModeState(selectedMode, selectedHardwareMode, now);
 
-        if (frame.id == kApStateId)
+        if (frame.id == apStateId(selectedHardwareMode))
         {
             updateApState(frame, now);
             if (onFrame)
@@ -757,7 +771,11 @@ struct NagHandler : public CarManagerBase
         bool isOwnEcho = (handsOn == 1 && torqueRaw == TORQUE_RAW_MAX) ||
                          matchesLastEcho(frame);
 
-        if (!nagKillerActive || !nagKillerRuntime || selectedMode == 0 || isOwnEcho || handsOn != 0)
+        bool handsOnEligible = handsOn == 0 ||
+                               (selectedMode == static_cast<uint8_t>(NagMode::ModeC) &&
+                                handsOn == 1);
+        if (!nagKillerActive || !nagKillerRuntime || selectedMode == 0 || isOwnEcho ||
+            !handsOnEligible)
             return;
 
         uint16_t torque = TORQUE_RAW_MAX;
@@ -778,7 +796,7 @@ struct NagHandler : public CarManagerBase
         echo.data[3] = static_cast<uint8_t>(torque & 0xFF);
 
         echo.data[4] = setHandsOn ? static_cast<uint8_t>(frame.data[4] | 0x40)
-                                  : static_cast<uint8_t>(frame.data[4] & ~0xC0);
+                                  : frame.data[4];
 
         // Counter + 1
         uint8_t cnt = (frame.data[6] & 0x0F);
@@ -820,6 +838,7 @@ struct NagHandler : public CarManagerBase
 
 private:
     uint8_t activeMode_ = 0xFF;
+    uint8_t activeHardwareMode_ = 0xFF;
     uint8_t modeBTorqueIndex_ = 0;
     uint32_t modeEnteredMs_ = 0;
     uint32_t modeBLastStepMs_ = 0;
@@ -844,9 +863,15 @@ private:
         return clampNagTorqueRaw(static_cast<uint16_t>(scaled));
     }
 
-    void resetModeState(uint8_t mode, uint32_t now)
+    static uint32_t apStateId(uint8_t hardwareMode)
+    {
+        return hardwareMode == 2 ? kHw4ApStateId : kLegacyApStateId;
+    }
+
+    void resetModeState(uint8_t mode, uint8_t hardwareMode, uint32_t now)
     {
         activeMode_ = mode;
+        activeHardwareMode_ = hardwareMode;
         modeBTorqueIndex_ = 0;
         modeEnteredMs_ = now;
         modeBLastStepMs_ = now;
@@ -873,10 +898,10 @@ private:
 
     void updateApState(const CanFrame &frame, uint32_t now)
     {
-        if (frame.dlc < 8)
+        if (frame.dlc < 6)
             return;
-        uint8_t apState = static_cast<uint8_t>((frame.data[0] >> 4) & 0x0F);
-        uint8_t handsOnState = static_cast<uint8_t>(frame.data[0] & 0x0F);
+        uint8_t apState = readDASAutopilotStatus(frame);
+        uint8_t handsOnState = readDASAutopilotHandsOnState(frame);
         apState_ = apState;
         lastApStateMs_ = now;
         apStateSeen_ = true;
@@ -890,11 +915,12 @@ private:
 
     void updateSteering(const CanFrame &frame, uint32_t now)
     {
-        if (frame.dlc < 8)
+        if (frame.dlc < 4 || readSCCMSteeringAngleValidity(frame) != 1)
+        {
+            steeringSeen_ = false;
             return;
-        int16_t raw = static_cast<int16_t>((static_cast<uint16_t>(frame.data[1]) << 8) |
-                                           frame.data[0]);
-        steeringAngleDeg_ = raw * 0.1f;
+        }
+        steeringAngleDeg_ = readSCCMSteeringAngle(frame);
         lastSteeringMs_ = now;
         steeringSeen_ = true;
     }

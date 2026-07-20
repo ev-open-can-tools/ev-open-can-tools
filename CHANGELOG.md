@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.0.2-beta.12] - 2026-07-20
+
+### Fixed
+
+- Dashboard builds now block Nag Modes A/B on HW4 after those fixed/burst torque algorithms caused take-over and control-fault warnings on current vehicle software. Existing stored A/B selections fail closed to Off at runtime when HW4 loads; Legacy/HW3 behavior is unchanged.
+- Built-in Nag Mode C now selects DAS status `0x399` for Legacy/HW3 and `0x39B` for HW4, decodes AP state from byte 0 bits 0–3 and hands-on state from byte 5 bits 2–5, and decodes `0x129` steering angle from bytes 2–3 with its `-819.2°` offset.
+- Mode C now accepts eligible real `0x370` frames with `handsOnLevel=1`, matching the reviewed reference state-machine behavior, while still rejecting its own echoes.
+
+### Safety
+
+- Invalid steering-angle validity, missing context, context older than one second, AP states outside 3–6, and steering angles beyond `±5°` block Mode C transmission. Hardware-mode changes reset all cached Mode C context.
+- Legacy/HW3 Modes A/B, `0x370` payload construction, counter/checksum handling, burst timing, torque bounds, and global injection gates are unchanged.
+
 ## [3.0.2-beta.11] - 2026-07-18
 
 ### Fixed

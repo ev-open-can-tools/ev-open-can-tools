@@ -174,6 +174,30 @@ void test_readHW4DASAutopilotStatus_extracts_byte0_low_nibble()
     TEST_ASSERT_EQUAL_UINT8(6, readHW4DASAutopilotStatus(f));
 }
 
+void test_readDASAutopilotHandsOnState_extracts_byte5_middle_nibble()
+{
+    CanFrame f = {};
+    f.data[5] = 0xAC;
+    TEST_ASSERT_EQUAL_UINT8(11, readDASAutopilotHandsOnState(f));
+}
+
+void test_readSCCMSteeringAngle_decodes_current_dbc_layout()
+{
+    CanFrame f = {};
+    f.data[2] = 0x14;
+    f.data[3] = 0x60;
+    TEST_ASSERT_EQUAL_UINT8(1, readSCCMSteeringAngleValidity(f));
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 2.0f, readSCCMSteeringAngle(f));
+}
+
+void test_readSCCMSteeringAngle_decodes_negative_angle()
+{
+    CanFrame f = {};
+    f.data[2] = 0xEC;
+    f.data[3] = 0x5F;
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, -2.0f, readSCCMSteeringAngle(f));
+}
+
 // --- Gear state ---
 
 void test_readVehicleGear_extracts_dif_gear_bits()
@@ -358,6 +382,9 @@ int main()
     RUN_TEST(test_isDASAutopilotActive_false_for_available_state);
     RUN_TEST(test_isDASAutopilotActive_false_for_abort_states);
     RUN_TEST(test_readHW4DASAutopilotStatus_extracts_byte0_low_nibble);
+    RUN_TEST(test_readDASAutopilotHandsOnState_extracts_byte5_middle_nibble);
+    RUN_TEST(test_readSCCMSteeringAngle_decodes_current_dbc_layout);
+    RUN_TEST(test_readSCCMSteeringAngle_decodes_negative_angle);
     RUN_TEST(test_readVehicleGear_extracts_dif_gear_bits);
     RUN_TEST(test_isVehicleParked_true_for_park);
     RUN_TEST(test_isVehicleParked_false_for_drive);
