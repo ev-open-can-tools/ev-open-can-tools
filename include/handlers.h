@@ -65,7 +65,7 @@ static const char *nagModeName(uint8_t mode)
 static bool nagModeAllowedForHardware(uint8_t mode, uint8_t hardwareMode)
 {
     NagMode selected = static_cast<NagMode>(clampNagMode(mode));
-    return hardwareMode != 2 || selected == NagMode::Disabled || selected == NagMode::ModeC;
+    return hardwareMode != 2 || selected == NagMode::Disabled;
 }
 
 struct CarManagerBase
@@ -670,8 +670,8 @@ struct HW3Handler : public CarManagerBase
  * plugin engine. Modes mirror the reviewed nag_echo implementation:
  * - A: fixed +1.80 Nm echo on every eligible 0x370 frame.
  * - B: +1.80/+1.50/-1.50/-1.80 Nm cycle with 1 s burst / 1.5 s pause.
- * - C: DAS hands-on state machine, gated by fresh hardware-specific DAS status
- *   (0x399 on Legacy/HW3, 0x39B on HW4) and 0x129 steering context.
+ * - C: DAS hands-on state machine, gated by fresh DAS status (0x399) and
+ *   0x129 steering context. Dashboard HW4 selections fail closed to Off.
  *
  * Common echo behavior:
  * - Listens for CAN 880 (0x370) = EPAS3P_sysStatus
@@ -731,7 +731,8 @@ struct NagHandler : public CarManagerBase
         handleMessageAt(frame, driver, diagnosticMillis());
     }
 
-    void handleMessageAt(CanFrame &frame, CanDriver &driver, uint32_t now)
+    void handleMessageAt(CanFrame &frame, CanDriver &driver, uint32_t now,
+                         bool transmissionAllowed = true)
     {
         uint8_t selectedMode = clampNagMode(nagMode);
         uint8_t selectedHardwareMode = static_cast<uint8_t>(nagHardwareMode);
@@ -774,7 +775,7 @@ struct NagHandler : public CarManagerBase
         bool handsOnEligible = handsOn == 0 ||
                                (selectedMode == static_cast<uint8_t>(NagMode::ModeC) &&
                                 handsOn == 1);
-        if (!nagKillerActive || !nagKillerRuntime || selectedMode == 0 || isOwnEcho ||
+        if (!transmissionAllowed || !nagKillerActive || !nagKillerRuntime || selectedMode == 0 || isOwnEcho ||
             !handsOnEligible)
             return;
 

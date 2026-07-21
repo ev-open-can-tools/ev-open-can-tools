@@ -93,14 +93,14 @@ void test_nag_filter_ids_value()
     TEST_ASSERT_EQUAL_UINT32(0x129, ids[2]);
 }
 
-void test_nag_hw4_allows_only_disabled_and_mode_c()
+void test_nag_hw4_allows_only_disabled()
 {
     TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeA), 1));
     TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeB), 1));
     TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::Disabled), 2));
     TEST_ASSERT_FALSE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeA), 2));
     TEST_ASSERT_FALSE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeB), 2));
-    TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeC), 2));
+    TEST_ASSERT_FALSE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeC), 2));
 
     handler.setHardwareMode(2);
     handler.setMode(static_cast<uint8_t>(NagMode::ModeA));
@@ -456,20 +456,19 @@ void test_nag_mode_c_injects_after_state2_delay_with_fresh_context()
     TEST_ASSERT_TRUE(verifyChecksum(mock.sent[0]));
 }
 
-void test_nag_mode_c_uses_hw4_status_and_accepts_real_handson_1()
+void test_nag_mode_c_preserves_context_while_transmission_is_blocked()
 {
     handler.setMode(static_cast<uint8_t>(NagMode::ModeC));
-    handler.setHardwareMode(2);
-    CanFrame legacyAp = makeApStateFrame(NagHandler::kLegacyApStateId, 6, 2);
-    CanFrame hw4Ap = makeApStateFrame(NagHandler::kHw4ApStateId, 6, 2);
+    CanFrame ap = makeApStateFrame(NagHandler::kLegacyApStateId, 6, 2);
     CanFrame steering = makeSteeringFrame(-2.0f);
-    handler.handleMessageAt(legacyAp, mock, 100);
-    handler.handleMessageAt(steering, mock, 100);
-    handler.handleMessageAt(hw4Ap, mock, 100);
-    handler.handleMessageAt(hw4Ap, mock, 2100);
-    handler.handleMessageAt(steering, mock, 2100);
+    handler.handleMessageAt(ap, mock, 100, false);
+    handler.handleMessageAt(steering, mock, 100, false);
+    handler.handleMessageAt(ap, mock, 2100, false);
+    handler.handleMessageAt(steering, mock, 2100, false);
     CanFrame f = makeEpasFrame(1, 0.33f, 0x01);
-    handler.handleMessageAt(f, mock, 2200);
+    handler.handleMessageAt(f, mock, 2150, false);
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+    handler.handleMessageAt(f, mock, 2200, true);
 
     TEST_ASSERT_EQUAL(1, mock.sent.size());
     TEST_ASSERT_TRUE(verifyChecksum(mock.sent[0]));
@@ -497,7 +496,7 @@ int main()
     // Filter
     RUN_TEST(test_nag_filter_ids_count);
     RUN_TEST(test_nag_filter_ids_value);
-    RUN_TEST(test_nag_hw4_allows_only_disabled_and_mode_c);
+    RUN_TEST(test_nag_hw4_allows_only_disabled);
 
     // Basic echo behavior
     RUN_TEST(test_nag_echoes_when_handson_0);
@@ -547,7 +546,7 @@ int main()
     RUN_TEST(test_nag_mode_b_cycles_torque_and_pauses);
     RUN_TEST(test_nag_mode_c_blocks_without_fresh_context);
     RUN_TEST(test_nag_mode_c_injects_after_state2_delay_with_fresh_context);
-    RUN_TEST(test_nag_mode_c_uses_hw4_status_and_accepts_real_handson_1);
+    RUN_TEST(test_nag_mode_c_preserves_context_while_transmission_is_blocked);
     RUN_TEST(test_nag_mode_c_blocks_invalid_steering_context);
 
     return UNITY_END();

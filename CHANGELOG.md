@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.0.2-beta.13] - 2026-07-21
+
+### Fixed
+
+- Mode C now keeps fresh DAS and steering context while the AP injection gate is closed, without permitting transmission before every global gate allows it.
+- Status and Support diagnostics now report AP-gate permission, reason, AP activity, stability age, Park, and Summon state so a blocked gate can be identified from one capture.
+
+### Safety
+
+- All built-in nag modes now fail closed on HW4 after vehicle testing reported immediate control faults with Modes A/B and red take-over plus traction-control and auto-hold faults after extended Mode C use. Existing stored HW4 nag selections reset to Off.
+- Legacy/HW3 algorithms, CAN IDs, frame layouts, checksums, counters, torque limits, and global transmit gates are unchanged.
+
 ## [3.0.2-beta.12] - 2026-07-20
 
 ### Fixed

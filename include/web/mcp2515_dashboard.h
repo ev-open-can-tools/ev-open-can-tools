@@ -541,6 +541,59 @@ static bool dashApInjectionAllowed()
                                          kDashApInjectionStableDelayMs);
 }
 
+struct DashApGateSnapshot
+{
+    bool enabled = false;
+    bool allowed = false;
+    bool apActive = false;
+    bool parked = false;
+    bool summoning = false;
+    unsigned long stableMs = 0;
+    const char *reason = "disabled";
+};
+
+static DashApGateSnapshot dashApGateSnapshot()
+{
+    DashApGateSnapshot snapshot;
+    snapshot.enabled = apInjectionGate;
+    if (!snapshot.enabled)
+    {
+        snapshot.allowed = true;
+        return snapshot;
+    }
+    if (!dashHandler)
+    {
+        snapshot.reason = "handler unavailable";
+        return snapshot;
+    }
+
+    {
+        AppHandlerGuard guard;
+        snapshot.apActive = dashHandler->APActive;
+        snapshot.parked = dashHandler->Parked;
+        snapshot.summoning = dashHandler->Summoning;
+    }
+    {
+        DashDataGuard guard;
+        if (snapshot.apActive && dashApStableTracking)
+            snapshot.stableMs = millis() - dashApStableStartedMs;
+    }
+    snapshot.allowed = injectionGateOpenWithStableAp(
+        snapshot.apActive, snapshot.parked, snapshot.summoning, snapshot.stableMs,
+        kDashApInjectionStableDelayMs);
+    if (snapshot.parked)
+        snapshot.reason = "parked";
+    else if (snapshot.summoning)
+        snapshot.reason = "summoning";
+    else if (!snapshot.apActive)
+        snapshot.reason = "AP inactive";
+    else if (!snapshot.allowed)
+        snapshot.reason = "AP stabilizing";
+    else
+        snapshot.reason = "AP stable";
+    return snapshot;
+}
+
 static SummonInjectionDecision dashSummonOnlyInjectionDecision()
 {
     if (!summonOnlyInjection)
@@ -1250,12 +1303,20 @@ static void handleStatus()
     if (dashDriver)
         dashDriver->diagnosticsJson(driverJson, sizeof(driverJson));
 
+    const bool injectionActive = dashInjectionActive();
+    const DashApGateSnapshot apGate = dashApGateSnapshot();
     char response[2304];
     BoundedTextWriter json(response, sizeof(response));
     json.appendf("{\"can\":%s,\"ia\":%s,\"ready\":%s",
                  canOnlineSnapshot ? "true" : "false",
-                 dashInjectionActive() ? "true" : "false",
+                 injectionActive ? "true" : "false",
                  appInjectionReady() ? "true" : "false");
+    json.appendf(
+        ",\"apGate\":{\"enabled\":%s,\"allowed\":%s,\"ap\":%s,\"parked\":%s,"
+        "\"summoning\":%s,\"stableMs\":%lu,\"reason\":\"%s\"}",
+        apGate.enabled ? "true" : "false", apGate.allowed ? "true" : "false",
+        apGate.apActive ? "true" : "false", apGate.parked ? "true" : "false",
+        apGate.summoning ? "true" : "false", apGate.stableMs, apGate.reason);
 #ifdef ESP_PLATFORM
     json.appendf(
         ",\"runtime\":{\"uptimeMs\":%lu,\"canFrames\":%lu,\"canAgeMs\":%lu,"
@@ -1353,6 +1414,8 @@ static void handleSupport()
 {
     RuntimeDiagnostics::supportRequests.fetch_add(1, std::memory_order_relaxed);
     const uint32_t now = millis();
+    const bool injectionActive = dashInjectionActive();
+    const DashApGateSnapshot apGate = dashApGateSnapshot();
     bool canOnlineSnapshot = false;
     DashWriteProbe writeProbeSnapshot = {};
     {
@@ -1427,7 +1490,7 @@ static void handleSupport()
     char response[6144];
     BoundedTextWriter report(response, sizeof(response));
     report.append("ev-open-can-tools support report\n");
-    report.append("Report schema: 1\n");
+    report.append("Report schema: 2\n");
     report.appendf("Overall: %s\n", overall);
     report.appendf("Captured uptime: %lu ms\n\n", static_cast<unsigned long>(now));
 
@@ -1567,7 +1630,12 @@ static void handleSupport()
                    static_cast<unsigned long>(RuntimeDiagnostics::canFrames.load(std::memory_order_relaxed)),
                    static_cast<unsigned long>(CAN_LIVE_FRAME_THRESHOLD));
     report.appendf("Injection configured: %s\nInjection state: %s\n",
-                   canActive ? "armed" : "stopped", dashInjectionActive() ? "enabled" : "blocked");
+                   canActive ? "armed" : "stopped", injectionActive ? "enabled" : "blocked");
+    report.appendf(
+        "AP gate state: %s (%s)\nAP active: %s\nAP stable age: %lu ms\nParked: %s\nSummoning: %s\n",
+        apGate.allowed ? "allowed" : "blocked", apGate.reason,
+        apGate.apActive ? "yes" : "no", apGate.stableMs,
+        apGate.parked ? "yes" : "no", apGate.summoning ? "yes" : "no");
     SummonInjectionDecision summonDecision = dashSummonOnlyInjectionDecision();
     report.appendf("Summon-only policy: %s\n", summonInjectionStateName(summonDecision.state));
 
@@ -1700,7 +1768,7 @@ static void handleConfig()
                                    static_cast<uint8_t>(hwValue)))
     {
         server.send(400, "application/json",
-                    "{\"ok\":false,\"error\":\"Modes A and B are blocked on HW4; use Mode C\"}");
+                    "{\"ok\":false,\"error\":\"Built-in nag suppression is blocked on HW4 after reported control faults\"}");
         return;
     }
 
@@ -4005,9 +4073,9 @@ static void dashPluginProcess(const CanFrame &frame, CanDriver &driver)
 
 static void dashNagProcess(CanFrame frame, CanDriver &driver)
 {
-    if (dashNagMode == static_cast<uint8_t>(NagMode::Disabled) || !dashInjectionActive())
+    if (dashNagMode == static_cast<uint8_t>(NagMode::Disabled))
         return;
-    dashNagHandler.handleMessage(frame, driver);
+    dashNagHandler.handleMessageAt(frame, driver, millis(), dashInjectionActive());
 }
 
 static void webTask(void *)
