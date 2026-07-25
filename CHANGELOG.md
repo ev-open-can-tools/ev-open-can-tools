@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.0.2-beta.14] - 2026-07-25
+
+### Changed
+
+- Shared ESP-IDF PlatformIO defaults now replace repeated board configuration.
+- GitHub Pages now publishes the checked-in onboarding page without a generator or string-presence test.
+- The ignore list now contains only repository-relevant generated and local files.
+
+### Safety
+
+- Arduino targets, Arduino compatibility code, CAN handling, and transmit gates are unchanged.
+
 ## [3.0.2-beta.13] - 2026-07-21
 
 ### Fixed

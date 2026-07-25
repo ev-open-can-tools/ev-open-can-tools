@@ -1,15 +1,4 @@
-#!/usr/bin/env python3
-"""Build the standalone newcomer onboarding page for GitHub Pages."""
-
-from __future__ import annotations
-
-import argparse
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_OUTPUT = ROOT / "onboarding" / "index.html"
-
-PAGE = r'''<!doctype html>
+<!doctype html>
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
@@ -196,20 +185,3 @@ buildTabs();loadProgress();render();
 </script>
 </body>
 </html>
-'''
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    args = parser.parse_args()
-
-    output = args.output if args.output.is_absolute() else ROOT / args.output
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(PAGE, encoding="utf-8")
-    display = output.relative_to(ROOT) if output.is_relative_to(ROOT) else output
-    print(f"GitHub Pages newcomer onboarding: {display}")
-
-
-if __name__ == "__main__":
-    main()
