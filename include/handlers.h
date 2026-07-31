@@ -65,7 +65,7 @@ static const char *nagModeName(uint8_t mode)
 static bool nagModeAllowedForHardware(uint8_t mode, uint8_t hardwareMode)
 {
     NagMode selected = static_cast<NagMode>(clampNagMode(mode));
-    return hardwareMode != 2 || selected == NagMode::Disabled;
+    return hardwareMode != 2 || selected != NagMode::ModeC;
 }
 
 struct CarManagerBase
@@ -671,7 +671,7 @@ struct HW3Handler : public CarManagerBase
  * - A: fixed +1.80 Nm echo on every eligible 0x370 frame.
  * - B: +1.80/+1.50/-1.50/-1.80 Nm cycle with 1 s burst / 1.5 s pause.
  * - C: DAS hands-on state machine, gated by fresh DAS status (0x399) and
- *   0x129 steering context. Dashboard HW4 selections fail closed to Off.
+ *   0x129 steering context. Dashboard HW4 selection fails closed to Off.
  *
  * Common echo behavior:
  * - Listens for CAN 880 (0x370) = EPAS3P_sysStatus

@@ -93,20 +93,20 @@ void test_nag_filter_ids_value()
     TEST_ASSERT_EQUAL_UINT32(0x129, ids[2]);
 }
 
-void test_nag_hw4_allows_only_disabled()
+void test_nag_hw4_allows_modes_a_b()
 {
     TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeA), 1));
     TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeB), 1));
     TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::Disabled), 2));
-    TEST_ASSERT_FALSE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeA), 2));
-    TEST_ASSERT_FALSE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeB), 2));
+    TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeA), 2));
+    TEST_ASSERT_TRUE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeB), 2));
     TEST_ASSERT_FALSE(nagModeAllowedForHardware(static_cast<uint8_t>(NagMode::ModeC), 2));
 
     handler.setHardwareMode(2);
     handler.setMode(static_cast<uint8_t>(NagMode::ModeA));
     CanFrame f = makeEpasFrame(0, 0.33f, 0x01);
     handler.handleMessageAt(f, mock, 100);
-    TEST_ASSERT_EQUAL(0, mock.sent.size());
+    TEST_ASSERT_EQUAL(1, mock.sent.size());
 }
 
 // ============================================================
@@ -496,7 +496,7 @@ int main()
     // Filter
     RUN_TEST(test_nag_filter_ids_count);
     RUN_TEST(test_nag_filter_ids_value);
-    RUN_TEST(test_nag_hw4_allows_only_disabled);
+    RUN_TEST(test_nag_hw4_allows_modes_a_b);
 
     // Basic echo behavior
     RUN_TEST(test_nag_echoes_when_handson_0);

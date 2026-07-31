@@ -1768,7 +1768,7 @@ static void handleConfig()
                                    static_cast<uint8_t>(hwValue)))
     {
         server.send(400, "application/json",
-                    "{\"ok\":false,\"error\":\"Built-in nag suppression is blocked on HW4 after reported control faults\"}");
+                    "{\"ok\":false,\"error\":\"Nag Mode C is blocked on HW4 after reported control faults\"}");
         return;
     }
 

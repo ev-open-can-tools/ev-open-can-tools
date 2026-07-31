@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.0.2-beta.15] - 2026-07-31
+
+### Fixed
+
+- The LILYGO T-2CAN build now uses the board's CAN A MCP2515 interface at 16 MHz, including its hardware reset, so Party CAN no longer runs through the CAN B/TWAI path implicated by issue #81 diagnostics.
+- HW4 can select built-in Nag Modes A/B again; Mode C remains blocked.
+
+### Safety
+
+- Nag suppression still defaults to Off, retains the `±1.80 Nm` hard bound and global injection gates, and requires Party CAN. HW4 Mode C continues to fail closed after reported extended-use control faults.
+
 ## [3.0.2-beta.14] - 2026-07-25
 
 ### Changed

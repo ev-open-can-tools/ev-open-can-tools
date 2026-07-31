@@ -94,6 +94,15 @@ static void app_main_setup()
     SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, PIN_CAN_CS);
     SPI.setFrequency(8000000);
 #endif
+#ifdef PIN_CAN_RESET
+    pinMode(PIN_CAN_RESET, OUTPUT);
+    digitalWrite(PIN_CAN_RESET, HIGH);
+    delay(20);
+    digitalWrite(PIN_CAN_RESET, LOW);
+    delay(20);
+    digitalWrite(PIN_CAN_RESET, HIGH);
+    delay(20);
+#endif
     auto drv = std::make_unique<ESP32_MCP2515Driver>(PIN_CAN_CS);
     ESP32_MCP2515Driver *mcpDriver = drv.get();
     appPrepare<ESP32_MCP2515Driver>(std::move(drv));

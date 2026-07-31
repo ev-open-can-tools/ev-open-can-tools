@@ -110,7 +110,7 @@ jobs:
             project_dir: .
             extra_python_packages: littlefs-python fatfs-ng pyyaml intelhex
           - env: lilygo_t2can
-            profile: --driver DRIVER_TWAI --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
+            profile: --driver DRIVER_ESP32_EXT_MCP2515 --vehicle HW4 --enable EMERGENCY_VEHICLE_DETECTION
               --enable ENHANCED_AUTOPILOT
             project_dir: .
             extra_python_packages: littlefs-python fatfs-ng pyyaml intelhex

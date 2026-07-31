@@ -46,7 +46,7 @@ The Configuration card has four direct firmware controls: **Off**, **Mode A**, *
 - **Mode B** cycles `+1.80`, `+1.50`, `-1.50`, and `-1.80 Nm` every 200 ms during a one-second active burst, then pauses for 1.5 seconds.
 - **Mode C** observes DAS state on `0x399` for Legacy/HW3, plus steering angle on `0x129`. It validates the steering-angle signal, blocks unless both frames are fresh within one second, requires AP state 3 through 6 and steering angle within `±5 degrees`, then applies the hands-on state-machine delay. Context observation continues while the AP gate is closed, but transmission remains blocked.
 
-All built-in nag modes are blocked when HW4 is selected. Hardware testing reported red take-over plus traction-control and auto-hold faults with Modes A/B immediately and Mode C after extended use. Stored nag selections fail closed to Off when HW4 loads.
+Modes A/B are available on HW4 for Party CAN experiments. Mode C remains blocked on HW4 after extended testing reported red take-over plus traction-control and auto-hold faults; a stored HW4 Mode C selection fails closed to Off.
 
 All modes retain the firmware `±1.80 Nm` hard bound and global dashboard injection gates. Use Party CAN only and validate exact frame layouts against a capture from the target vehicle before enabling any mode.
 

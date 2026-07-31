@@ -39,7 +39,7 @@ Dashboard builds are the easiest starting point. Built-in handlers provide obser
 | `esp32s2_twai` | ESP32-S2 Saola | TWAI | Yes |
 | `esp32c6_twai` | ESP32-C6 DevKitC-1 | TWAI | Yes |
 | `lilygo_tcan485_hw3` | LILYGO TCAN485 | TWAI | Yes |
-| `lilygo_t2can` | LILYGO T-2CAN | TWAI (CAN1) | Yes |
+| `lilygo_t2can` | LILYGO T-2CAN | SPI MCP2515 (CAN A / Party CAN) | Yes |
 | `m5stack-atomic-can-base` | M5Stack Atom CAN Base | TWAI | Yes |
 | `m5stack-atoms3-mini-can-base` | M5Stack AtomS3 Mini CAN Base | TWAI | Yes |
 | `esp32_feather_v2_mcp2515` | Feather ESP32 V2 + MCP2515 | SPI MCP2515 | Yes |

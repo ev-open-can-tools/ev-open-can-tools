@@ -67,7 +67,7 @@ class EspIdfStabilityRegressionTests(unittest.TestCase):
             self.assertIn(mode, self.handlers)
         self.assertIn("kContextFreshMs = 1000", self.handlers)
         self.assertIn("nagModeAllowedForHardware", self.handlers)
-        self.assertIn("Built-in nag suppression is blocked on HW4", self.dashboard)
+        self.assertIn("Nag Mode C is blocked on HW4", self.dashboard)
         self.assertIn("dashApGateSnapshot", self.dashboard)
         self.assertIn("AP gate state", self.dashboard)
         self.assertIn("readDASAutopilotHandsOnState", self.handlers)

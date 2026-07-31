@@ -35,7 +35,7 @@ Dashboard ESP32 builds keep injection blocked until CAN has initialized, the sta
 
 The firmware enforces a complete 12-bit torque encoding and hard `-1.80 Nm` to `+1.80 Nm` bounds (`0x74E` through `0x8B6`) for the built-in nag path. A plugin cannot safely be assumed to have these semantics; review its operations and target frame separately.
 
-Dashboard builds expose the built-in path as Off plus Modes A, B, and C on Legacy/HW3. Mode A uses fixed positive torque, Mode B uses a bounded four-value burst/pause cycle, and Mode C requires fresh DAS hands-on status `0x399` and valid steering context `0x129`. All modes are blocked on HW4 after hardware testing reported red take-over plus traction-control and auto-hold faults. Stored HW4 selections fail closed to Off. These controls are direct firmware settings, not plugins, and default to Off.
+Dashboard builds expose the built-in path as Off plus Modes A, B, and C on Legacy/HW3. Mode A uses fixed positive torque, Mode B uses a bounded four-value burst/pause cycle, and Mode C requires fresh DAS hands-on status `0x399` and valid steering context `0x129`. HW4 permits Modes A/B for Party CAN experiments; Mode C remains blocked after extended hardware testing reported red take-over plus traction-control and auto-hold faults. A stored HW4 Mode C selection fails closed to Off. These controls are direct firmware settings, not plugins, and default to Off.
 
 ## Recommended test progression
 
