@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.1.0] - 2026-08-03
+
+Stable release bundling the `3.0.2-beta.1` through `3.0.2-beta.15` changes.
+
 ## [3.0.2-beta.15] - 2026-07-31
 
 ### Fixed
