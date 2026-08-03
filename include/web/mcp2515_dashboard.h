@@ -32,6 +32,9 @@
 #include "drivers/esp32_mcp2515_driver.h"
 #endif
 #include "web/mcp2515_dashboard_ui.h"
+#ifdef ESP_PLATFORM
+#include <esp_random.h>
+#endif
 
 #ifndef DASH_SSID
 #error "Define -DDASH_SSID in build_flags (e.g. -DDASH_SSID=\\\"ADUnlock-1234\\\")"
@@ -57,6 +60,14 @@ static_assert(sizeof(DASH_PASS) >= 9 && sizeof(DASH_PASS) <= 64, "DASH_PASS must
 static constexpr bool kDashInjectionDefaultEnabled = true;
 #else
 static constexpr bool kDashInjectionDefaultEnabled = false;
+#endif
+
+// Boot straight into dev/test mode (simulated CAN) when no stored preference
+// exists — for bench units flashed without a bus attached.
+#if defined(DASH_DEV_MODE_ON_BOOT)
+static constexpr bool kDashDevModeDefault = true;
+#else
+static constexpr bool kDashDevModeDefault = false;
 #endif
 
 #if defined(INJECTION_AFTER_AP) || defined(DASH_INJECTION_AFTER_AP)
@@ -237,6 +248,15 @@ static bool canOnline = false;
 
 static Shared<uint8_t> hwMode{DASH_DEFAULT_HW};
 static Shared<bool> canActive{kDashInjectionDefaultEnabled};
+// Dev/test mode (simulated CAN traffic) — see app.h appDevSim / appDevModeActive.
+static Shared<bool> dashDevMode{kDashDevModeDefault};
+// WiFi and BLE cannot run together reliably on ESP32 classic (shared radio), so
+// the device boots into exactly one mode. false = WiFi dashboard (default),
+// true = BLE-only (WiFi off). Persisted in NVS; switched with a reboot.
+static Shared<bool> dashBleMode{false};
+// 6-digit BLE pairing passkey (LE Secure Connections, MITM). Shown in the
+// dashboard; entered in the app to pair. Generated once, persisted in NVS.
+static Shared<uint32_t> dashBlePasskey{0};
 static Shared<bool> apInjectionGate{kDashApGateDefaultEnabled};
 static Shared<bool> summonOnlyInjection{false};
 static Shared<uint8_t> dashNagMode{static_cast<uint8_t>(NagMode::Disabled)};
@@ -813,6 +833,62 @@ static bool dashSetCanActive(bool active, const char *reason = nullptr)
     dashSetCanActive(!canActive, reason);
 }
 
+// Dev/test mode: apply the runtime state (frame source + TX loopback). appDev*
+// live in app.h, which includes this header after declaring them.
+static void dashApplyDevMode(bool on)
+{
+    appDevModeActive = on;
+    if (dashDriver)
+        dashDriver->setSimLoopback(on);
+    if (on)
+        appDevSimReset();
+}
+
+static void dashSetDevMode(bool on)
+{
+    dashDevMode = on;
+    dashApplyDevMode(on);
+    prefs.begin(PREFS_NS, false);
+    prefs.putBool("dev_mode", on);
+    prefs.end();
+    dashLog(String("[DEV] Test mode ") + (on ? "ON (simulated CAN traffic)" : "OFF"));
+}
+
+// Persist the WiFi/BLE mode and reboot into it. WiFi and BLE share the radio on
+// ESP32 classic and cannot run together reliably, so the choice is per-boot.
+static void dashSetBleMode(bool on)
+{
+    prefs.begin(PREFS_NS, false);
+    prefs.putBool("ble_mode", on);
+    prefs.end();
+    dashLog(String("[MODE] Switching to ") + (on ? "BLE" : "WiFi") + " mode; rebooting...");
+    delay(300);
+    ESP.restart();
+}
+
+// Compact status for the BLE app (independent of the detailed HTTP /status so
+// dev's handler is untouched).
+static String dashBuildBleStatusJson()
+{
+    String j = "{\"ok\":true";
+    j += ",\"dev\":";
+    j += (bool)dashDevMode ? "true" : "false";
+    j += ",\"ble\":";
+    j += (bool)dashBleMode ? "true" : "false";
+    j += ",\"hw\":";
+    j += (int)(uint8_t)hwMode;
+    j += ",\"inject\":";
+    j += (bool)canActive ? "true" : "false";
+    j += ",\"injectActive\":";
+    j += dashInjectionActive() ? "true" : "false";
+#ifdef ESP_PLATFORM
+    j += ",\"uptimeS\":";
+    j += (unsigned long)(millis() / 1000);
+#endif
+    j += "}";
+    return j;
+}
+
 static bool dashApPasswordLengthValid(size_t len)
 {
     return len >= kDashMinApPassLen && len <= kDashMaxPassLen;
@@ -938,6 +1014,19 @@ static void dashLoadPrefs()
     if (storedDefaultHw != DASH_DEFAULT_HW)
         prefs.putUChar("hw_def", DASH_DEFAULT_HW);
     canActive = prefs.getBool("can", kDashInjectionDefaultEnabled);
+    dashDevMode = prefs.getBool("dev_mode", kDashDevModeDefault);
+    dashBleMode = prefs.getBool("ble_mode", false);
+    {
+        String pinStr = prefs.getString("ble_pin", "");
+        uint32_t pin = pinStr.length() ? (uint32_t)atoi(pinStr.c_str()) : 0;
+        if (pin < 100000 || pin > 999999)
+        {
+            pin = 100000 + (esp_random() % 900000);
+            prefs.putString("ble_pin", String((unsigned long)pin));
+            dashLog("[BLE] Generated new pairing passkey");
+        }
+        dashBlePasskey = pin;
+    }
     apInjectionGate = prefs.getBool("ap_gate", kDashApGateDefaultEnabled);
     summonOnlyInjection = prefs.getBool("sum_only", false);
     dashNagMode = clampNagMode(prefs.getUChar("nag_mode", static_cast<uint8_t>(NagMode::Disabled)));
@@ -1698,6 +1787,48 @@ static void handleSupport()
     dashSendBuffer(200, "text/plain; charset=utf-8", report.data(), report.size());
 }
 #endif
+
+static void handleDevMode()
+{
+    if (server.hasArg("on") || server.hasArg("enabled"))
+    {
+        String v = server.hasArg("on") ? server.arg("on") : server.arg("enabled");
+        dashSetDevMode(v == "1" || v == "true" || v == "on");
+    }
+    server.send(200, "application/json",
+                String("{\"ok\":true,\"dev\":") + ((bool)dashDevMode ? "true" : "false") + "}");
+}
+
+static void handleBleMode()
+{
+    if (server.hasArg("on") || server.hasArg("enabled"))
+    {
+        String v = server.hasArg("on") ? server.arg("on") : server.arg("enabled");
+        bool on = (v == "1" || v == "true" || v == "on");
+        server.send(200, "application/json",
+                    String("{\"ok\":true,\"ble\":") + (on ? "true" : "false") + ",\"reboot\":true}");
+        dashSetBleMode(on); // reboots into the selected mode
+        return;
+    }
+    server.send(200, "application/json",
+                String("{\"ok\":true,\"ble\":") + ((bool)dashBleMode ? "true" : "false") + "}");
+}
+
+static void handleBlePin()
+{
+    if (server.hasArg("regen"))
+    {
+        uint32_t pin = 100000 + (esp_random() % 900000);
+        dashBlePasskey = pin;
+        prefs.begin(PREFS_NS, false);
+        prefs.putString("ble_pin", String((unsigned long)pin));
+        prefs.end();
+        dashLog("[BLE] Pairing passkey regenerated");
+    }
+    server.send(200, "application/json",
+                String("{\"ok\":true,\"pin\":") +
+                    String((unsigned long)(uint32_t)dashBlePasskey) + "}");
+}
 
 static void handleConfigGet()
 {
@@ -4209,10 +4340,17 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
         dashLog("[WARN] SPIFFS mount failed");
 
     dashLoadPrefs();
-    dashStartAccessPoint(false);
-    if (apHidden)
-        dashLog("[WIFI] AP SSID is hidden");
-    Serial.printf("[WIFI] AP: %s  IP: %s\n", apSSID, WiFi.softAPIP().toString().c_str());
+    if (!dashBleMode)
+    {
+        dashStartAccessPoint(false);
+        if (apHidden)
+            dashLog("[WIFI] AP SSID is hidden");
+        Serial.printf("[WIFI] AP: %s  IP: %s\n", apSSID, WiFi.softAPIP().toString().c_str());
+    }
+    else
+    {
+        Serial.println("[MODE] BLE mode: WiFi disabled, radio reserved for BLE");
+    }
 
     dashInitHandlers();
     dashSwapHandler(hwMode);
@@ -4231,6 +4369,17 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
     appPluginProcess = dashPluginProcess;
     pluginBeforeSend = dashApplyHw3OffsetSlew;
 
+    // Restore dev/test mode (simulated CAN) now the driver + handler are ready.
+    dashApplyDevMode(dashDevMode);
+
+    // BLE mode: the core (handlers, plugins, dev mode) is up; skip all WiFi/HTTP
+    // bring-up so the radio stays free for BLE (started from main after this).
+    if (dashBleMode)
+    {
+        dashLog("[BOOT] ev-open-can-tools ready (BLE mode)");
+        return;
+    }
+
     ArduinoOTA.setHostname("ev-open-can-tools");
     ArduinoOTA.setPassword(DASH_OTA_PASS);
     ArduinoOTA.onStart([]()
@@ -4243,6 +4392,12 @@ static void mcpDashboardSetup(CarManagerBase *handler, CanDriver *driver)
 
     server.on("/", HTTP_GET, handleRoot);
     server.on("/status", HTTP_GET, handleStatus);
+    server.on("/dev_mode", HTTP_GET, handleDevMode);
+    server.on("/dev_mode", HTTP_POST, handleDevMode);
+    server.on("/ble_mode", HTTP_GET, handleBleMode);
+    server.on("/ble_mode", HTTP_POST, handleBleMode);
+    server.on("/ble_pin", HTTP_GET, handleBlePin);
+    server.on("/ble_pin", HTTP_POST, handleBlePin);
 #ifdef ESP_PLATFORM
     server.on("/support", HTTP_GET, handleSupport);
 #endif
@@ -4320,6 +4475,20 @@ static void mcpDashboardLoop()
     {
         dashLog("[CAN] Bus OFFLINE (timeout)");
     }
+#if defined(ESP_PLATFORM)
+    if (dashDevMode)
+    {
+        static unsigned long devHeartbeatMs = 0;
+        unsigned long nowHb = millis();
+        if (nowHb - devHeartbeatMs >= 2000)
+        {
+            devHeartbeatMs = nowHb;
+            Serial.printf("[DEV] sim traffic: canFrames=%lu inject=%d\n",
+                          (unsigned long)RuntimeDiagnostics::canFrames.load(std::memory_order_relaxed),
+                          (int)dashInjectionActive());
+        }
+    }
+#endif
 #if defined(DASH_RGB_STATUS_LED)
     appRefreshStatusLed(false);
 #endif

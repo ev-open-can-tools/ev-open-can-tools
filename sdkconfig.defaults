@@ -14,3 +14,17 @@ CONFIG_ESP_ERR_TO_NAME_LOOKUP=n
 CONFIG_BOOTLOADER_LOG_LEVEL_ERROR=y
 # CONFIG_BOOTLOADER_LOG_LEVEL_INFO is not set
 CONFIG_LIBC_NEWLIB_NANO_FORMAT=y
+
+# ── Bluetooth LE (NimBLE) for the app interface ──────
+# Only takes effect on chips with a BT controller (ignored on ESP32-S2, which
+# has none). The BLE code itself is gated by -DBLE_APP, so envs without that
+# flag pull in nothing at link time. See include/ble/ble_service.h.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+CONFIG_BT_NIMBLE_SM_SC=y
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=n
+# GATT access callbacks build sizeable JSON replies (status/config/backup) on
+# the host task stack; the 4 KB default overflows, so give it headroom.
+CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=8192

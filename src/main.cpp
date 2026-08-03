@@ -145,6 +145,14 @@ static void app_main_setup()
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD)
     appPluginProcess = appGatedDashboardPluginProcess;
 #endif
+
+#if defined(BLE_APP) && !defined(NATIVE_BUILD) && defined(CONFIG_BT_NIMBLE_ENABLED)
+    // WiFi and BLE share the radio on ESP32 classic; only one is brought up per
+    // boot. dashBleMode (from NVS) selects BLE; the dashboard/BLE offer commands
+    // to switch, each rebooting into the other mode.
+    if (dashBleMode)
+        bleServiceSetup();
+#endif
 }
 
 static void app_main_loop()
@@ -166,6 +174,20 @@ static void app_main_loop()
 #ifdef ESP32_DASHBOARD
     mcpDashboardLoop();
 #endif
+#endif
+
+#if defined(BLE_APP) && !defined(NATIVE_BUILD) && defined(CONFIG_BT_NIMBLE_ENABLED)
+    // Safety net: if we booted into BLE mode but no client ever connects, fall
+    // back to WiFi after 10 min so the dashboard is never permanently lost.
+    if (dashBleMode)
+    {
+        static uint32_t bleModeStartMs = millis();
+        static bool bleEverConnected = false;
+        if (bleConnHandle != BLE_HS_CONN_HANDLE_NONE)
+            bleEverConnected = true;
+        if (!bleEverConnected && millis() - bleModeStartMs > 600000UL)
+            dashSetBleMode(false);
+    }
 #endif
 }
 

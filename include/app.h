@@ -9,6 +9,7 @@
 #include "gvret_serial.h"
 #include "runtime_diagnostics.h"
 #endif
+#include "dev_sim.h"
 
 #ifndef NATIVE_BUILD
 #ifdef ESP_PLATFORM
@@ -36,6 +37,8 @@ using SelectedHandler = HW4Handler;
 #else
 using SelectedHandler = HW3Handler;
 #endif
+#elif defined(SUMMON_UNLOCK_ONLY)
+using SelectedHandler = SummonUnlockHandler;
 #elif defined(NAG_KILLER)
 using SelectedHandler = NagHandler;
 #elif defined(HW4)
@@ -143,6 +146,29 @@ static void appSetCanMonitorAll(bool enabled)
 static volatile bool frameReady = true;
 static void canISR() { frameReady = true; }
 
+// Dev/test mode: when active, CAN frames are synthesized by appDevSim instead
+// of read from the real driver, so the full pipeline runs with no bus attached.
+// Toggled from the dashboard (httpd task); read on the main task in appLoop.
+[[maybe_unused]] static volatile bool appDevModeActive = false;
+[[maybe_unused]] static DevSim appDevSim;
+
+[[maybe_unused]] static bool appDevReadFrame(CanFrame &frame)
+{
+#if !defined(NATIVE_BUILD)
+    return appDevSim.read(frame, (uint32_t)millis());
+#else
+    (void)frame;
+    return false;
+#endif
+}
+
+[[maybe_unused]] static void appDevSimReset()
+{
+#if !defined(NATIVE_BUILD)
+    appDevSim.reset((uint32_t)millis());
+#endif
+}
+
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD) && defined(DASH_RGB_STATUS_LED)
 static void appRefreshStatusLed(bool force = false);
 static void appWriteStatusLed(uint8_t red, uint8_t green, uint8_t blue);
@@ -153,6 +179,9 @@ static void appPollInjectionToggleButton();
 
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD)
 #include "web/mcp2515_dashboard.h"
+#endif
+#if defined(BLE_APP) && !defined(NATIVE_BUILD) && defined(CONFIG_BT_NIMBLE_ENABLED)
+#include "ble/ble_service.h"
 #endif
 
 #if defined(ESP32_DASHBOARD) && !defined(NATIVE_BUILD) && defined(DASH_RGB_STATUS_LED)
@@ -370,16 +399,20 @@ static void appLoop()
 #endif
 #endif
 
+    bool devMode = appDevModeActive;
     if constexpr (Driver::kSupportsISR)
     {
-        if (!frameReady)
-            return;
-        frameReady = false;
+        if (!devMode)
+        {
+            if (!frameReady)
+                return;
+            frameReady = false;
+        }
     }
 
     CanFrame frame;
     uint8_t framesThisLoop = 0;
-    while (appDriver->read(frame))
+    while (devMode ? appDevReadFrame(frame) : appDriver->read(frame))
     {
 #ifdef ESP_PLATFORM
         RuntimeDiagnostics::noteCanInitialized();

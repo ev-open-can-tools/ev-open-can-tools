@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [4.0.0-beta.1] - 2026-08-03
+
+### Added
+
+- Bluetooth LE (NimBLE) app interface (`-DBLE_APP`): a custom GATT service with a paginated JSON command protocol (`status`, `ping`) so a phone app can talk to the device. Large replies are fetched in bounded pages to stay within the 512-byte GATT attribute limit.
+- BLE link security: LE Secure Connections with a 6-digit passkey (MITM) and bonding. The Command and Response characteristics require encryption and authentication, so an unpaired peer can connect but cannot read or write. The passkey is generated on the device and available via `GET /ble_pin`.
+- WiFi ↔ BLE interface mode switch. WiFi and BLE cannot run together reliably on ESP32 classic (shared radio), so the device boots into exactly one mode. Switch to BLE with `POST /ble_mode?on=1` or back with a BLE `wifi_mode` command; a 10-minute safety timeout returns to WiFi if no app connects.
+- Dev/test mode: a runtime-toggleable simulated CAN traffic generator so the device is usable on the bench with no transceiver/bus attached. Toggle with `POST /dev_mode?on=1`; a serial heartbeat reports simulated activity. `DASH_DEV_MODE_ON_BOOT` starts a bench unit straight in dev mode.
+- CAN driver TX loopback (`CanDriver::setSimLoopback`) used by dev mode so a board without a transceiver does not accumulate TX errors while injection/plugins run.
+- Native unit test for the dev-mode frame generator.
+
 ## [3.0.2-beta.15] - 2026-07-31
 
 ### Fixed

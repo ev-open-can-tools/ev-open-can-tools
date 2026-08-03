@@ -43,6 +43,7 @@ htmlcov/
 .tests
 .tmpcoverage_build/
 platformio_profile.h
+platformio_profile.dashboard.h
 sdkconfig.*
 !sdkconfig.defaults
 .pi-lens

@@ -23,7 +23,12 @@ OPTIONAL_DEFINES = (
     "NAG_KILLER",
     "ENHANCED_AUTOPILOT",
 )
-DASHBOARD_OPTION_DEFINES = ("INJECTION_AFTER_AP", "DASH_INJECTION_AFTER_AP")
+DASHBOARD_OPTION_DEFINES = (
+    "INJECTION_AFTER_AP",
+    "DASH_INJECTION_AFTER_AP",
+    "DASH_INJECTION_ON_BOOT",
+    "DASH_DEV_MODE_ON_BOOT",
+)
 # Synced for dashboard builds only (defines with literal values).
 DASHBOARD_VALUE_DEFINES = ("PLUGIN_GTW_UDS_KEY_READY",)
 CREDENTIAL_DEFINES = ("DASH_SSID", "DASH_PASS", "DASH_OTA_USER", "DASH_OTA_PASS")
@@ -214,11 +219,23 @@ display_example_path = (
     else example_config_path
 )
 if not config_path.exists():
-    raise UserError(
-        f"Missing {display_config_path.as_posix()}. Copy "
-        f"{display_example_path.as_posix()} to {display_config_path.as_posix()}, "
-        "then edit the local build config for your board and vehicle."
-    )
+    # Fall back to the default platformio_profile.h when a custom profile path
+    # (e.g. platformio_profile.dashboard.h, which is git-ignored) is not present,
+    # such as in CI where only platformio_profile.h is generated.
+    default_config_path = project_dir / CONFIG_RELATIVE_PATH
+    if config_path != default_config_path and default_config_path.exists():
+        config_path = default_config_path
+        display_config_path = (
+            config_path.relative_to(project_dir)
+            if config_path.is_relative_to(project_dir)
+            else config_path
+        )
+    else:
+        raise UserError(
+            f"Missing {display_config_path.as_posix()}. Copy "
+            f"{display_example_path.as_posix()} to {display_config_path.as_posix()}, "
+            "then edit the local build config for your board and vehicle."
+        )
 config_text = config_path.read_text(encoding="utf-8")
 active = _active_defines(config_text)
 project_defines = _project_option_defines(env)

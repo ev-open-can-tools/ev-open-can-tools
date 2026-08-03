@@ -112,6 +112,8 @@ public:
         return value;
     }
 
+    void setSimLoopback(bool enabled) override { simLoopback_ = enabled; }
+
     bool read(CanFrame &frame) override
     {
         for (uint8_t attempt = 0; attempt < kReadDrainBudget; attempt++)
@@ -168,6 +170,15 @@ public:
 
     bool send(const CanFrame &frame) override
     {
+        if (simLoopback_)
+        {
+            // Dev/test mode: pretend the frame went out so TX counters/sniffer
+            // light up, but never touch the (absent) transceiver.
+            if (onSendFrame)
+                onSendFrame(frame, true);
+            return true;
+        }
+
         if (!sendAllowed(frame) || frame.id > 0x7FF || frame.dlc > 8)
         {
             if (onSendFrame)
@@ -448,6 +459,7 @@ private:
     mutable SemaphoreHandle_t mutex_ = nullptr;
     bool driverInstalled_ = false;
     bool driverOK_ = false;
+    bool simLoopback_ = false;
     uint32_t lastRecovery_ = 0;
     uint32_t exactFilterIds_[kMaxExactFilters] = {};
     uint8_t exactFilterCount_ = 0;

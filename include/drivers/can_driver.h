@@ -23,6 +23,12 @@ struct CanDriver
         return !allowSendFrame || allowSendFrame(frame);
     }
 
+    // Dev/test mode: route transmitted frames to a loopback (fire onSendFrame
+    // only) instead of the bus, so a board with no transceiver stays quiet and
+    // does not accumulate TX errors. No-op by default; drivers that talk to
+    // hardware override this.
+    virtual void setSimLoopback(bool /*enabled*/) {}
+
     virtual void diagnosticsJson(char *out, size_t outLen) const
     {
         if (!out || outLen == 0)
