@@ -11,8 +11,117 @@ No unreleased changes.
 
 ## [3.1.1] - 2026-08-03
 
-Re-tagged stable release identical in content to `3.1.0`, published with
-corrected release commit metadata. No functional changes versus `3.1.0`.
+Stable release bundling all changes from `3.0.2-beta.1` through
+`3.0.2-beta.15`.
+
+This release is functionally identical to `3.1.0`. Version `3.1.1` was
+published to correct the stable release metadata.
+
+### Added
+
+- Added an optional, fail-closed Summon-only injection policy for ESP-IDF
+  dashboard builds. Injection is permitted only while definitively parked at
+  `0 km/h` or during a confirmed active Summon session.
+- Added built-in Nag Suppression modes Off, A, B, and C, including dashboard
+  controls, NVS persistence, settings backup/restore, diagnostics, and
+  regression coverage.
+- Added ESP32-C6 support with its own PlatformIO environment, CI build, OTA
+  partition layout, and release artifact.
+- Added LILYGO T-2CAN support. The final implementation uses the board's CAN A
+  MCP2515 interface at 16 MHz, including hardware reset handling and a dedicated
+  OTA artifact.
+- Added read-only SavvyCAN USB serial logging using GVRET framing, with explicit
+  dashboard arming and bounded non-blocking sessions.
+- Added startup and runtime diagnostics for reset reason, boot count, heap,
+  task stacks, CAN traffic, TWAI state, queue pressure, errors, recovery,
+  WiFi, web requests, and injection gates.
+- Added an on-demand bounded Support report that omits credentials and secrets.
+- Added beginner-oriented onboarding, CAN terminology, board selection,
+  flashing, dashboard, plugin, safety, troubleshooting, Nag Suppression, and
+  ESP32 optimization documentation.
+- Added shared PlatformIO-based VS Code IntelliSense configuration.
+
+### Changed
+
+- Dashboard startup is now independent of CAN availability. CAN initialization
+  waits ten seconds and injection waits at least fifteen seconds after CAN
+  initialization plus more than 1,000 valid received frames.
+- Reduced idle web-maintenance and disabled-GVRET wakeups from 100 Hz to 4 Hz.
+- Removed periodic plugin polling and reduced unnecessary dashboard requests.
+- Split dashboard configuration and statistics responses, added overlap guards,
+  retries, null-safe rendering, and disabled controls until configuration loads.
+- Simplified dashboard diagnostics to runtime status, Support, and Last Write
+  Check. Obsolete sniffer, recorder, controller/mux, live-log, and rule-test
+  diagnostic paths were removed.
+- Dashboard assets are now generated deterministically from the authoritative
+  source header.
+- Shared ESP-IDF PlatformIO defaults replace repeated board configuration.
+- GitHub Pages now publishes the checked-in onboarding page directly.
+- Release automation now selects the correct board-specific OTA artifact for
+  every supported ESP-IDF environment.
+- Repository ignore rules and editor configuration were simplified and made
+  portable.
+
+### Fixed
+
+- AP Injection Gate now treats INVALID/SNA gear as unknown instead of Park.
+- Plugin injection through the AP path now requires AP to remain stable for one
+  second.
+- Legacy FSD activation injection waits until Autopilot has remained active for
+  two seconds.
+- AP state 6 remains accepted as active, while available, aborting, faulted,
+  missing, stale, or unknown states remain blocked.
+- HW4 AP state is now decoded from the low nibble of byte 0 in Party CAN
+  `0x39B`.
+- Nag Mode C now uses the correct Legacy/HW3 DAS status, hands-on state, steering
+  angle, freshness, AP-state, and steering-angle checks.
+- HW4 may select Nag Modes A and B for controlled Party CAN testing. Mode C
+  remains blocked on HW4.
+- Transitioning to a blocked injection state now clears cached periodic frames
+  and pending TWAI or MCP2515 transmissions.
+- TWAI and MCP2515 drivers now reject invalid, extended, and RTR frames, preserve
+  all required filter IDs, report failures, and recover more reliably from
+  initialization errors and bus faults.
+- Missing CAN traffic no longer restarts the dashboard firmware.
+- TWAI status and bus-off recovery reporting now reflect the actual driver state.
+- MCP2515 register transfers, DLC handling, receive-buffer cleanup, error
+  propagation, and timer rollover handling were hardened.
+- Plugin JSON now enforces schema types, numeric ranges, bus names, CAN IDs,
+  DLCs, operations, periodic-send scope, and counter masks.
+- Plugin execution, persistence, diagnostics, priority changes, periodic sends,
+  and UDS state are synchronized across CAN, HTTP, and maintenance tasks.
+- Plugin counters advance only after successful transmissions.
+- Plugin updates now use a recoverable temporary/backup swap and repair
+  interrupted saves during boot.
+- NVS errors now propagate correctly, writes are committed once per preference
+  session, and failed multi-key changes restore the previous runtime state.
+- Settings backup no longer exposes WiFi credentials without authentication and
+  now preserves live AP, multi-network, CAN, plugin, update, and hardware
+  settings.
+- Static-IP values, WiFi credentials, GPIOs, indexes, and configuration values
+  are validated instead of being truncated or silently coerced.
+- GitHub OTA now verifies HTTPS, certificate time, board-specific artifacts,
+  redirects, streamed/chunked responses, completed firmware images, and
+  concurrent update attempts.
+- Authenticated multipart firmware uploads no longer require buffering the
+  complete image in RAM.
+- Dashboard, WiFi, logging, recorder, LED, OTA, plugin-test, and preference
+  state no longer race across FreeRTOS tasks.
+- ESP-IDF images now declare the correct board-specific flash size and OTA
+  layout.
+- Fixed the Arduino/SAMD `abs` macro conflict affecting legacy builds.
+
+### Safety
+
+- Summon-only injection and Nag Suppression remain disabled by default.
+- All injection continues to pass the centralized startup, vehicle-state,
+  freshness, and transmit gates.
+- Built-in Nag Suppression remains limited to `-1.80 Nm` through `+1.80 Nm`
+  and preserves the original `0x370` DLC, counter, and checksum handling.
+- Unknown, stale, invalid, contradictory, or unsupported vehicle state fails
+  closed.
+- Mode C remains disabled on HW4.
+- No new vehicle or software-version compatibility claim is made.
 
 ## [3.1.0] - 2026-08-03
 
