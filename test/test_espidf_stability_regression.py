@@ -74,7 +74,13 @@ class EspIdfStabilityRegressionTests(unittest.TestCase):
         self.assertIn("readSCCMSteeringAngleValidity", self.handlers)
         self.assertIn("dashNagProcess(original, *appDriver)", self.app)
         self.assertIn('prefs.putUChar("nag_mode", dashNagMode)', self.dashboard)
-        self.assertIn('server.hasArg("nag")', self.dashboard)
+        # The config arguments are read inside ctrlApplyConfig now, which both
+        # POST /config and the BLE config command run -- so also assert the HTTP
+        # route still reaches it, or this guard would pass on a BLE-only path.
+        self.assertIn('args.has("nag")', self.dashboard)
+        self.assertIn("ConfigResult ctrlApplyConfig(const ConfigArgs &args)", self.dashboard)
+        self.assertIn("ctrlApplyConfig(args)", self.dashboard)
+        self.assertIn("struct ServerArgs : ConfigArgs", self.dashboard)
         self.assertIn('id="nag-off"', self.ui)
         self.assertIn('id="nag-a"', self.ui)
         self.assertIn('id="nag-b"', self.ui)

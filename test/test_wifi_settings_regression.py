@@ -153,7 +153,7 @@ class WifiSettingsRegressionTests(unittest.TestCase):
         expected_backend_fields = [
             "INJECTION_AFTER_AP",
             '"ap_gate"',
-            'server.hasArg("apg")',
+            'args.has("apg")',
             '\\"apGate\\"',
             '\\"ia\\"',
             'dashInjectionActive()',
@@ -180,7 +180,7 @@ class WifiSettingsRegressionTests(unittest.TestCase):
             "static Shared<bool> summonOnlyInjection{false}",
             'prefs.putBool("sum_only", summonOnlyInjection)',
             'prefs.getBool("sum_only", false)',
-            'server.hasArg("smo")',
+            'args.has("smo")',
             '\"summonOnly\"',
             'doc["plugins"]["summonOnly"]',
             'p.putBool("sum_only"',
