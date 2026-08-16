@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - BLE `config` command: reads the dashboard's configuration block, or applies only the keys present in `args` and echoes the stored state back, so a client can send one field per change instead of rewriting everything. Covers `hw`, `sp`/`spa`, `can`, `apg`, `smo`, `nag`, `plgr` and the HW3 offset slew settings.
 - BLE `stats` command: live counters (`canFrames`, `canAgeMs`, `txOk`, `txFail`, `freeHeap`, `uptimeS`) plus the vehicle state the injection gates key off (`parked`, `apActive`, `summoning`, `gateAllowed`, `gateReason`). Separate from `status` so the frequently polled reply stays small.
 
+### Fixed
+
+- BLE mode is no longer given up on every power cycle. The 10-minute fallback to WiFi now only runs while a switch into BLE mode is unproven: the first client connection confirms the mode for good (NVS `ble_prob`), and later reboots keep it. Previously the timer restarted on every boot, so a device that lives in BLE mode fell back to WiFi whenever nobody connected within ten minutes of powering on — for something plugged into a car, most of the time. The lockout the timer guards against is still covered, since it is the switch itself that arms it.
+
 ### Changed
 
 - `handleConfig` is split into `ctrlApplyConfig` over a `ConfigArgs` lookup, and `handleConfigGet` into `ctrlBuildConfigJson`. `POST /config` and the BLE `config` command now run the same validator. The configuration rules are safety-relevant — Nag Mode C is refused on HW4 after reported control faults, and the speed profile range depends on the hardware — so a second copy for BLE would have been a copy free to drift. No behaviour change to the HTTP route: the transformation was mechanical.

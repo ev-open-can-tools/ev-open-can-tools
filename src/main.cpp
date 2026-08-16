@@ -177,15 +177,19 @@ static void app_main_loop()
 #endif
 
 #if defined(BLE_APP) && !defined(NATIVE_BUILD) && defined(CONFIG_BT_NIMBLE_ENABLED)
-    // Safety net: if we booted into BLE mode but no client ever connects, fall
-    // back to WiFi after 10 min so the dashboard is never permanently lost.
-    if (dashBleMode)
+    // Safety net for the switch into BLE mode: if nobody ever connects, fall
+    // back to WiFi after 10 min so the dashboard is not lost.
+    //
+    // It only runs while the mode is unproven. Once a client has connected, the
+    // mode is confirmed for good -- otherwise a device that lives in BLE mode
+    // would drop back to WiFi on every power cycle where nobody connects in
+    // time, which for something plugged into a car is most of them.
+    if (dashBleMode && (bool)dashBleProbation)
     {
         static uint32_t bleModeStartMs = millis();
-        static bool bleEverConnected = false;
         if (bleConnHandle != BLE_HS_CONN_HANDLE_NONE)
-            bleEverConnected = true;
-        if (!bleEverConnected && millis() - bleModeStartMs > 600000UL)
+            dashClearBleProbation();
+        else if (millis() - bleModeStartMs > 600000UL)
             dashSetBleMode(false);
     }
 #endif

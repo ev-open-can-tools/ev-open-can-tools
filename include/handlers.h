@@ -349,6 +349,136 @@ struct CarManagerBase
     virtual ~CarManagerBase() = default;
 };
 
+/**
+ * SummonUnlockHandler — minimal "Summon EU Unlock for all cars" (HW3).
+ *
+ * On UI_autopilotControl (CAN 1021 / 0x3FD) multiplexer 1 it clears the summon
+ * EU restriction bit (bit 19) and sets the summon enable bit (bit 46 for HW3, or
+ * bit 47 when built with -D SUMMON_HW4), then sends the modified frame. Injects
+ * nothing else.
+ *
+ * The injection can be gated four ways at build time:
+ *   -D SUMMON_GATE_NONE  inject on every 1021 mux 1 frame (no gate)
+ *   -D SUMMON_GATE_AP    inject when injectionGateOpen() — AP active OR parked
+ *                        OR summoning (the upstream INJECTION_AFTER_AP gate)
+ *   -D SUMMON_GATE_PARK  inject when Parked OR summoning, but NOT while AP is
+ *                        active — avoids corrupting UI_autopilotControl during
+ *                        live Autopilot (which faults AP / "red steering wheel")
+ *   (default)            inject ONLY while a genuine Summon is active
+ *
+ * Summoning is the shared base-class discrimination: it requires both the ACA
+ * bit (DI_autonomyControlActive, CAN 280) AND a UI_selfParkRequest command
+ * (CAN 1016) during the current autonomy episode, so plain TACC/AP does not
+ * open the summon-only gate. The gated modes observe 280/390(/921 for AP)/1016
+ * to drive that state, but inject nothing on those frames.
+ *
+ * This is the compiled-in equivalent of the single-rule plugin for
+ * non-dashboard boards that have no plugin engine (e.g. feather_rp2040_can).
+ *
+ * Enable the handler with build flag: -D SUMMON_UNLOCK_ONLY
+ */
+struct SummonUnlockHandler : public CarManagerBase
+{
+#if defined(SUMMON_GATE_NONE)
+    const uint32_t *filterIds() const override
+    {
+        static constexpr uint32_t ids[] = {1021};
+        return ids;
+    }
+    uint8_t filterIdCount() const override { return 1; }
+#elif defined(SUMMON_GATE_AP)
+    const uint32_t *filterIds() const override
+    {
+        static constexpr uint32_t ids[] = {280, 390, 921, 1016, 1021};
+        return ids;
+    }
+    uint8_t filterIdCount() const override { return 5; }
+#else
+    const uint32_t *filterIds() const override
+    {
+        static constexpr uint32_t ids[] = {280, 390, 1016, 1021};
+        return ids;
+    }
+    uint8_t filterIdCount() const override { return 4; }
+#endif
+
+    void handleMessage(CanFrame &frame, CanDriver &driver) override
+    {
+        if (onFrame)
+            onFrame(frame);
+        updateGateFrameDiagnostics(frame);
+
+#if !defined(SUMMON_GATE_NONE)
+        // Observe-only frames that drive the Summoning / AP-gate state.
+        if (frame.id == 280)
+        {
+            if (frame.dlc < 3)
+                return;
+            uint8_t diGear = readDIGear(frame);
+            Parked = isVehicleParked(diGear);
+            updateSummonFromDISystemStatus(frame);
+            clearSummonOnParkIfAcaInactive(diGear);
+            return;
+        }
+        if (frame.id == 390)
+        {
+            if (frame.dlc < 8)
+                return;
+            uint8_t difGear = readVehicleGear(frame);
+            Parked = isVehicleParked(difGear);
+            clearSummonOnParkIfAcaInactive(difGear);
+            return;
+        }
+#if defined(SUMMON_GATE_AP)
+        if (frame.id == 921)
+        {
+            if (frame.dlc < 1)
+                return;
+            APActive = isDASAutopilotActive(readDASAutopilotStatus(frame));
+            return;
+        }
+#endif
+        if (frame.id == 1016)
+        {
+            if (frame.dlc < 6)
+                return;
+            updateSummonFrom1016(frame);
+            return;
+        }
+#endif
+
+        // Summon EU Unlock injection on 1021 mux 1.
+        if (frame.id != 1021)
+            return;
+        if (frame.dlc < 8)
+            return;
+        if (readMuxID(frame) != 1)
+            return;
+#if defined(SUMMON_GATE_NONE)
+        // ungated: always inject
+#elif defined(SUMMON_GATE_AP)
+        if (!injectionGateOpen())
+            return;
+#elif defined(SUMMON_GATE_PARK)
+        if (!((bool)Parked || (bool)Summoning))
+            return;
+#else
+        if (!Summoning)
+            return;
+#endif
+        setBit(frame, 19, false); // clear summon EU restriction bit
+#if defined(SUMMON_HW4)
+        setBit(frame, 47, true); // set summon enable bit (HW4)
+#else
+        setBit(frame, 46, true); // set summon enable bit (HW3)
+#endif
+        framesSent++;
+        driver.send(frame);
+        if (onSend)
+            onSend(1, true);
+    }
+};
+
 struct LegacyHandler : public CarManagerBase
 {
     const uint32_t *filterIds() const override

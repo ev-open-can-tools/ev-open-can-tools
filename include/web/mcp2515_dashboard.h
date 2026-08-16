@@ -856,14 +856,37 @@ static void dashSetDevMode(bool on)
 
 // Persist the WiFi/BLE mode and reboot into it. WiFi and BLE share the radio on
 // ESP32 classic and cannot run together reliably, so the choice is per-boot.
+// True while a switch to BLE mode is still unproven. The safety net that falls
+// back to WiFi only applies during this window: it exists to rescue a user who
+// switched to BLE and then could not connect, not to police steady-state
+// operation. Without it being one-shot, a device that lives in BLE mode drops
+// back to WiFi on every power cycle where nobody connects within the timeout --
+// which for something plugged into a car is most of them.
+static Shared<bool> dashBleProbation{false};
+
 static void dashSetBleMode(bool on)
 {
     prefs.begin(PREFS_NS, false);
     prefs.putBool("ble_mode", on);
+    // Arm the safety net on the way in; leaving BLE mode disarms it.
+    prefs.putBool("ble_prob", on);
     prefs.end();
+    dashBleProbation = on;
     dashLog(String("[MODE] Switching to ") + (on ? "BLE" : "WiFi") + " mode; rebooting...");
     delay(300);
     ESP.restart();
+}
+
+/** Called on the first BLE connection: the mode works, so stop second-guessing it. */
+static void dashClearBleProbation()
+{
+    if (!(bool)dashBleProbation)
+        return;
+    dashBleProbation = false;
+    prefs.begin(PREFS_NS, false);
+    prefs.putBool("ble_prob", false);
+    prefs.end();
+    dashLog("[MODE] BLE mode confirmed by a client; WiFi fallback disarmed");
 }
 
 // Compact status for the BLE app (independent of the detailed HTTP /status so
@@ -1016,6 +1039,10 @@ static void dashLoadPrefs()
     canActive = prefs.getBool("can", kDashInjectionDefaultEnabled);
     dashDevMode = prefs.getBool("dev_mode", kDashDevModeDefault);
     dashBleMode = prefs.getBool("ble_mode", false);
+    // Default true for a device already in BLE mode from before this flag
+    // existed: one unproven boot is the safe assumption, and the first
+    // connection clears it for good.
+    dashBleProbation = dashBleMode && prefs.getBool("ble_prob", true);
     {
         String pinStr = prefs.getString("ble_pin", "");
         uint32_t pin = pinStr.length() ? (uint32_t)atoi(pinStr.c_str()) : 0;
