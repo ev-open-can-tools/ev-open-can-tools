@@ -12,13 +12,16 @@
 //   Response  e7c10003-...  NOTIFY      device -> app, newline-framed JSON
 //
 // A written command is a JSON object {"cmd":"...","args":{...}} terminated by
-// '\n'. The response is the reply JSON terminated by '\n', split across notify
-// packets of (MTU-3) bytes.
+// '\n'. Writes are accumulated until that newline arrives, so a command longer
+// than one ATT write is simply split by the client -- but a SINGLE write may not
+// exceed 255 bytes (see the flat buffer in bleCmdWriteCb).
 //
-// v1 SCOPE: read-only commands (status/ping) and NO link security yet, so an
-// unpaired peer cannot change device state. Pairing (LE Secure Connections +
-// passkey + bonding/whitelist) and the write command surface are layered on
-// next, before any state-changing command is accepted.
+// The reply is fetched by paged READs of the Response characteristic, because a
+// GATT attribute is capped at 512 bytes and replies can be larger.
+//
+// Both characteristics require an encrypted, authenticated link (LE Secure
+// Connections + passkey + bonding), so an unpaired peer can connect but cannot
+// read or write anything. State-changing commands rely on that.
 
 #if defined(BLE_APP) && !defined(NATIVE_BUILD) && defined(CONFIG_BT_NIMBLE_ENABLED)
 
@@ -56,8 +59,164 @@ static String bleCmdBuf;
 
 static void bleStartAdvertising();
 
+// ---- send: one-shot frame injection ---------------------------------------
+//
+// One app button maps to a short burst of frames written as a single command.
+// Deliberately absent: a per-frame delay (it would block the NimBLE host task
+// for its duration) and extended 29-bit ids (CanFrame carries no extended flag
+// and the drivers reject id > 0x7FF anyway).
+
+// Bounds the burst so a malformed or hostile payload cannot exhaust the host
+// task stack. 16 frames * sizeof(CanFrame) is a few hundred bytes.
+static const size_t kBleSendMaxFrames = 16;
+
+static String bleReject(const char *error, const char *reason, int index = -1)
+{
+    String j = "{\"ok\":false,\"error\":\"";
+    j += error;
+    j += "\"";
+    if (reason)
+    {
+        j += ",\"reason\":\"";
+        j += reason;
+        j += "\"";
+    }
+    if (index >= 0)
+    {
+        j += ",\"index\":";
+        j += index;
+    }
+    j += "}";
+    return j;
+}
+
+// Which sub-gate of dashInjectionActive() is closed, so the app can tell the
+// user *why* a button did nothing instead of just failing.
+static const char *bleInjectionBlockReason()
+{
+    if (!canActive)
+        return "injection disabled";
+    if (!appInjectionReady())
+        return "warming up";
+    if (!dashApInjectionAllowed())
+        return "ap gate";
+    if (!dashSummonOnlyInjectionAllowed())
+        return "summon-only gate";
+    return nullptr;
+}
+
+static bool bleParseHexNibble(char c, uint8_t &out)
+{
+    if (c >= '0' && c <= '9')
+        out = (uint8_t)(c - '0');
+    else if (c >= 'a' && c <= 'f')
+        out = (uint8_t)(c - 'a' + 10);
+    else if (c >= 'A' && c <= 'F')
+        out = (uint8_t)(c - 'A' + 10);
+    else
+        return false;
+    return true;
+}
+
+// "0011AABB" -> bytes. Rejects odd lengths, non-hex and payloads over 8 bytes.
+static bool bleParseHexPayload(const char *hex, uint8_t *out, uint8_t &len)
+{
+    if (!hex)
+        return false;
+    size_t n = strlen(hex);
+    if (n == 0 || (n & 1) != 0 || n > 16)
+        return false;
+    len = (uint8_t)(n / 2);
+    for (uint8_t i = 0; i < len; ++i)
+    {
+        uint8_t hi = 0, lo = 0;
+        if (!bleParseHexNibble(hex[i * 2], hi) || !bleParseHexNibble(hex[i * 2 + 1], lo))
+            return false;
+        out[i] = (uint8_t)((hi << 4) | lo);
+    }
+    return true;
+}
+
+// An 11-bit id, either as a number (993) or as a hex string ("0x3E1" / "3E1").
+static bool bleParseCanId(JsonVariantConst v, uint32_t &out)
+{
+    if (v.is<const char *>())
+    {
+        const char *s = v.as<const char *>();
+        if (!s || !*s)
+            return false;
+        char *end = nullptr;
+        unsigned long parsed = strtoul(s, &end, 16);
+        if (!end || *end != '\0')
+            return false;
+        out = (uint32_t)parsed;
+        return true;
+    }
+    if (v.is<int>() || v.is<unsigned int>() || v.is<long>())
+    {
+        long parsed = v.as<long>();
+        if (parsed < 0)
+            return false;
+        out = (uint32_t)parsed;
+        return true;
+    }
+    return false;
+}
+
+static String bleHandleSend(JsonObjectConst args)
+{
+    if (!dashDriver)
+        return bleReject("no driver", nullptr);
+    // Same gates as automatic injection: a phone button must not be able to put
+    // frames on the bus in a state where the firmware would refuse to itself.
+    if (const char *blocked = bleInjectionBlockReason())
+        return bleReject("gated", blocked);
+
+    JsonArrayConst frames = args["frames"];
+    if (frames.isNull() || frames.size() == 0)
+        return bleReject("bad args", "no frames");
+    if (frames.size() > kBleSendMaxFrames)
+        return bleReject("bad args", "too many frames");
+
+    // Validate every frame before sending any, so a typo in the last frame does
+    // not leave a half-sent burst on the bus.
+    CanFrame parsed[kBleSendMaxFrames];
+    int count = 0;
+    for (JsonObjectConst f : frames)
+    {
+        uint32_t id = 0;
+        if (!bleParseCanId(f["id"], id))
+            return bleReject("bad frame", "id must be a number or hex string", count);
+        if (id > 0x7FF)
+            return bleReject("bad frame", "id above 11-bit range", count);
+        uint8_t dlc = 0;
+        if (!bleParseHexPayload(f["data"], parsed[count].data, dlc))
+            return bleReject("bad frame", "data must be 2-16 hex digits", count);
+        long bus = f["bus"] | (long)CAN_BUS_DEFAULT;
+        if (bus < 0 || bus > 0xFF)
+            return bleReject("bad frame", "bus out of range", count);
+        parsed[count].id = id;
+        parsed[count].dlc = dlc;
+        parsed[count].bus = (uint8_t)bus;
+        ++count;
+    }
+
+    int sent = 0;
+    while (sent < count && dashDriver->send(parsed[sent]))
+        ++sent;
+
+    String j = "{\"ok\":";
+    j += (sent == count) ? "true" : "false";
+    j += ",\"sent\":";
+    j += sent;
+    if (sent != count)
+        j += ",\"error\":\"tx failed\"";
+    j += "}";
+    return j;
+}
+
 // Transport-neutral command dispatch. Seed of the shared command core that a
-// future HTTP /api endpoint can reuse. v1: read-only only.
+// future HTTP /api endpoint can reuse.
 static String bleDispatchCommand(JsonObjectConst root)
 {
     const char *cmd = root["cmd"] | "";
@@ -65,6 +224,8 @@ static String bleDispatchCommand(JsonObjectConst root)
         return dashBuildBleStatusJson();
     if (strcmp(cmd, "ping") == 0)
         return String("{\"ok\":true,\"pong\":true}");
+    if (strcmp(cmd, "send") == 0)
+        return bleHandleSend(root["args"]);
     if (strcmp(cmd, "wifi_mode") == 0)
     {
         // Switch back to the WiFi dashboard (clears the BLE-mode flag + reboots).
