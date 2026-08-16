@@ -215,6 +215,72 @@ static String bleHandleSend(JsonObjectConst args)
     return j;
 }
 
+// ---- config: the dashboard's settings, over BLE ---------------------------
+
+// Feeds a BLE command's args into the shared ctrlApplyConfig. Values arrive as
+// JSON types but the validators take strings, so numbers and booleans are
+// rendered into the forms dashParseLong/dashParseBool accept ("1"/"0" for
+// booleans -- nothing else is valid there).
+struct BleConfigArgs : ConfigArgs
+{
+    JsonObjectConst args;
+
+    explicit BleConfigArgs(JsonObjectConst a) : args(a) {}
+
+    bool has(const char *name) const override
+    {
+        return !args[name].isNull();
+    }
+
+    String get(const char *name) const override
+    {
+        JsonVariantConst v = args[name];
+        if (v.is<bool>())
+            return v.as<bool>() ? String("1") : String("0");
+        if (v.is<long>())
+            return String(v.as<long>());
+        const char *s = v.as<const char *>();
+        return s ? String(s) : String("");
+    }
+};
+
+// Live runtime figures: what the car and the link are actually doing. Separate
+// from `status` so the frequently polled reply stays small.
+static String bleBuildStatsJson()
+{
+    uint32_t now = millis();
+    DashApGateSnapshot gate = dashApGateSnapshot();
+    String j = "{\"ok\":true";
+    j += ",\"uptimeS\":";
+    j += (unsigned long)(now / 1000);
+    j += ",\"canFrames\":";
+    j += (unsigned long)RuntimeDiagnostics::canFrames.load(std::memory_order_relaxed);
+    j += ",\"canAgeMs\":";
+    j += (unsigned long)RuntimeDiagnostics::canAgeMs(now);
+    j += ",\"txOk\":";
+    j += (unsigned long)RuntimeDiagnostics::txOk.load(std::memory_order_relaxed);
+    j += ",\"txFail\":";
+    j += (unsigned long)RuntimeDiagnostics::txFail.load(std::memory_order_relaxed);
+    j += ",\"freeHeap\":";
+    j += (unsigned long)esp_get_free_heap_size();
+    // The vehicle state the injection gates key off, so the app can explain a
+    // "gated" rejection instead of just reporting it.
+    j += ",\"gateEnabled\":";
+    j += gate.enabled ? "true" : "false";
+    j += ",\"gateAllowed\":";
+    j += gate.allowed ? "true" : "false";
+    j += ",\"apActive\":";
+    j += gate.apActive ? "true" : "false";
+    j += ",\"parked\":";
+    j += gate.parked ? "true" : "false";
+    j += ",\"summoning\":";
+    j += gate.summoning ? "true" : "false";
+    j += ",\"gateReason\":\"";
+    j += gate.reason;
+    j += "\"}";
+    return j;
+}
+
 // Transport-neutral command dispatch. Seed of the shared command core that a
 // future HTTP /api endpoint can reuse.
 static String bleDispatchCommand(JsonObjectConst root)
@@ -226,6 +292,31 @@ static String bleDispatchCommand(JsonObjectConst root)
         return String("{\"ok\":true,\"pong\":true}");
     if (strcmp(cmd, "send") == 0)
         return bleHandleSend(root["args"]);
+    if (strcmp(cmd, "stats") == 0)
+        return bleBuildStatsJson();
+    if (strcmp(cmd, "config") == 0)
+    {
+        // No args means read; any args mean apply them. Same call the dashboard
+        // makes, so validation cannot differ between the two transports.
+        JsonObjectConst args = root["args"];
+        if (args.isNull() || args.size() == 0)
+        {
+            String j = "{\"ok\":true,\"config\":";
+            j += ctrlBuildConfigJson();
+            j += "}";
+            return j;
+        }
+        BleConfigArgs source(args);
+        ConfigResult result = ctrlApplyConfig(source);
+        if (result.status != 200)
+            return result.body;
+        // Echo the stored state back: a request may be partially applied (an
+        // unknown key is simply not read), and clamping happens inside.
+        String j = "{\"ok\":true,\"config\":";
+        j += ctrlBuildConfigJson();
+        j += "}";
+        return j;
+    }
     if (strcmp(cmd, "inject") == 0)
     {
         // The master injection switch, otherwise reachable only from the web

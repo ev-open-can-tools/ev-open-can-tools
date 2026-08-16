@@ -1830,7 +1830,30 @@ static void handleBlePin()
                     String((unsigned long)(uint32_t)dashBlePasskey) + "}");
 }
 
-static void handleConfigGet()
+// The configuration surface, shared by the HTTP dashboard and the BLE app.
+//
+// A phone reaches the device over BLE, where the dashboard does not run, so the
+// same settings have to be readable and writable from both. The validation is
+// safety-relevant -- Nag Mode C is blocked on HW4, and the speed profile range
+// depends on the hardware -- so it exists exactly once and both transports run
+// it, rather than being copied and left to drift.
+
+/** Name/value lookup over whatever the transport carries. */
+struct ConfigArgs
+{
+    virtual ~ConfigArgs() = default;
+    virtual bool has(const char *name) const = 0;
+    virtual String get(const char *name) const = 0;
+};
+
+/** HTTP status plus JSON body; the caller decides how to deliver it. */
+struct ConfigResult
+{
+    int status;
+    String body;
+};
+
+static String ctrlBuildConfigJson()
 {
     CarManagerBase *handler = dashHandler;
     String json = "{\"hw\":" + String(hwMode);
@@ -1846,10 +1869,15 @@ static void handleConfigGet()
     json += ",\"hw3SlewRate\":" + String(hw3SlewRate);
     json += ",\"ledBrightness\":" + String(dashLedBrightness);
     json += "}";
-    server.send(200, "application/json", json);
+    return json;
 }
 
-static void handleConfig()
+static void handleConfigGet()
+{
+    server.send(200, "application/json", ctrlBuildConfigJson());
+}
+
+static ConfigResult ctrlApplyConfig(const ConfigArgs &args)
 {
     long hwValue = hwMode;
     long speedValue = dashManualSpeedProfile;
@@ -1861,46 +1889,44 @@ static void handleConfig()
     bool gateValue = apInjectionGate;
     bool summonOnlyValue = summonOnlyInjection;
     bool slewValue = hw3OffsetSlew;
-    const char *slewArg = server.hasArg("hw3OffsetSlew") ? "hw3OffsetSlew" : "offsetSlew";
-    const char *slewRateArg = server.hasArg("hw3SlewRate") ? "hw3SlewRate" : "offsetSlewRate";
+    const char *slewArg = args.has("hw3OffsetSlew") ? "hw3OffsetSlew" : "offsetSlew";
+    const char *slewRateArg = args.has("hw3SlewRate") ? "hw3SlewRate" : "offsetSlewRate";
     bool valid = true;
-    if (server.hasArg("hw"))
-        valid &= dashParseLong(server.arg("hw"), hwValue) && hwValue >= 0 && hwValue <= 2;
-    if (server.hasArg("sp"))
-        valid &= dashParseLong(server.arg("sp"), speedValue) && speedValue >= 0 &&
+    if (args.has("hw"))
+        valid &= dashParseLong(args.get("hw"), hwValue) && hwValue >= 0 && hwValue <= 2;
+    if (args.has("sp"))
+        valid &= dashParseLong(args.get("sp"), speedValue) && speedValue >= 0 &&
                  speedValue <= (hwValue == 2 ? 4 : 2);
-    if (server.hasArg("plgr"))
-        valid &= dashParseLong(server.arg("plgr"), replayValue) && replayValue >= 1 &&
+    if (args.has("plgr"))
+        valid &= dashParseLong(args.get("plgr"), replayValue) && replayValue >= 1 &&
                  replayValue <= PLUGIN_REPLAY_COUNT_MAX;
-    if (server.hasArg("nag"))
-        valid &= dashParseLong(server.arg("nag"), nagModeValue) &&
+    if (args.has("nag"))
+        valid &= dashParseLong(args.get("nag"), nagModeValue) &&
                  nagModeValue >= static_cast<long>(NagMode::Disabled) &&
                  nagModeValue <= static_cast<long>(NagMode::ModeC);
-    if (server.hasArg("hw3SlewRate") || server.hasArg("offsetSlewRate"))
-        valid &= dashParseLong(server.arg(slewRateArg), slewRateValue) &&
+    if (args.has("hw3SlewRate") || args.has("offsetSlewRate"))
+        valid &= dashParseLong(args.get(slewRateArg), slewRateValue) &&
                  slewRateValue >= kHw3SlewRateMin && slewRateValue <= kHw3SlewRateMax;
-    if (server.hasArg("can"))
-        valid &= dashParseBool(server.arg("can"), canValue);
-    if (server.hasArg("spa"))
-        valid &= dashParseBool(server.arg("spa"), speedAutoValue);
-    if (server.hasArg("apg"))
-        valid &= dashParseBool(server.arg("apg"), gateValue);
-    if (server.hasArg("smo"))
-        valid &= dashParseBool(server.arg("smo"), summonOnlyValue);
-    if (server.hasArg("hw3OffsetSlew") || server.hasArg("offsetSlew"))
-        valid &= dashParseBool(server.arg(slewArg), slewValue);
+    if (args.has("can"))
+        valid &= dashParseBool(args.get("can"), canValue);
+    if (args.has("spa"))
+        valid &= dashParseBool(args.get("spa"), speedAutoValue);
+    if (args.has("apg"))
+        valid &= dashParseBool(args.get("apg"), gateValue);
+    if (args.has("smo"))
+        valid &= dashParseBool(args.get("smo"), summonOnlyValue);
+    if (args.has("hw3OffsetSlew") || args.has("offsetSlew"))
+        valid &= dashParseBool(args.get(slewArg), slewValue);
     if (!valid)
     {
-        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid configuration value\"}");
-        return;
+        return {400, String("{\"ok\":false,\"error\":\"Invalid configuration value\"}")};
     }
-    if (server.hasArg("nag") &&
+    if (args.has("nag") &&
         !nagModeAllowedForHardware(static_cast<uint8_t>(nagModeValue),
                                    static_cast<uint8_t>(hwValue)))
     {
-        server.send(400, "application/json",
-                    "{\"ok\":false,\"error\":\"Nag Mode C is blocked on HW4 after reported control faults\"}");
-        return;
+        return {400,
+                String("{\"ok\":false,\"error\":\"Nag Mode C is blocked on HW4 after reported control faults\"}")};
     }
 
     uint8_t oldHw = hwMode;
@@ -1914,7 +1940,7 @@ static void handleConfig()
     bool oldSlew = hw3OffsetSlew;
     uint8_t oldSlewRate = hw3SlewRate;
     bool hwChanged = false;
-    if (server.hasArg("hw"))
+    if (args.has("hw"))
     {
         uint8_t v = static_cast<uint8_t>(hwValue);
         if (v <= 2 && v != hwMode)
@@ -1925,10 +1951,10 @@ static void handleConfig()
                                                                     : "HW4"));
         }
     }
-    if (server.hasArg("can"))
+    if (args.has("can"))
         canActive = canValue;
-    bool profileAutoRequested = server.hasArg("spa") && speedAutoValue;
-    if (server.hasArg("sp"))
+    bool profileAutoRequested = args.has("spa") && speedAutoValue;
+    if (args.has("sp"))
     {
         uint8_t v = static_cast<uint8_t>(speedValue);
         if (!profileAutoRequested && (v != dashManualSpeedProfile || dashSpeedProfileAuto))
@@ -1937,14 +1963,14 @@ static void handleConfig()
         if (!profileAutoRequested)
             dashSpeedProfileAuto = false;
     }
-    if (server.hasArg("spa"))
+    if (args.has("spa"))
     {
         bool v = speedAutoValue;
         if (v != dashSpeedProfileAuto)
             dashLog("[CFG] Speed profile " + String(v ? "AUTO" : "MANUAL"));
         dashSpeedProfileAuto = v;
     }
-    if (server.hasArg("apg"))
+    if (args.has("apg"))
     {
         bool v = gateValue;
         if (v != apInjectionGate)
@@ -1953,7 +1979,7 @@ static void handleConfig()
             dashLog("[CFG] AP injection gate " + String(v ? "ON" : "OFF"));
         }
     }
-    if (server.hasArg("smo"))
+    if (args.has("smo"))
     {
         bool v = summonOnlyValue;
         if (v != summonOnlyInjection)
@@ -1962,7 +1988,7 @@ static void handleConfig()
             dashLog("[CFG] Summon-only injection " + String(v ? "ON" : "OFF"));
         }
     }
-    if (server.hasArg("nag"))
+    if (args.has("nag"))
     {
         uint8_t v = static_cast<uint8_t>(nagModeValue);
         if (v != dashNagMode)
@@ -1972,14 +1998,14 @@ static void handleConfig()
             dashReapplyFiltersWithPlugins();
         }
     }
-    if (server.hasArg("plgr"))
+    if (args.has("plgr"))
     {
         uint8_t previous = pluginGetReplayCount();
         pluginSetReplayCount(replayValue);
         if (pluginGetReplayCount() != previous)
             dashLog("[CFG] Plugin replay x" + String(pluginGetReplayCount()));
     }
-    if (server.hasArg("hw3OffsetSlew") || server.hasArg("offsetSlew"))
+    if (args.has("hw3OffsetSlew") || args.has("offsetSlew"))
     {
         bool v = slewValue;
         if (v != hw3OffsetSlew)
@@ -1988,7 +2014,7 @@ static void handleConfig()
             dashLog("[CFG] Offset slew " + String(v ? "ON" : "OFF"));
         }
     }
-    if (server.hasArg("hw3SlewRate") || server.hasArg("offsetSlewRate"))
+    if (args.has("hw3SlewRate") || args.has("offsetSlewRate"))
     {
         uint8_t v = static_cast<uint8_t>(slewRateValue);
         if (v != hw3SlewRate)
@@ -2024,10 +2050,21 @@ static void handleConfig()
         dashApplyRuntimeState();
         dashReapplyFiltersWithPlugins();
         dashRefreshSummonOnlyPolicy();
-        server.send(500, "application/json", "{\"ok\":false,\"error\":\"NVS write failed\"}");
-        return;
+        return {500, String("{\"ok\":false,\"error\":\"NVS write failed\"}")};
     }
-    server.send(200, "application/json", "{\"ok\":true}");
+    return {200, String("{\"ok\":true}")};
+}
+
+static void handleConfig()
+{
+    // Reads straight from the query string of the request being handled.
+    struct ServerArgs : ConfigArgs
+    {
+        bool has(const char *name) const override { return server.hasArg(name); }
+        String get(const char *name) const override { return server.arg(name); }
+    } args;
+    ConfigResult result = ctrlApplyConfig(args);
+    server.send(result.status, "application/json", result.body);
 }
 
 static void handleLedBrightness()

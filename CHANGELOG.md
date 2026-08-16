@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- BLE `config` command: reads the dashboard's configuration block, or applies only the keys present in `args` and echoes the stored state back, so a client can send one field per change instead of rewriting everything. Covers `hw`, `sp`/`spa`, `can`, `apg`, `smo`, `nag`, `plgr` and the HW3 offset slew settings.
+- BLE `stats` command: live counters (`canFrames`, `canAgeMs`, `txOk`, `txFail`, `freeHeap`, `uptimeS`) plus the vehicle state the injection gates key off (`parked`, `apActive`, `summoning`, `gateAllowed`, `gateReason`). Separate from `status` so the frequently polled reply stays small.
+
+### Changed
+
+- `handleConfig` is split into `ctrlApplyConfig` over a `ConfigArgs` lookup, and `handleConfigGet` into `ctrlBuildConfigJson`. `POST /config` and the BLE `config` command now run the same validator. The configuration rules are safety-relevant — Nag Mode C is refused on HW4 after reported control faults, and the speed profile range depends on the hardware — so a second copy for BLE would have been a copy free to drift. No behaviour change to the HTTP route: the transformation was mechanical.
 
 ## [4.0.0-beta.2] - 2026-08-16
 
