@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The dashboard now has controls for the BLE app at all. `/ble_mode` and `/ble_pin` have existed since 4.0.0-beta.1, but nothing in the UI ever called them, so neither switching into BLE mode nor reading the pairing passkey was possible from the dashboard — the passkey was only obtainable from the serial log. The new card shows the current interface mode and the passkey, switches to BLE, and can regenerate the passkey.
 - BLE mode is no longer given up on every power cycle. The 10-minute fallback to WiFi now only runs while a switch into BLE mode is unproven: the first client connection confirms the mode for good (NVS `ble_prob`), and later reboots keep it. Previously the timer restarted on every boot, so a device that lives in BLE mode fell back to WiFi whenever nobody connected within ten minutes of powering on — for something plugged into a car, most of the time. The lockout the timer guards against is still covered, since it is the switch itself that arms it.
 
+### Verified
+
+- On device: the dashboard's BLE card reads the mode and passkey and switches into BLE mode, and the app connects afterwards.
+
 ### Changed
 
 - `handleConfig` is split into `ctrlApplyConfig` over a `ConfigArgs` lookup, and `handleConfigGet` into `ctrlBuildConfigJson`. `POST /config` and the BLE `config` command now run the same validator. The configuration rules are safety-relevant — Nag Mode C is refused on HW4 after reported control faults, and the speed profile range depends on the hardware — so a second copy for BLE would have been a copy free to drift. No behaviour change to the HTTP route: the transformation was mechanical.
