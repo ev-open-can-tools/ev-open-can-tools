@@ -226,6 +226,20 @@ static String bleDispatchCommand(JsonObjectConst root)
         return String("{\"ok\":true,\"pong\":true}");
     if (strcmp(cmd, "send") == 0)
         return bleHandleSend(root["args"]);
+    if (strcmp(cmd, "inject") == 0)
+    {
+        // The master injection switch, otherwise reachable only from the web
+        // dashboard -- which is unreachable in BLE mode, leaving the app unable
+        // to clear its own most common "gated" rejection.
+        JsonVariantConst on = root["args"]["on"];
+        if (!on.is<bool>())
+            return bleReject("bad args", "on must be true or false");
+        dashSetCanActive(on.as<bool>(), "ble");
+        String j = "{\"ok\":true,\"inject\":";
+        j += canActive ? "true" : "false";
+        j += "}";
+        return j;
+    }
     if (strcmp(cmd, "wifi_mode") == 0)
     {
         // Switch back to the WiFi dashboard (clears the BLE-mode flag + reboots).
