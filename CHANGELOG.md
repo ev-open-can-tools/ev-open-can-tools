@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [4.0.0-beta.2] - 2026-08-16
+
+### Added
+
+- BLE `send` command: injects a burst of up to 16 CAN frames once, so a phone app button can put a stored frame on the bus. Frames are given as `{"id":"0x3E1","data":"48A600"}` (id as hex string or number, payload as hex, optional `bus`), and every frame is validated before any is sent so a malformed burst cannot be half-injected. Standard 11-bit ids only, and no per-frame delay — the command runs on the BLE host task.
+- BLE `inject` command (`{"cmd":"inject","args":{"on":true}}`) to flip the master injection switch, mirroring the dashboard toggle and persisted to NVS. Without it `gated / injection disabled` was a dead end for a phone app: the dashboard that offers the toggle is unreachable while the device is in BLE mode.
+- `send` is subject to exactly the same gates as automatic injection (`dashInjectionActive()`), and a rejection names the closed gate: `{"ok":false,"error":"gated","reason":"injection disabled"|"warming up"|"ap gate"|"summon-only gate"}`. A phone must not be able to write to the bus in a state where the firmware would refuse to itself.
+
 ## [4.0.0-beta.1] - 2026-08-03
 
 ### Added
