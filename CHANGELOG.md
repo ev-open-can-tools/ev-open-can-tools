@@ -7,10 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [4.0.0-beta.2] - 2026-08-16
+
 ### Added
 
+- BLE `send` command: injects a burst of up to 16 CAN frames once, so a phone app button can put a stored frame on the bus. Frames are given as `{"id":"0x3E1","data":"48A600"}` (id as hex string or number, payload as hex, optional `bus`), and every frame is validated before any is sent so a malformed burst cannot be half-injected. Standard 11-bit ids only, and no per-frame delay — the command runs on the BLE host task.
+- BLE `inject` command (`{"cmd":"inject","args":{"on":true}}`) to flip the master injection switch, mirroring the dashboard toggle and persisted to NVS. Without it `gated / injection disabled` was a dead end for a phone app: the dashboard that offers the toggle is unreachable while the device is in BLE mode.
+- `send` is subject to exactly the same gates as automatic injection (`dashInjectionActive()`), and a rejection names the closed gate: `{"ok":false,"error":"gated","reason":"injection disabled"|"warming up"|"ap gate"|"summon-only gate"}`. A phone must not be able to write to the bus in a state where the firmware would refuse to itself.
 - BLE `config` command: reads the dashboard's configuration block, or applies only the keys present in `args` and echoes the stored state back, so a client can send one field per change instead of rewriting everything. Covers `hw`, `sp`/`spa`, `can`, `apg`, `smo`, `nag`, `plgr` and the HW3 offset slew settings.
 - BLE `stats` command: live counters (`canFrames`, `canAgeMs`, `txOk`, `txFail`, `freeHeap`, `uptimeS`) plus the vehicle state the injection gates key off (`parked`, `apActive`, `summoning`, `gateAllowed`, `gateReason`). Separate from `status` so the frequently polled reply stays small.
+
+### Changed
+
+- `handleConfig` is split into `ctrlApplyConfig` over a `ConfigArgs` lookup, and `handleConfigGet` into `ctrlBuildConfigJson`. `POST /config` and the BLE `config` command now run the same validator. The configuration rules are safety-relevant — Nag Mode C is refused on HW4 after reported control faults, and the speed profile range depends on the hardware — so a second copy for BLE would have been a copy free to drift. No behaviour change to the HTTP route: the transformation was mechanical.
 
 ### Fixed
 
@@ -20,18 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Verified
 
 - On device: the dashboard's BLE card reads the mode and passkey and switches into BLE mode, and the app connects afterwards.
-
-### Changed
-
-- `handleConfig` is split into `ctrlApplyConfig` over a `ConfigArgs` lookup, and `handleConfigGet` into `ctrlBuildConfigJson`. `POST /config` and the BLE `config` command now run the same validator. The configuration rules are safety-relevant — Nag Mode C is refused on HW4 after reported control faults, and the speed profile range depends on the hardware — so a second copy for BLE would have been a copy free to drift. No behaviour change to the HTTP route: the transformation was mechanical.
-
-## [4.0.0-beta.2] - 2026-08-16
-
-### Added
-
-- BLE `send` command: injects a burst of up to 16 CAN frames once, so a phone app button can put a stored frame on the bus. Frames are given as `{"id":"0x3E1","data":"48A600"}` (id as hex string or number, payload as hex, optional `bus`), and every frame is validated before any is sent so a malformed burst cannot be half-injected. Standard 11-bit ids only, and no per-frame delay — the command runs on the BLE host task.
-- BLE `inject` command (`{"cmd":"inject","args":{"on":true}}`) to flip the master injection switch, mirroring the dashboard toggle and persisted to NVS. Without it `gated / injection disabled` was a dead end for a phone app: the dashboard that offers the toggle is unreachable while the device is in BLE mode.
-- `send` is subject to exactly the same gates as automatic injection (`dashInjectionActive()`), and a rejection names the closed gate: `{"ok":false,"error":"gated","reason":"injection disabled"|"warming up"|"ap gate"|"summon-only gate"}`. A phone must not be able to write to the bus in a state where the firmware would refuse to itself.
 
 ## [4.0.0-beta.1] - 2026-08-03
 
