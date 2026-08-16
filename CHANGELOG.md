@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [4.0.0-beta.2] - 2026-08-16
+
 ### Added
 
 - BLE `send` command: injects a burst of up to 16 CAN frames once, so a phone app button can put a stored frame on the bus. Frames are given as `{"id":"0x3E1","data":"48A600"}` (id as hex string or number, payload as hex, optional `bus`), and every frame is validated before any is sent so a malformed burst cannot be half-injected. Standard 11-bit ids only, and no per-frame delay — the command runs on the BLE host task.
