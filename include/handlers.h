@@ -723,7 +723,13 @@ struct NagHandler : public CarManagerBase
 
     uint8_t modeFilterIdCount(uint8_t mode) const
     {
-        return clampNagMode(mode) == static_cast<uint8_t>(NagMode::ModeC) ? 3 : 1;
+        uint8_t selectedMode = clampNagMode(mode);
+        if (selectedMode == static_cast<uint8_t>(NagMode::ModeC))
+            return 3;
+        return static_cast<uint8_t>(nagHardwareMode) == 2 &&
+                       selectedMode != static_cast<uint8_t>(NagMode::Disabled)
+                   ? 2
+                   : 1;
     }
 
     void handleMessage(CanFrame &frame, CanDriver &driver) override
@@ -776,7 +782,7 @@ struct NagHandler : public CarManagerBase
                                (selectedMode == static_cast<uint8_t>(NagMode::ModeC) &&
                                 handsOn == 1);
         if (!transmissionAllowed || !nagKillerActive || !nagKillerRuntime || selectedMode == 0 || isOwnEcho ||
-            !handsOnEligible)
+            !handsOnEligible || (selectedHardwareMode == 2 && apStateSeen_ && apState_ == 6))
             return;
 
         uint16_t torque = TORQUE_RAW_MAX;
@@ -1165,7 +1171,7 @@ struct HW4Handler : public CarManagerBase
                 if (onSend)
                     onSend(2, ok);
             }
-            if (index == 1)
+            if (index == 1 && (int)dasAutopilotStatus != 6)
             {
 #if !defined(ESP32_DASHBOARD)
                 bool modified = false;

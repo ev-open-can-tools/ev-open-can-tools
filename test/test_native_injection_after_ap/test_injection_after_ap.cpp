@@ -228,9 +228,6 @@ void test_hw4_enhanced_autopilot_waits_for_ap_before_mux1_injection()
     hw4Active.data[1] = 0x20;
     handler.handleMessage(hw4Active, mock);
     TEST_ASSERT_TRUE(handler.APActive);
-    hw4Active.data[0] = 0x06;
-    handler.handleMessage(hw4Active, mock);
-    TEST_ASSERT_TRUE(handler.APActive);
     mock.reset();
 
     CanFrame afterAp = hw4Mux1Frame();

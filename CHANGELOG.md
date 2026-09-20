@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [4.0.0-beta.3] - 2026-09-20
+
+### Fixed
+
+- HW4 Nag Modes A/B and EAP/EU `0x3FD` comfort injection now stop during
+  Highland in-car Autopark (`DAS_autopilotState == 6`), fixing the unsafe gate
+  mismatch reported in #84. Nag Modes A/B now include HW4 `0x39B` in their CAN
+  filters so the same block also applies to non-dashboard builds.
+
+### Safety
+
+- The state-6 block is limited to HW4. Legacy and HW3 retain their established
+  state-6 steady-Autopilot behavior.
+
 ## [4.0.0-beta.2] - 2026-08-16
 
 ### Added

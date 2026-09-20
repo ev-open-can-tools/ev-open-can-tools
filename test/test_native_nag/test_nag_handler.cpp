@@ -89,6 +89,7 @@ void test_nag_filter_ids_value()
 
     handler.setHardwareMode(2);
     ids = handler.modeFilterIds();
+    TEST_ASSERT_EQUAL_UINT8(2, handler.modeFilterIdCount(static_cast<uint8_t>(NagMode::ModeA)));
     TEST_ASSERT_EQUAL_UINT32(0x39B, ids[1]);
     TEST_ASSERT_EQUAL_UINT32(0x129, ids[2]);
 }
@@ -107,6 +108,19 @@ void test_nag_hw4_allows_modes_a_b()
     CanFrame f = makeEpasFrame(0, 0.33f, 0x01);
     handler.handleMessageAt(f, mock, 100);
     TEST_ASSERT_EQUAL(1, mock.sent.size());
+}
+
+void test_nag_hw4_blocks_mode_a_during_autopark()
+{
+    handler.setHardwareMode(2);
+    handler.setMode(static_cast<uint8_t>(NagMode::ModeA));
+    CanFrame ap = makeApStateFrame(NagHandler::kHw4ApStateId, 6, 0);
+    handler.handleMessageAt(ap, mock, 100);
+
+    CanFrame f = makeEpasFrame(0, 0.33f, 0x01);
+    handler.handleMessageAt(f, mock, 110);
+
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
 }
 
 // ============================================================
@@ -497,6 +511,7 @@ int main()
     RUN_TEST(test_nag_filter_ids_count);
     RUN_TEST(test_nag_filter_ids_value);
     RUN_TEST(test_nag_hw4_allows_modes_a_b);
+    RUN_TEST(test_nag_hw4_blocks_mode_a_during_autopark);
 
     // Basic echo behavior
     RUN_TEST(test_nag_echoes_when_handson_0);

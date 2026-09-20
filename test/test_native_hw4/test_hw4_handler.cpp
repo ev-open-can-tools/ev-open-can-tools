@@ -186,6 +186,20 @@ void test_hw4_nag_suppression_skips_mux1_changes_when_eap_runtime_disabled()
     TEST_ASSERT_EQUAL(0, mock.sent.size()); // frame are not sent when runtime disabled
 }
 
+void test_hw4_eap_mux1_blocks_during_autopark()
+{
+    CanFrame ap = {.id = 923, .dlc = 8};
+    ap.data[0] = 0x06;
+    handler.handleMessage(ap, mock);
+
+    CanFrame f = {.id = 1021};
+    f.data[0] = 0x01;
+    setBit(f, 19, true);
+    handler.handleMessage(f, mock);
+
+    TEST_ASSERT_EQUAL(0, mock.sent.size());
+}
+
 // --- Profile is observed but not injected (mux 2 stays silent) ---
 void test_hw4_mux2_does_not_inject_speed_profile()
 {
@@ -465,6 +479,7 @@ int main()
 
     RUN_TEST(test_hw4_nag_suppression_clears_bit19_sets_bit47);
     RUN_TEST(test_hw4_nag_suppression_skips_mux1_changes_when_eap_runtime_disabled);
+    RUN_TEST(test_hw4_eap_mux1_blocks_during_autopark);
 
     RUN_TEST(test_hw4_mux2_does_not_inject_speed_profile);
     RUN_TEST(test_hw4_mux2_preserves_old_profile_bits_by_not_sending);
